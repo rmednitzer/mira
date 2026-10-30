@@ -1,6 +1,6 @@
 # Evidence JSON Lines v1
 
-Use `mira inspect --json` or `mira service UNIT.service --json`. Standard output is one JSON object per line; unrelated failures are represented as unavailable records, and the process exits with status 1 for incomplete evidence. Existing human-readable commands remain available.
+Use `mira inspect --json` or `mira service UNIT.service --json`. Standard output is one JSON object per line; unrelated failures are represented as unavailable records, and the process exits with status 1 for incomplete evidence. Existing human-readable commands remain available. Non-UTF-8 arguments are rejected before dispatch with exit 2, no records and a fixed diagnostic; invalid UTF-8 is not converted to a lossy service scope.
 
 Every record includes `schema_version: 1`, `source`, `scope` (null for host-wide records; requested unit for systemd), `recorded_unix_ms` (number or null), `clock_trust: "unverified"`, `freshness: "unknown"`, `status` (`observed` or `unavailable`), `value` and `error_kind`. Unavailable records carry null values and a stable Rust I/O error-kind label, not raw OS error messages.
 

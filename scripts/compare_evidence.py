@@ -5,7 +5,6 @@ import json
 import sys
 import stat
 import os
-import math
 
 from capture_contract import check_capture
 from pathlib import Path
@@ -41,10 +40,9 @@ def _constant(value):
 
 
 def _float(value):
-    result = float(value)
-    if not math.isfinite(result):
-        raise ValueError("nonfinite JSON number")
-    return result
+    # All current wire numeric fields use integer tokens. Reject other numeric
+    # encodings before conversion can erase a fraction or round an integer.
+    raise ValueError("evidence requires integer JSON tokens")
 
 
 def strict_json(data):

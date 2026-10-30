@@ -26,7 +26,7 @@ flowchart TD
     E --> T["Optional offline schema/history tooling"]
 ```
 
-The executable search environment is supplied by the caller. Files, systemd output and stored captures cross untrusted-data boundaries; none can grant execution authority. Historical captures have no authenticated host identity or chronology.
+Invalid UTF-8 arguments are rejected before dispatch with a fixed usage diagnostic; raw bytes are not printed. The executable search environment is supplied by the caller. Files, systemd output and stored captures cross untrusted-data boundaries; none can grant execution authority. Historical captures have no authenticated host identity or chronology.
 
 ### Collector and package controls
 
@@ -40,7 +40,7 @@ Selection and error flags do not erase installed-package provenance. Local dpkg 
 
 Capture-v1 uses an explicit operator label and closed source profile; neither is authenticated host identity. Evidence-v2 records add per-source monotonic elapsed time and fixed failure reasons without changing v1 exports. Missing PSI remains unavailable; no pressure threshold, trigger write or health inference is admitted. Completion means all requested results exist, not that observations are available, fresh or authentic.
 
-Offline import opens nonblocking before descriptor validation, preserving symlink compatibility and caller responsibility for directory custody. Strict UTF-8, unique JSON keys, finite numbers, bounded nesting and exact source coverage precede comparison. This prevents the tested FIFO replacement wait and ambiguous-key admission; arbitrary regular-file I/O still has no deadline or immutable snapshot guarantee. Mismatched labels/profiles and mixed formats fail. Public captures can disclose operator-provided labels, so avoid sensitive identifiers. See [ADR 0002](adr/0002-complete-captures-and-admission.md).
+Offline import opens nonblocking before descriptor validation, preserving symlink compatibility and caller responsibility for directory custody. Strict UTF-8, unique JSON keys, integer-only numeric tokens, bounded nesting and exact source coverage precede comparison. This prevents the tested FIFO replacement wait and ambiguous-key admission; arbitrary regular-file I/O still has no deadline or immutable snapshot guarantee. Decimal/exponent numeric tokens are rejected before floating-point conversion can change their meaning; valid integer tokens retain exact values. Failure-reason/error-kind consistency includes the io_failure fallback. Mismatched labels/profiles and mixed formats fail. Public captures can disclose operator-provided labels, so avoid sensitive identifiers. See [ADR 0002](adr/0002-complete-captures-and-admission.md).
 
 ### Investigation boundary
 
