@@ -22,9 +22,10 @@ cargo clippy --all-targets -- -D warnings
 cargo test --all-targets --locked
 cargo run --locked -- inspect
 cargo run --locked -- demo
+cargo run --locked -- service ssh.service
 ```
 
-The `inspect` command prints source-aware observations with wall-clock recording timestamps and explicit unknown/error states. See [host evidence contract](docs/host-evidence.md). It prints a bounded read-only report from `/proc/meminfo` and `/proc/uptime`. Missing or invalid sources are shown as unknown; exit code 1 indicates incomplete evidence. The `demo` subcommand retains the original grid control fixture. There is no privileged collector daemon, network service, external model call, or automated remediation.
+The optional `service UNIT.service` command observes the specified systemd service without modifying it; see [service-state evidence](docs/systemd-evidence.md). The `inspect` command prints source-aware observations with wall-clock recording timestamps and explicit unknown/error states. See [host evidence contract](docs/host-evidence.md). It prints a bounded read-only report from `/proc/meminfo` and `/proc/uptime`. Missing or invalid sources are shown as unknown; exit code 1 indicates incomplete evidence. The `demo` subcommand retains the original grid control fixture. There is no privileged collector daemon, network service, external model call, or automated remediation.
 
 ## Security and sovereignty
 
