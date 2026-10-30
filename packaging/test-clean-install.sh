@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Disposable native Ubuntu container; never installs on the invoking host.
 set -euo pipefail
+trap 'echo "clean-install check failed at line $LINENO" >&2' ERR
 cd "$(dirname "$0")/.."
 deb="$(realpath "${1:?package.deb required}")"
 receipt="${2:?new receipt path required}"
@@ -10,7 +11,11 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 source_commit="$(git rev-parse HEAD)"
 source_tree="$(git rev-parse 'HEAD^{tree}')"
-test -z "$(git status --porcelain --untracked-files=no)"
+if test -n "$(git status --porcelain --untracked-files=no)"; then
+  echo "source checkout changed before clean-install validation" >&2
+  git diff --name-status HEAD -- >&2
+  exit 1
+fi
 package_sha="$(sha256sum "$deb" | cut -d' ' -f1)"
 package_version="$(dpkg-deb -f "$deb" Version)"
 package_arch="$(dpkg-deb -f "$deb" Architecture)"
