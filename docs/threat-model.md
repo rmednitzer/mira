@@ -40,6 +40,8 @@ Selection and error flags do not erase installed-package provenance. Local dpkg 
 
 The native source-boundary matrix checks each of the seven pressure-profile sources at its exact byte budget, one byte over and with invalid UTF-8. It verifies source-specific failures and preserved independent observations through the capture path. These fixtures do not prove deadlines for arbitrary filesystems or representative host coverage.
 
+The independent live procfs check compares kernel release and total memory against equal direct endpoint samples and brackets whole uptime. Schema-valid disagreements, required unavailable values and inconclusive endpoint changes fail CI. These are controlled unprivileged runner observations, not authenticated provenance or fleet qualification. MemAvailable and PSI can fluctuate outside endpoint ranges; the check deliberately makes no such correlation claim and emits no sampled values.
+
 ### Capture admission and completeness
 
 Capture-v1 uses an explicit operator label and closed source profile; neither is authenticated host identity. Evidence-v2 records add per-source monotonic elapsed time and fixed failure reasons without changing v1 exports. Missing PSI remains unavailable; no pressure threshold, trigger write or health inference is admitted. Completion means all requested results exist, not that observations are available, fresh or authentic.

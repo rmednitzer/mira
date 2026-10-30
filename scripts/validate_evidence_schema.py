@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -71,9 +72,68 @@ def check_live_systemd():
     print("unprivileged live systemd evidence validated")
 
 
+def read_live_procfs():
+    """Direct bounded reads, independent of the Rust parser and its JSON output."""
+    def read(path, limit):
+        with Path(path).open('rb') as handle:
+            data = handle.read(limit + 1)
+        if len(data) > limit:
+            raise ValueError('direct procfs sample exceeds budget')
+        return data.decode('ascii')
+
+    memory = read('/proc/meminfo', 65536)
+    totals = re.findall(r'^MemTotal:[ \t]+([0-9]+)[ \t]+kB[ \t]*$', memory, re.MULTILINE)
+    if len(totals) != 1 or int(totals[0]) == 0:
+        raise ValueError('invalid direct memory sample')
+    kernel = read('/proc/sys/kernel/osrelease', 16384).removesuffix('\n')
+    if re.fullmatch(r'[A-Za-z0-9._+\-]{1,256}', kernel) is None:
+        raise ValueError('invalid direct kernel sample')
+    uptime = read('/proc/uptime', 65536)
+    match = re.fullmatch(r'([0-9]+)(?:\.[0-9]+)?[ \t]+[0-9]+(?:\.[0-9]+)?\n?', uptime)
+    if match is None:
+        raise ValueError('invalid direct uptime sample')
+    return {'total_kib': int(totals[0]), 'kernel': kernel,
+            'uptime': int(match.group(1))}
+
+
+def check_live_procfs_values(before, records, after):
+    """Compare already schema-validated records with surrounding direct samples."""
+    if (before['total_kib'] != after['total_kib']
+            or before['kernel'] != after['kernel']
+            or before['uptime'] > after['uptime']):
+        raise ValueError('live procfs fixture changed; comparison inconclusive')
+    by_source = {record['source']: record for record in records}
+    for source in ('/proc/meminfo', '/proc/sys/kernel/osrelease', '/proc/uptime'):
+        if by_source[source]['status'] != 'observed':
+            raise ValueError('required live procfs observation unavailable')
+    if by_source['/proc/meminfo']['value']['total_kib'] != before['total_kib']:
+        raise ValueError('MIRA total memory disagrees with direct procfs')
+    if by_source['/proc/sys/kernel/osrelease']['value'] != before['kernel']:
+        raise ValueError('MIRA kernel release disagrees with direct procfs')
+    if not before['uptime'] <= by_source['/proc/uptime']['value'] <= after['uptime']:
+        raise ValueError('MIRA uptime outside direct procfs interval')
+    # MemAvailable and PSI can move non-monotonically between samples. Endpoint
+    # values cannot establish an interval bound for either observation.
+
+
+def check_live_procfs():
+    if os.geteuid() == 0:
+        raise ValueError('live procfs check must run without root')
+    before = read_live_procfs()
+    records = check_output(
+        ['inspect', '--json'], 5,
+        ['/proc/meminfo', '/proc/uptime', '/proc/sys/kernel/osrelease',
+         '/proc/pressure/cpu', '/var/lib/dpkg/status'], {0, 1}
+    )
+    after = read_live_procfs()
+    check_live_procfs_values(before, records, after)
+    print('unprivileged live procfs evidence validated')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live-systemd", action="store_true")
+    parser.add_argument("--live-procfs", action="store_true")
     args = parser.parse_args()
     fixture = json.loads((ROOT / "tests/fixtures/evidence-v1.json").read_text())
     for record in fixture["valid"]:
@@ -104,14 +164,21 @@ def main():
         )
         if rejected[0]["scope"] != invalid_name or rejected[0]["status"] != "unavailable":
             raise AssertionError("rejected service scope must remain explicit")
+    if args.live_procfs:
+        check_live_procfs()
     if args.live_systemd:
         check_live_systemd()
     print("evidence-v1 schema and CLI contract validated")
 
 
-if __name__ == "__main__":
+def run():
     try:
         main()
     except Exception as exc:
-        print(f"evidence schema validation failed: {exc}", file=sys.stderr)
+        # Schema exceptions and child stderr can contain sampled host values.
+        print(f"evidence schema validation failed: {type(exc).__name__}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    run()
