@@ -10,8 +10,15 @@ use std::{
 fn state_output(id: &str, load: &str, active: &str, sub: &str) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "Id={id}")?;
-    writeln!(stdout, "Names={id} ssh.service {}", "alias.service ".repeat(500))?;
-    writeln!(stdout, "LoadState={load}\nActiveState={active}\nSubState={sub}")?;
+    writeln!(
+        stdout,
+        "Names={id} ssh.service {}",
+        "alias.service ".repeat(500)
+    )?;
+    writeln!(
+        stdout,
+        "LoadState={load}\nActiveState={active}\nSubState={sub}"
+    )?;
     stdout.flush()
 }
 

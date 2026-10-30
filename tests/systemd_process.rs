@@ -107,22 +107,42 @@ fn investigation_dispositions_preserve_reported_state_and_scope() {
         ("masked-active", 0, "satisfied", "reported_active"),
         ("alias-active", 0, "satisfied", "reported_active"),
         ("reported-failed", 1, "not_satisfied", "reported_not_active"),
-        ("reported-inactive", 1, "not_satisfied", "reported_not_active"),
+        (
+            "reported-inactive",
+            1,
+            "not_satisfied",
+            "reported_not_active",
+        ),
         ("maintenance", 1, "not_satisfied", "reported_not_active"),
         ("activating", 3, "indeterminate", "transition_in_progress"),
         ("deactivating", 3, "indeterminate", "transition_in_progress"),
-        ("future-state", 3, "indeterminate", "unrecognized_active_state"),
+        (
+            "future-state",
+            3,
+            "indeterminate",
+            "unrecognized_active_state",
+        ),
     ] {
-        let output = fixture.invoke(&["investigate", "service-active", "ssh.service", "--json"], mode);
+        let output = fixture.invoke(
+            &["investigate", "service-active", "ssh.service", "--json"],
+            mode,
+        );
         assert_eq!(output.status.code(), Some(code), "{mode}");
         let text = String::from_utf8(output.stdout).unwrap();
-        assert!(text.contains(&format!("\"outcome\":\"{outcome}\"")), "{mode}");
+        assert!(
+            text.contains(&format!("\"outcome\":\"{outcome}\"")),
+            "{mode}"
+        );
         assert!(text.contains(&format!("\"reason\":\"{reason}\"")), "{mode}");
         assert!(text.contains("\"scope\":\"ssh.service\""));
         assert!(text.contains("\"application_health\":\"not_assessed\""));
         assert!(text.contains("\"clock_trust\":\"unverified\""));
-        if mode == "alias-active" { assert!(text.contains("canonical.service")); }
-        if mode == "masked-active" { assert!(text.contains("\"load_state\":\"masked\"")); }
+        if mode == "alias-active" {
+            assert!(text.contains("canonical.service"));
+        }
+        if mode == "masked-active" {
+            assert!(text.contains("\"load_state\":\"masked\""));
+        }
     }
 }
 
@@ -130,7 +150,10 @@ fn investigation_dispositions_preserve_reported_state_and_scope() {
 fn investigation_does_not_turn_collection_failure_into_failed_service() {
     let fixture = Fixture::new();
     for mode in ["failure", "malformed", "invalid-utf8", "oversized"] {
-        let output = fixture.invoke(&["investigate", "service-active", "ssh.service", "--json"], mode);
+        let output = fixture.invoke(
+            &["investigate", "service-active", "ssh.service", "--json"],
+            mode,
+        );
         assert_eq!(output.status.code(), Some(3), "{mode}");
         let text = String::from_utf8(output.stdout).unwrap();
         assert!(text.contains("\"outcome\":\"indeterminate\""));

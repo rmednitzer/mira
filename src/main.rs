@@ -150,11 +150,22 @@ fn investigate(name: &str, unit: &str, json: bool) {
         println!("{}", report.to_json());
     } else {
         println!("MIRA {} scope={:?}", report.template().id(), report.scope());
-        println!("outcome={} reason={} evidence_ref=#/evidence", report.assessment().outcome().as_str(), report.assessment().reason());
-        println!("source={} recorded_unix_ms={:?} clock_trust=unverified freshness=unknown", report.evidence().source, report.evidence().collected_unix_ms);
+        println!(
+            "outcome={} reason={} evidence_ref=#/evidence",
+            report.assessment().outcome().as_str(),
+            report.assessment().reason()
+        );
+        println!(
+            "source={} recorded_unix_ms={:?} clock_trust=unverified freshness=unknown",
+            report.evidence().source,
+            report.evidence().collected_unix_ms
+        );
         if let EvidenceStatus::Observed(state) = &report.evidence().status {
             // Debug formatting escapes control characters in untrusted state strings.
-            println!("Id={:?} LoadState={:?} ActiveState={:?} SubState={:?}", state.id, state.load_state, state.active_state, state.sub_state);
+            println!(
+                "Id={:?} LoadState={:?} ActiveState={:?} SubState={:?}",
+                state.id, state.load_state, state.active_state, state.sub_state
+            );
         }
         println!("Reported activation only; application health and root cause are not assessed.");
     }

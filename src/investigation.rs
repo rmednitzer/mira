@@ -1,6 +1,9 @@
 //! Closed, read-only investigations keep operator expectations separate from evidence.
 //! An assessment is not application health, source authentication or action authority.
-use crate::{evidence::{self, Evidence, EvidenceStatus}, evidence_json, systemd};
+use crate::{
+    evidence::{self, Evidence, EvidenceStatus},
+    evidence_json, systemd,
+};
 use std::{fmt, io};
 
 pub const REPORT_VERSION: u32 = 1;
@@ -117,7 +120,8 @@ pub struct Report {
 
 impl fmt::Debug for Report {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_struct("Report")
+        formatter
+            .debug_struct("Report")
             .field("template", &self.template)
             .field("scope", &self.scope)
             .field("source", &self.observation.source)
@@ -128,10 +132,18 @@ impl fmt::Debug for Report {
 }
 
 impl Report {
-    pub fn template(&self) -> Template { self.template }
-    pub fn scope(&self) -> &str { &self.scope }
-    pub fn evidence(&self) -> &Evidence<systemd::ServiceState> { &self.observation }
-    pub fn assessment(&self) -> Assessment { self.assessment }
+    pub fn template(&self) -> Template {
+        self.template
+    }
+    pub fn scope(&self) -> &str {
+        &self.scope
+    }
+    pub fn evidence(&self) -> &Evidence<systemd::ServiceState> {
+        &self.observation
+    }
+    pub fn assessment(&self) -> Assessment {
+        self.assessment
+    }
 
     pub fn to_json(&self) -> String {
         let observation = evidence_json::service_record(&self.scope, &self.observation);
@@ -156,7 +168,12 @@ pub fn run(template: Template, unit: &str) -> io::Result<Report> {
     let assessment = match template {
         Template::ServiceActive => assess_service_active(&observation),
     };
-    Ok(Report { template, scope: unit.to_owned(), observation, assessment })
+    Ok(Report {
+        template,
+        scope: unit.to_owned(),
+        observation,
+        assessment,
+    })
 }
 
 #[cfg(test)]
@@ -164,12 +181,16 @@ mod tests {
     use super::*;
 
     fn observed(active: &str, load: &str) -> Evidence<systemd::ServiceState> {
-        Evidence::from_result("systemd/system", Ok(systemd::ServiceState {
-            id: "canonical.service".to_owned(),
-            load_state: load.to_owned(),
-            active_state: active.to_owned(),
-            sub_state: "literal-future-substate".to_owned(),
-        }), Some(7))
+        Evidence::from_result(
+            "systemd/system",
+            Ok(systemd::ServiceState {
+                id: "canonical.service".to_owned(),
+                load_state: load.to_owned(),
+                active_state: active.to_owned(),
+                sub_state: "literal-future-substate".to_owned(),
+            }),
+            Some(7),
+        )
     }
 
     #[test]
@@ -193,27 +214,47 @@ mod tests {
     #[test]
     fn active_state_is_independent_of_load_and_sub_state() {
         for load in ["loaded", "masked", "error", "future-load"] {
-            assert_eq!(assess_service_active(&observed("active", load)), Assessment::ReportedActive);
+            assert_eq!(
+                assess_service_active(&observed("active", load)),
+                Assessment::ReportedActive
+            );
         }
     }
 
     #[test]
     fn unavailable_wrong_source_and_invalid_identity_cannot_satisfy() {
-        let missing = Evidence::from_result("systemd/system", Err(io::Error::other("private secret")), None);
-        assert_eq!(assess_service_active(&missing), Assessment::EvidenceUnavailable);
+        let missing = Evidence::from_result(
+            "systemd/system",
+            Err(io::Error::other("private secret")),
+            None,
+        );
+        assert_eq!(
+            assess_service_active(&missing),
+            Assessment::EvidenceUnavailable
+        );
         let mut wrong = observed("active", "loaded");
         wrong.source = "/proc/uptime";
         assert_eq!(assess_service_active(&wrong), Assessment::UnexpectedSource);
         let mut invalid = observed("active", "loaded");
-        if let EvidenceStatus::Observed(state) = &mut invalid.status { state.id = "--user.service".to_owned(); }
-        assert_eq!(assess_service_active(&invalid), Assessment::InvalidServiceIdentity);
+        if let EvidenceStatus::Observed(state) = &mut invalid.status {
+            state.id = "--user.service".to_owned();
+        }
+        assert_eq!(
+            assess_service_active(&invalid),
+            Assessment::InvalidServiceIdentity
+        );
     }
 
     #[test]
     fn report_preserves_alias_scope_evidence_and_uncertainty() {
         let observation = observed("active", "masked");
         let original = evidence_json::service_record("alias.service", &observation);
-        let report = Report { template: Template::ServiceActive, scope: "alias.service".to_owned(), assessment: assess_service_active(&observation), observation };
+        let report = Report {
+            template: Template::ServiceActive,
+            scope: "alias.service".to_owned(),
+            assessment: assess_service_active(&observation),
+            observation,
+        };
         let json = report.to_json();
         assert!(json.contains(&format!("\"evidence\":{original}")));
         assert!(json.contains("\"application_health\":\"not_assessed\""));
@@ -223,8 +264,17 @@ mod tests {
 
     #[test]
     fn report_never_exports_raw_error_text() {
-        let observation = Evidence::from_result("systemd/system", Err(io::Error::other("private secret")), None);
-        let report = Report { template: Template::ServiceActive, scope: "ssh.service".to_owned(), assessment: assess_service_active(&observation), observation };
+        let observation = Evidence::from_result(
+            "systemd/system",
+            Err(io::Error::other("private secret")),
+            None,
+        );
+        let report = Report {
+            template: Template::ServiceActive,
+            scope: "ssh.service".to_owned(),
+            assessment: assess_service_active(&observation),
+            observation,
+        };
         let json = report.to_json();
         assert!(!json.contains("secret"));
         assert!(!format!("{report:?}").contains("secret"));
@@ -237,9 +287,15 @@ mod tests {
         for name in ["", "restart", "SERVICE-ACTIVE", "service-active;id"] {
             assert!(Template::from_name(name).is_none());
         }
-        assert_eq!(Template::from_name("service-active"), Some(Template::ServiceActive));
+        assert_eq!(
+            Template::from_name("service-active"),
+            Some(Template::ServiceActive)
+        );
         for unit in ["", "../ssh.service", "--user.service", "ssh.service;id"] {
-            assert_eq!(run(Template::ServiceActive, unit).unwrap_err().kind(), io::ErrorKind::InvalidInput);
+            assert_eq!(
+                run(Template::ServiceActive, unit).unwrap_err().kind(),
+                io::ErrorKind::InvalidInput
+            );
         }
     }
 }
