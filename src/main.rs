@@ -39,7 +39,18 @@ fn inspect() {
     show(&snapshot.uptime);
     show(&snapshot.kernel_release);
     show(&snapshot.cpu_pressure);
-    if !snapshot.complete() {
+    let mut incomplete = !snapshot.complete();
+    match mira::packages::collect(std::path::Path::new("/var/lib/dpkg/status")) {
+        Ok(packages) => println!(
+            "/var/lib/dpkg/status: observed {} installed package records (not vulnerability findings)",
+            packages.len()
+        ),
+        Err(error) => {
+            incomplete = true;
+            println!("/var/lib/dpkg/status: unknown ({error})");
+        }
+    }
+    if incomplete {
         eprintln!("MIRA: incomplete host evidence");
         std::process::exit(1);
     }

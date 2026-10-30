@@ -1,0 +1,11 @@
+Package: alpha
+Status: install ok installed
+Architecture: amd64
+Version: 1.2-3ubuntu1
+Conffiles:
+ /etc/alpha.conf abc123
+
+Package: beta
+Status: deinstall ok config-files
+Architecture: all
+Version: 2
