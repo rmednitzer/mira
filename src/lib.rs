@@ -6,6 +6,7 @@ pub mod experiment;
 pub mod host_extra;
 pub mod linux;
 pub mod packages;
+pub mod systemd;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Position {
     pub x: i32,
