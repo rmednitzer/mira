@@ -45,3 +45,5 @@ Rollback: revert the new CLI/profile/schema and comparison support together. Exi
 - https://docs.python.org/3/library/json.html#standard-compliance-and-interoperability
 - https://man7.org/linux/man-pages/man2/open.2.html
 - https://docs.docker.com/reference/cli/docker/image/inspect/
+
+Follow-up: [ADR 0003](0003-locked-tooling-and-fresh-builds.md) adds hash-locked tooling and fresh source/target comparisons within one native runner environment; independent-host reproduction and signing remain open.
