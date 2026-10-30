@@ -5,8 +5,9 @@ fn main() {
     match args.as_slice() {
         [_, command] if command == "inspect" => inspect(),
         [_, command] if command == "demo" => demo(),
+        [_, command, unit] if command == "service" => service(unit),
         _ => {
-            eprintln!("Usage: mira inspect | mira demo");
+            eprintln!("Usage: mira inspect | mira demo | mira service UNIT.service");
             std::process::exit(2);
         }
     }
@@ -71,5 +72,18 @@ fn demo() {
             .step(Mode::Manual, Some(command), None, None)
             .expect("step");
         println!("{event:?}");
+    }
+}
+
+fn service(unit: &str) {
+    match mira::systemd::inspect(unit) {
+        Ok(state) => println!(
+            "systemd {}: LoadState={} ActiveState={} SubState={} (observation only)",
+            state.id, state.load_state, state.active_state, state.sub_state
+        ),
+        Err(error) => {
+            eprintln!("systemd {unit}: unknown ({error})");
+            std::process::exit(1);
+        }
     }
 }
