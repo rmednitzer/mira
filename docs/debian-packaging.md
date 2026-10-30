@@ -6,6 +6,16 @@ Build on native Ubuntu 26.04 amd64 and arm64 with `cargo build --release --locke
 
 CI must inspect the archive for unexpected paths, validate metadata, extract and execute the CLI and test installation/removal in an isolated disposable environment before promotion. Release signing, dependency scanning, hermetic compilation, build provenance, genuine version-to-version upgrade/downgrade and apt repository publishing are later gates. Package contents should not expose host configuration or private infrastructure.
 
+## Runtime package relationships
+
+`Depends` is derived from the native ELF binary by `dpkg-shlibdeps`; do not hardcode library versions or their transitive dependencies. The CLI requires no Python, Rust toolchain, procps commands or JSON utilities at runtime. `dpkg` is an Essential package on the supported distribution; MIRA reads its status database directly and needs no additional versioned dependency on it. Kernel procfs and PSI availability are runtime conditions, not dependencies on procps.
+
+`Suggests: systemd, default-dbus-system-bus | dbus-system-bus` advertises the optional service observation prerequisites. Ubuntu 26.04's `systemd` package provides `systemctl` on both supported architectures. The bus alternative allows the distribution's default provider or another compatible system bus. Host inspection and capture remain useful without them, so these are suggestions rather than mandatory or recommended installations. A working system manager, system bus and query access are still required for service observations; installing packages alone does not establish availability. Missing or inaccessible service infrastructure remains explicit unavailable evidence.
+
+MIRA does not select an init implementation through `systemd-sysv`, request privileged operations through `polkitd`, or enable services during installation. `jq` is an optional operator convenience. Build tools (`dpkg-dev`, binutils and lintian) and Python schema/history tooling remain separate from runtime package relationships. The clean-container apt check does not request installation of suggestions.
+
+These choices follow [Debian package relationship semantics](https://www.debian.org/doc/debian-policy/ch-relationships.html#binary-dependencies-depends-recommends-suggests-enhances-pre-depends), the [Essential package rule](https://www.debian.org/doc/debian-policy/ch-binary.html#dependencies), and Ubuntu's [systemd package metadata](https://packages.ubuntu.com/resolute/systemd).
+
 ## Optional collector: design only
 
 Do not install or enable a unit yet. An eventual systemd oneshot + timer requires a bounded output sink, retention and atomic-write design, verified IPC access for the systemd query, explicit enablement, dynamic-user/filesystem constraints and failure/restart tests. It should be a separate `mira-collector` package if justified by a documented unattended collection requirement. Neither `ProtectSystem=strict` nor `DynamicUser=yes` alone proves sandbox isolation; validate behavior on target hosts.
