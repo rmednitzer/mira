@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
-description = "Mixed-Initiative Reasoning and Autonomy"
+description = "Read-only Linux infrastructure evidence and coordination research"
 repository = "https://github.com/rmednitzer/mira"
 publish = false
 

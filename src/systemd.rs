@@ -2,6 +2,7 @@
 //! No shell, privilege escalation, unit discovery or state-changing verb.
 use std::{
     io::{self, Read},
+    os::{fd::OwnedFd, unix::net::UnixStream},
     process::{Command, Stdio},
     thread,
     time::{Duration, Instant},
@@ -100,55 +101,126 @@ pub fn parse_show(output: &str, requested: &str) -> io::Result<ServiceState> {
 /// Timeout is enforced even when systemd is unresponsive.
 pub fn inspect(unit: &str) -> io::Result<ServiceState> {
     validate_unit(unit)?;
-    let mut child = Command::new("systemctl")
-        .args([
-            "--system",
-            "--no-pager",
-            "--no-ask-password",
-            "show",
-            "--property=Id,Names,LoadState,ActiveState,SubState",
-            "--",
-            unit,
-        ])
-        .stdout(Stdio::piped())
+    let mut command = Command::new("systemctl");
+    command.args([
+        "--system",
+        "--no-pager",
+        "--no-ask-password",
+        "show",
+        "--property=Id,Names,LoadState,ActiveState,SubState",
+        "--",
+        unit,
+    ]);
+    query(&mut command, unit, Duration::from_secs(3))
+}
+
+// Drain output while monitoring exit against one deadline, even if an
+// inherited writer remains open after the direct child exits.
+fn query(command: &mut Command, unit: &str, timeout: Duration) -> io::Result<ServiceState> {
+    let (mut reader, writer) = UnixStream::pair()?;
+    reader.set_nonblocking(true)?;
+    let start = Instant::now();
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(OwnedFd::from(writer)))
         .stderr(Stdio::null())
         .spawn()?;
-    let start = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
+    // Release Command's retained writer so it cannot prevent EOF.
+    command.stdout(Stdio::null());
+    let result = (|| {
+        let mut bytes = Vec::new();
+        let mut eof = false;
+        let mut status = None;
+        loop {
+            if start.elapsed() >= timeout {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "systemd query timeout",
+                ));
+            }
+            if !eof {
+                let mut buffer = [0_u8; 1024];
+                match reader.read(&mut buffer) {
+                    Ok(0) => eof = true,
+                    Ok(count) => {
+                        if bytes.len() + count > 8192 {
+                            return Err(invalid("systemd response exceeds limit"));
+                        }
+                        bytes.extend_from_slice(&buffer[..count]);
+                        continue;
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(error) => return Err(error),
+                }
+            }
+            if status.is_none() {
+                status = child.try_wait()?;
+            }
+            if let Some(status) = status {
+                if !status.success() {
+                    return Err(io::Error::other("systemd query unavailable or failed"));
+                }
+                if eof {
+                    let text = String::from_utf8(bytes)
+                        .map_err(|_| invalid("non-UTF8 systemd response"))?;
+                    return parse_show(&text, unit);
+                }
+            }
+            thread::sleep(Duration::from_millis(5));
         }
-        if start.elapsed() >= Duration::from_secs(3) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "systemd query timeout",
-            ));
-        }
-        thread::sleep(Duration::from_millis(10));
-    };
-    if !status.success() {
-        return Err(io::Error::other("systemd query unavailable or failed"));
-    }
-    let mut bytes = Vec::new();
-    child
-        .stdout
-        .take()
-        .ok_or_else(|| io::Error::other("missing stdout"))?
-        .take(8193)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > 8192 {
-        return Err(invalid("systemd response exceeds limit"));
-    }
-    let text = String::from_utf8(bytes).map_err(|_| invalid("non-UTF8 systemd response"))?;
-    parse_show(&text, unit)
+    })();
+    // Reap the direct child on every post-spawn return path.
+    let _ = child.kill();
+    let _ = child.wait();
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     const SAMPLE: &str = "Id=ssh.service\nNames=ssh.service\nLoadState=loaded\nActiveState=active\nSubState=running\n";
+
+    fn helper(code: &str, timeout: Duration) -> io::Result<ServiceState> {
+        query(
+            Command::new("python3").args(["-c", code]),
+            "ssh.service",
+            timeout,
+        )
+    }
+
+    #[test]
+    fn drains_large_valid_response_while_child_runs() {
+        let code = format!(
+            "import sys; sys.stdout.write({:?} + 'Names=ssh.service ' + 'alias.service ' * 500 + '\\n')",
+            "Id=ssh.service\nLoadState=loaded\nActiveState=active\nSubState=running\n"
+        );
+        assert!(helper(&code, Duration::from_secs(3)).is_ok());
+    }
+
+    #[test]
+    fn bounds_oversized_and_nonterminating_children() {
+        let error = helper(
+            "import sys; sys.stdout.write('x' * 100000)",
+            Duration::from_secs(3),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        let error = helper("import time; time.sleep(10)", Duration::from_millis(100)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn deadline_includes_inherited_stdout_after_parent_exit() {
+        let start = Instant::now();
+        let error = helper(
+            "import subprocess, sys; subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(1)'])",
+            Duration::from_millis(100),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert!(start.elapsed() < Duration::from_secs(2));
+    }
 
     #[test]
     fn parses_service_state() {

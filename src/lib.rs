@@ -1,5 +1,5 @@
-//! MIRA: deterministic offline human-autonomy coordination.
-//! This is an experimental simulator, not an authenticated or safety-certified controller.
+//! MIRA: read-only Linux infrastructure evidence and retained coordination research.
+//! Evidence is observational; the simulation is not an authenticated or safety-certified controller.
 
 pub mod evidence;
 pub mod evidence_json;
