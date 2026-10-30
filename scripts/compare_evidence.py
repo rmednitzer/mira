@@ -3,6 +3,8 @@
 import argparse
 import json
 import sys
+import stat
+import os
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -12,9 +14,13 @@ MAX_RECORDS = 128
 
 
 def load(path, validator):
-    if path.stat().st_size > MAX_BYTES:
-        raise ValueError("evidence file exceeds 1 MiB")
-    data = path.read_bytes()
+    # Only regular capture files are supported. Refuse FIFOs/devices.
+    if not stat.S_ISREG(path.stat().st_mode):
+        raise ValueError("capture must be a regular file")
+    with path.open("rb") as handle:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise ValueError("capture must be a regular file")
+        data = handle.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise ValueError("evidence file exceeds 1 MiB")
     result = {}
@@ -25,6 +31,10 @@ def load(path, validator):
             raise ValueError("too many evidence records")
         record = json.loads(line)
         validator.validate(record)
+        if record["source"] == "/proc/meminfo" and record["status"] == "observed":
+            v = record["value"]
+            if v["available_kib"] > v["total_kib"]:
+                raise ValueError("available memory exceeds total memory")
         key = (record["source"], record["scope"])
         if key in result:
             raise ValueError("duplicate source/scope")
