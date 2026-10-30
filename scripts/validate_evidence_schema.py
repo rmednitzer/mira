@@ -67,6 +67,12 @@ def main():
     service = check_output(["service", "--user.service", "--json"], 1, ["systemd/system"], {1})
     if service[0]["status"] != "unavailable" or service[0]["value"] is not None:
         raise AssertionError("invalid service name must remain unavailable")
+    for invalid_name in ("x", "x" * 300 + ".service"):
+        rejected = check_output(
+            ["service", invalid_name, "--json"], 1, ["systemd/system"], {1}
+        )
+        if rejected[0]["scope"] != invalid_name or rejected[0]["status"] != "unavailable":
+            raise AssertionError("rejected service scope must remain explicit")
     print("evidence-v1 schema and CLI contract validated")
 
 
