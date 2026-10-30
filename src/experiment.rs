@@ -80,7 +80,7 @@ pub fn verify(trace: &Trace) -> Result<(), &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{demo_scenario, Actor, Move, Position, Reason};
+    use crate::{Actor, Move, Position, Reason, demo_scenario};
 
     fn human(command: Move, tick: u64) -> Frame {
         Frame {
@@ -97,10 +97,16 @@ mod tests {
 
     #[test]
     fn validates_identical_replay() {
-        let trace = run(demo_scenario(), &[human(Move::East, 0), human(Move::East, 1)])
-            .expect("valid run");
+        let trace = run(
+            demo_scenario(),
+            &[human(Move::East, 0), human(Move::East, 1)],
+        )
+        .expect("valid run");
         assert_eq!(trace.records.len(), 2);
-        assert_eq!(trace.records[1].event.decision.reason, Reason::RejectedUnsafe);
+        assert_eq!(
+            trace.records[1].event.decision.reason,
+            Reason::RejectedUnsafe
+        );
         assert!(verify(&trace).is_ok());
     }
 
@@ -137,7 +143,11 @@ mod tests {
         let frame = Frame {
             mode: Mode::Delegated,
             human: None,
-            agent: Some(Proposal { actor: Actor::Agent, command: Move::East, tick: 0 }),
+            agent: Some(Proposal {
+                actor: Actor::Agent,
+                command: Move::East,
+                tick: 0,
+            }),
             grant: None,
         };
         let trace = run(demo_scenario(), &[frame]).expect("valid run");
