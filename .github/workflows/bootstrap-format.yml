@@ -1,0 +1,23 @@
+name: Bootstrap source formatter
+on:
+  push:
+    branches: [bootstrap/rust-core]
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.repository == 'rmednitzer/mira'
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: bootstrap/rust-core
+      - run: rustup toolchain install 1.93.1 --profile minimal --component rustfmt
+      - name: Format Rust files and push changes to bootstrap branch
+        run: |
+          cargo +1.93.1 fmt --all
+          git add src
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Apply rustfmt to bootstrap sources'
+            git push origin HEAD:bootstrap/rust-core
+          fi
