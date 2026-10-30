@@ -9,7 +9,7 @@ Use a local-first Rust core with typed, allowlisted Linux evidence collectors an
 | Stage | Implemented | Planned |
 |---|---|---|
 | Operator selection | Explicit CLI command, service scope and closed service-active template | Natural-language intent and additional reviewed templates |
-| Evidence acquisition | Bounded procfs/dpkg reads and selected systemd query | Additional reviewed collectors |
+| Evidence acquisition | Bounded procfs/dpkg reads and selected systemd query | Additional reviewed collectors; conditional platform observation adapters |
 | Evidence contract | Typed observations, unavailable states, JSON Lines v1, complete capture-v1/evidence-v2 and schemas | Authenticated host identity and freshness policy |
 | Comparison and analysis | Offline comparison and versioned activation expectation with cited evidence | Broader diagnostic/advisory correlation |
 | Presentation | Human-readable CLI and JSON Lines | Registered adaptive views |
@@ -20,6 +20,12 @@ TB1 operator/host session: the process runs under caller permissions; no assumed
 
 ## Runtime constraints
 No automatic privilege escalation, arbitrary command execution or outbound network in the collectors. The service adapter executes only a fixed-argument, read-only systemctl query under caller permissions. Path roots are injectable for deterministic tests; production collection must constrain roots to approved OS interfaces. Files and outputs must have explicit byte bounds. Systemd queries also have an execution/EOF deadline; ordinary filesystem I/O has no universal application deadline. No silent cloud fallback. No assumption that a read-only file open gives a consistent global host snapshot.
+
+## Planned platform observation boundary
+
+Kubernetes and Talos are separate candidate sources, not generic command tools or extensions of local capture-v1. [ADR 0004](adr/0004-staged-platform-observation.md) separates remote observation from remediation. Each adapter needs explicit endpoint/target selection, scoped credentials, verified transport, allowlisted methods and retained fields, bounded pagination/requests, an evidence/schema contract and supported-version fixtures before implementation. No implicit context/credential discovery or executable authentication plugins are admitted by the plan. Cross-source identity and freshness remain explicit uncertainties.
+
+TB6 (planned) covers remote endpoint, credential and response handling. It does not exist in the current runtime. Existing collectors remain offline; optional remote adapters must fail without changing their behavior or core package dependencies. See [candidate scope and acceptance](platform-integrations.md) and the [planned threat analysis](threat-model.md#planned-platform-observation-boundary).
 
 ## Architectural alternatives
 1. No pivot: continue rover-only simulator. Lowest cost but fails practical AIOps objective.

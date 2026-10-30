@@ -48,6 +48,31 @@ A closed enum selects service-active/v1 and validates one service scope before d
 
 New report/schema consumers must preserve that distinction and reject unsupported versions. Existing evidence-v1 output remains separate. Errors expose no arbitrary backend message in reports; human state strings are escaped. The [decision record](adr/0001-read-only-service-investigation.md) records alternatives, scope, rollback and the state-table/alias/error validation. Generic command classification, audit chains, durable stores and background supervision remain outside this increment.
 
+### Planned platform observation boundary
+
+Status: design constraints only; no remote adapter, credential loading or network request is implemented. [ADR 0004](adr/0004-staged-platform-observation.md) and the [integration plan](platform-integrations.md) require a separate implementation review.
+
+```mermaid
+flowchart TD
+    O["Operator: explicit endpoint and scope"] --> A["Planned bounded Rust adapter"]
+    K["Credential and trust configuration"] --> A
+    A --> R["Remote API and authorization boundary"]
+    R --> A
+    A --> V["Allowlisted fields and evidence contract"]
+    V --> E["Local evidence; uncertain cross-source identity"]
+```
+
+| Plausible threat | Planned boundary control and verification |
+|---|---|
+| Spoofing or wrong cluster/node | Explicit endpoint and target binding, verified TLS, no default-context fallback; wrong-target and certificate failure fixtures |
+| Tampered/stale API evidence or repudiated provenance | Versioned source/object identifiers and timing, preserve partial/unknown results; conflicting identifiers and version fixtures; unsigned evidence is not independent attestation |
+| Credential or personal/infrastructure data disclosure | Explicit credential loading, reject executable auth configuration, exclude secret-bearing resources/fields, redact output and diagnostics; hostile response and credential-leak tests; API read exposure must also be justified |
+| Denial of service from lists, pagination or reconnects | Total deadline, byte/object/page/request and retry budgets; truncation, rate-limit and timeout tests; no unbounded watches |
+| Elevation of privilege through apparently read-only calls | Exact method/resource and permission allowlists; exclude proxy/exec and mutation paths; no admin fallback; assert outbound requests in disposable targets |
+| Privacy linkage across host, workload and node records | Minimize identifiers/retention, deliberate local export, no hosted telemetry by default; inspect emitted fields and require a deployment data-custody review |
+
+These are hypotheses and admission criteria, not observed attacks or verified controls. Kubernetes RBAC and Talos roles are distinct authorization systems; access to one does not establish access to the other. A read-only role can still expose sensitive data. No hosted provider or target fleet sovereignty assessment is established by this plan.
+
 ### Operational acceptance checks
 
 1. Malformed, missing, oversized and contradictory Linux evidence cannot become a confirmed finding.
