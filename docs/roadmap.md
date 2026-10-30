@@ -16,11 +16,13 @@ Remaining: authenticated host identity, freshness policy, representative real-ho
 
 ### Packaging and test foundation
 
-CLI-only Debian packaging has archive inspection, isolated install/reinstall/remove/purge, lintian, versioned ABI dependencies and repeatable assembly under different invoking umasks. Native subprocess fixtures use opt-in Cargo test support; Python remains separate schema/history tooling.
+CLI-only Debian packaging has archive inspection, isolated install/reinstall/remove/purge, lintian, versioned ABI dependencies and repeatable assembly under different invoking umasks. Native subprocess fixtures use opt-in Cargo test support; Python remains separate schema/history tooling with a complete version/wheel-hash lock.
 
 Native CI also checks apt dependency resolution and installed bytes/contracts in disposable Ubuntu containers, with source/artifact/image-bound receipts.
 
-Next release gates: clean physical-host qualification, genuine version-to-version upgrades/downgrades, independent reproducible compilations and signed provenance. Optional hardened collector units remain a separate design requiring justified unattended collection, bounded output/retention, verified sandbox/IPC access and explicit operator activation. No daemon or unit is installed now.
+Fresh source/target builds also compare raw binaries and full packages against selected artifacts under varied paths, timezone and umask. This is one native runner/compiler/system environment, not independent-host or hermetic proof.
+
+Next release gates: clean physical-host qualification, genuine version-to-version upgrades/downgrades, independent-host reproduction and signed provenance. Optional hardened collector units remain a separate design requiring justified unattended collection, bounded output/retention, verified sandbox/IPC access and explicit operator activation. No daemon or unit is installed now.
 
 ## Phase 2 — security exposure and evidence correlation
 

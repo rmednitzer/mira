@@ -36,7 +36,9 @@ jobs:
       - name: Validate versioned evidence JSON contract
         run: |
           python3 -m venv .schema-venv
-          .schema-venv/bin/python -m pip install --disable-pip-version-check jsonschema==4.25.1
+          .schema-venv/bin/python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r requirements-schema.txt
+          .schema-venv/bin/python -m pip check
+          .schema-venv/bin/python scripts/test_schema_lock.py
           cargo build --locked
           .schema-venv/bin/python scripts/validate_evidence_schema.py --live-systemd
           .schema-venv/bin/python scripts/test_compare_evidence.py
@@ -95,10 +97,16 @@ jobs:
         run: |
           deb="$(find dist -maxdepth 1 -name '*.deb' -print -quit)"
           bash packaging/test-clean-install.sh "$deb" dist/clean-install-receipt.json
-      - name: Retain source-bound installation receipt
+      - name: Compare independent source and target builds
+        run: |
+          deb="$(find dist -maxdepth 1 -name '*.deb' -print -quit)"
+          bash packaging/test-rebuild.sh "$deb" dist/rebuild-receipt.json
+      - name: Retain source-bound validation receipts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: clean-install-${{ matrix.runner }}
-          path: dist/clean-install-receipt.json
+          path: |
+            dist/clean-install-receipt.json
+            dist/rebuild-receipt.json
           if-no-files-found: error
           retention-days: 30
