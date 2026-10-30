@@ -62,7 +62,7 @@ pub fn parse_show(output: &str, requested: &str) -> io::Result<ServiceState> {
         let (key, value) = line
             .split_once('=')
             .ok_or_else(|| invalid("malformed property"))?;
-        if value.is_empty() || value.len() > 256 || !value.is_ascii() {
+        if value.is_empty() || value.len() > if key == "Names" { 8192 } else { 256 } || !value.is_ascii() {
             return Err(invalid("invalid property value"));
         }
         let slot = match key {
@@ -178,6 +178,17 @@ mod tests {
             "Id={unit}\nNames={unit}\nLoadState=loaded\nActiveState=inactive\nSubState=dead\n"
         );
         assert!(parse_show(&output, unit).is_ok());
+    }
+
+    #[test]
+    fn accepts_long_bounded_alias_lists() {
+        let canonical = format!("{}.service", "a".repeat(130));
+        let alias = format!("{}.service", "b".repeat(130));
+        let output = format!(
+            "Id={canonical}\nNames={canonical} {alias}\nLoadState=loaded\nActiveState=active\nSubState=running\n"
+        );
+        assert_eq!(parse_show(&output, &canonical).unwrap().id, canonical);
+        assert!(parse_show(&output, &alias).is_ok());
     }
 
     #[test]
