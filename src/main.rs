@@ -4,7 +4,9 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.as_slice() {
         [_, command, label] if command == "capture" => capture(label, false),
-        [_, command, label, option] if command == "capture" && option == "--pressure" => capture(label, true),
+        [_, command, label, option] if command == "capture" && option == "--pressure" => {
+            capture(label, true)
+        }
         [_, command] if command == "inspect" => inspect(),
         [_, command, format] if command == "inspect" && format == "--json" => inspect_json(),
         [_, command, template, unit] if command == "investigate" => {
@@ -176,11 +178,25 @@ fn investigate(name: &str, unit: &str, json: bool) {
 
 fn capture(label: &str, pressure: bool) {
     use mira::capture::{self, Profile};
-    let profile = if pressure { Profile::HostPressure } else { Profile::Host };
-    let report = match capture::collect(label, profile, std::path::Path::new("/proc"), std::path::Path::new("/var/lib/dpkg/status")) {
+    let profile = if pressure {
+        Profile::HostPressure
+    } else {
+        Profile::Host
+    };
+    let report = match capture::collect(
+        label,
+        profile,
+        std::path::Path::new("/proc"),
+        std::path::Path::new("/var/lib/dpkg/status"),
+    ) {
         Ok(report) => report,
-        Err(_) => { eprintln!("MIRA: invalid capture label"); std::process::exit(2); }
+        Err(_) => {
+            eprintln!("MIRA: invalid capture label");
+            std::process::exit(2);
+        }
     };
     println!("{}", report.to_json());
-    if !report.all_available() { std::process::exit(1); }
+    if !report.all_available() {
+        std::process::exit(1);
+    }
 }

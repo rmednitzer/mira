@@ -79,8 +79,12 @@ pub fn collect(proc_root: &Path) -> Snapshot {
     Snapshot {
         memory: observe("/proc/meminfo", || linux::memory(proc_root)),
         uptime: observe("/proc/uptime", || linux::uptime(proc_root)),
-        kernel_release: observe("/proc/sys/kernel/osrelease", || host_extra::kernel_release(proc_root)),
-        cpu_pressure: observe("/proc/pressure/cpu", || host_extra::pressure(proc_root, host_extra::PressureResource::Cpu)),
+        kernel_release: observe("/proc/sys/kernel/osrelease", || {
+            host_extra::kernel_release(proc_root)
+        }),
+        cpu_pressure: observe("/proc/pressure/cpu", || {
+            host_extra::pressure(proc_root, host_extra::PressureResource::Cpu)
+        }),
     }
 }
 
@@ -166,17 +170,37 @@ mod acquisition_tests {
         assert!(observation.elapsed_ms.is_some());
         assert!(observation.collected_unix_ms.is_some());
         for (error, expected) in [
-            (crate::collector::limit_exceeded(), FailureReason::LimitExceeded),
-            (crate::collector::backend_failed(), FailureReason::BackendFailed),
-            (io::Error::new(io::ErrorKind::TimedOut, "private"), FailureReason::Timeout),
-            (io::Error::new(io::ErrorKind::PermissionDenied, "private"), FailureReason::PermissionDenied),
-            (io::Error::new(io::ErrorKind::NotFound, "private"), FailureReason::NotFound),
-            (io::Error::new(io::ErrorKind::InvalidData, "private"), FailureReason::MalformedData),
+            (
+                crate::collector::limit_exceeded(),
+                FailureReason::LimitExceeded,
+            ),
+            (
+                crate::collector::backend_failed(),
+                FailureReason::BackendFailed,
+            ),
+            (
+                io::Error::new(io::ErrorKind::TimedOut, "private"),
+                FailureReason::Timeout,
+            ),
+            (
+                io::Error::new(io::ErrorKind::PermissionDenied, "private"),
+                FailureReason::PermissionDenied,
+            ),
+            (
+                io::Error::new(io::ErrorKind::NotFound, "private"),
+                FailureReason::NotFound,
+            ),
+            (
+                io::Error::new(io::ErrorKind::InvalidData, "private"),
+                FailureReason::MalformedData,
+            ),
             (io::Error::other("private"), FailureReason::IoFailure),
         ] {
             let observation = observe::<u64>("fixture", || Err(error));
             assert!(observation.elapsed_ms.is_some());
-            assert!(matches!(observation.status, EvidenceStatus::Unavailable { reason, .. } if reason == expected));
+            assert!(
+                matches!(observation.status, EvidenceStatus::Unavailable { reason, .. } if reason == expected)
+            );
         }
     }
 }

@@ -36,11 +36,20 @@ pub fn record<T>(
 }
 
 /// Capture-only v2 metadata; the public v1 projection remains unchanged.
-pub fn record_v2<T>(e: &Evidence<T>, scope: Option<&str>, encode: impl FnOnce(&T) -> String) -> String {
+pub fn record_v2<T>(
+    e: &Evidence<T>,
+    scope: Option<&str>,
+    encode: impl FnOnce(&T) -> String,
+) -> String {
     project(e, scope, encode, true)
 }
 
-fn project<T>(e: &Evidence<T>, scope: Option<&str>, encode: impl FnOnce(&T) -> String, v2: bool) -> String {
+fn project<T>(
+    e: &Evidence<T>,
+    scope: Option<&str>,
+    encode: impl FnOnce(&T) -> String,
+    v2: bool,
+) -> String {
     let scope = scope.map_or_else(|| "null".to_owned(), quoted);
     let (status, value, error) = match &e.status {
         EvidenceStatus::Observed(value) => ("observed", encode(value), "null".to_owned()),
@@ -56,7 +65,10 @@ fn project<T>(e: &Evidence<T>, scope: Option<&str>, encode: impl FnOnce(&T) -> S
             EvidenceStatus::Observed(_) => "null".to_owned(),
             EvidenceStatus::Unavailable { reason, .. } => quoted(reason.as_str()),
         };
-        format!(",\"elapsed_ms\":{},\"failure_reason\":{reason}", timestamp(e.elapsed_ms))
+        format!(
+            ",\"elapsed_ms\":{},\"failure_reason\":{reason}",
+            timestamp(e.elapsed_ms)
+        )
     } else {
         String::new()
     };

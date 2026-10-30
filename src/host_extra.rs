@@ -182,7 +182,11 @@ mod tests {
 
 /// Closed resource selection; no caller-supplied path or trigger writes.
 #[derive(Debug, Clone, Copy)]
-pub enum PressureResource { Cpu, Memory, Io }
+pub enum PressureResource {
+    Cpu,
+    Memory,
+    Io,
+}
 impl PressureResource {
     pub fn source(self) -> &'static str {
         match self {

@@ -185,9 +185,16 @@ mod identity_tests {
     use super::*;
     #[test]
     fn duplicate_identity_is_rejected_but_multiarch_is_preserved() {
-        let entry = "Package: alpha\nStatus: hold ok installed\nArchitecture: amd64\nVersion: 1\n\n";
+        let entry =
+            "Package: alpha\nStatus: hold ok installed\nArchitecture: amd64\nVersion: 1\n\n";
         assert!(parse_status(&format!("{entry}{entry}")).is_err());
-        assert!(parse_status(&format!("{entry}{}", entry.replace("Version: 1", "Version: 2"))).is_err());
+        assert!(
+            parse_status(&format!(
+                "{entry}{}",
+                entry.replace("Version: 1", "Version: 2")
+            ))
+            .is_err()
+        );
         let multiarch = format!("{entry}{}", entry.replace("amd64", "arm64"));
         assert_eq!(parse_status(&multiarch).unwrap().len(), 2);
     }

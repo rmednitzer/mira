@@ -26,7 +26,10 @@ impl FailureReason {
     }
 
     pub(crate) fn from_error(error: &io::Error) -> Self {
-        if let Some(reason) = error.get_ref().and_then(|inner| inner.downcast_ref::<Self>()) {
+        if let Some(reason) = error
+            .get_ref()
+            .and_then(|inner| inner.downcast_ref::<Self>())
+        {
             return *reason;
         }
         match error.kind() {
