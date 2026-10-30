@@ -18,14 +18,21 @@ fn inspect() {
     let snapshot = mira::evidence::collect(std::path::Path::new("/proc"));
     println!("MIRA read-only host evidence (observations only)");
     fn show<T: std::fmt::Debug>(entry: &Evidence<T>) {
-        let timestamp = entry.collected_unix_ms
+        let timestamp = entry
+            .collected_unix_ms
             .map_or_else(|| "unknown".to_string(), |v| v.to_string());
         match &entry.status {
             EvidenceStatus::Observed(value) => {
-                println!("{}: observed {:?} recorded_unix_ms={timestamp}", entry.source, value);
+                println!(
+                    "{}: observed {:?} recorded_unix_ms={timestamp}",
+                    entry.source, value
+                );
             }
             EvidenceStatus::Unavailable { kind, message } => {
-                println!("{}: unknown ({kind:?}: {message}) recorded_unix_ms={timestamp}", entry.source);
+                println!(
+                    "{}: unknown ({kind:?}: {message}) recorded_unix_ms={timestamp}",
+                    entry.source
+                );
             }
         }
     }

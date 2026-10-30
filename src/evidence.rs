@@ -3,12 +3,19 @@
 //! A snapshot is a sequence of file observations, not an atomic host state.
 //! Wall-clock values are informational and do not establish trusted provenance.
 use crate::{host_extra, linux};
-use std::{io, path::Path, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    io,
+    path::Path,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvidenceStatus<T> {
     Observed(T),
-    Unavailable { kind: io::ErrorKind, message: String },
+    Unavailable {
+        kind: io::ErrorKind,
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,7 +34,11 @@ impl<T> Evidence<T> {
                 message: error.to_string(),
             },
         };
-        Self { source, collected_unix_ms: at, status }
+        Self {
+            source,
+            collected_unix_ms: at,
+            status,
+        }
     }
     pub fn is_available(&self) -> bool {
         matches!(self.status, EvidenceStatus::Observed(_))
@@ -44,13 +55,18 @@ pub struct Snapshot {
 
 impl Snapshot {
     pub fn complete(&self) -> bool {
-        self.memory.is_available() && self.uptime.is_available()
-            && self.kernel_release.is_available() && self.cpu_pressure.is_available()
+        self.memory.is_available()
+            && self.uptime.is_available()
+            && self.kernel_release.is_available()
+            && self.cpu_pressure.is_available()
     }
 }
 
 fn timestamp() -> Option<u128> {
-    SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|t| t.as_millis())
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|t| t.as_millis())
 }
 
 /// Reads only the four registered procfs sources, without executing commands.
@@ -61,8 +77,16 @@ pub fn collect(proc_root: &Path) -> Snapshot {
     Snapshot {
         memory: Evidence::from_result(base.memory.source, base.memory.result, timestamp()),
         uptime: Evidence::from_result(base.uptime.source, base.uptime.result, timestamp()),
-        kernel_release: Evidence::from_result(extra.kernel_release.source, extra.kernel_release.result, timestamp()),
-        cpu_pressure: Evidence::from_result(extra.cpu_pressure.source, extra.cpu_pressure.result, timestamp()),
+        kernel_release: Evidence::from_result(
+            extra.kernel_release.source,
+            extra.kernel_release.result,
+            timestamp(),
+        ),
+        cpu_pressure: Evidence::from_result(
+            extra.cpu_pressure.source,
+            extra.cpu_pressure.result,
+            timestamp(),
+        ),
     }
 }
 
@@ -73,7 +97,10 @@ mod tests {
     fn missing_sources_remain_unknown() {
         let result = collect(Path::new("/nonexistent-mira-evidence-fixtures"));
         assert!(!result.complete());
-        assert!(matches!(result.memory.status, EvidenceStatus::Unavailable { .. }));
+        assert!(matches!(
+            result.memory.status,
+            EvidenceStatus::Unavailable { .. }
+        ));
         assert_eq!(result.memory.source, "/proc/meminfo");
     }
     #[test]
@@ -81,7 +108,11 @@ mod tests {
         let good = Evidence::from_result("/proc/uptime", Ok(7_u64), Some(1));
         assert!(good.is_available());
         assert_eq!(good.collected_unix_ms, Some(1));
-        let bad = Evidence::<u64>::from_result("/proc/uptime", Err(io::Error::new(io::ErrorKind::InvalidData, "bad")), None);
+        let bad = Evidence::<u64>::from_result(
+            "/proc/uptime",
+            Err(io::Error::new(io::ErrorKind::InvalidData, "bad")),
+            None,
+        );
         assert!(!bad.is_available());
         assert_eq!(bad.collected_unix_ms, None);
     }
