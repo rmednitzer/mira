@@ -22,6 +22,8 @@ cargo build --release --locked
 
 The tests replace `systemctl` only in a per-child PATH pointing at a newly created temporary directory. The fixture verifies the production argument vector and exercises valid large output, oversized/malformed/non-UTF-8 output, failed exit, execution timeout and inherited stdout. Its inherited writer exits after five seconds; this tests the collector's three-second deadline, not arbitrary descendant containment. Fixture directories are removed by their owning test. Investigation cases additionally exercise closed template admission, three outcomes, unavailable evidence, aliases, independent load/active semantics and escaped human output.
 
+Host parser regressions validate both uptime fields, malformed/overflow inputs and legitimate aggregate idle time above uptime. The source-to-JSON regression preserves independent memory evidence when uptime is malformed.
+
 ## Independent evidence checks
 
 ```sh

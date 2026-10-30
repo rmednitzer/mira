@@ -13,9 +13,15 @@ Each typed `Evidence<T>` records the logical source path, an optional wall-clock
 - Absence of evidence means *unknown*, never *healthy*, *not affected* or *secure*.
 - There is no vulnerability assessment, agent authority, remote target, service discovery, persistent storage or external inference.
 
+## Uptime parsing
+
+Both `/proc/uptime` fields must be unsigned decimal seconds with whole parts that fit `u64`. Integers are accepted; a decimal point requires a nonempty digit-only fraction. MIRA retains whole uptime seconds without floating-point conversion. The second field is aggregate CPU idle time and may exceed uptime; it is validated but not exported. Missing/extra fields, signs, exponents, nonfinite values, malformed fractions and overflow produce unavailable evidence. Existing byte bounds remain in force.
+
+The [Linux producer](https://github.com/torvalds/linux/blob/v6.17/fs/proc/uptime.c) emits two decimal-second fields and sums idle across CPUs. This parser is not proof of source authenticity or freshness.
+
 ## Validation
 
-`tests/host_evidence.rs` reads a synthetic procfs directory with the same collector used by the CLI. Unit tests cover malformed source content and missing data. Mandatory x64/ARM64 Ubuntu 26.04 CI runs Rust tests and release builds.
+`tests/host_evidence.rs` reads a synthetic procfs directory with the same collector used by the CLI. Unit tests cover malformed source content, both uptime fields, multicore idle time, integer limits and missing data. A malformed-idle regression verifies unavailable uptime, preserved memory and redacted JSON output. Mandatory x64/ARM64 Ubuntu 26.04 CI runs Rust tests and release builds.
 
 ## Next criteria
 
