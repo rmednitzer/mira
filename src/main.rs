@@ -12,6 +12,16 @@ fn main() {
         }
     };
     match args.as_slice() {
+        [_, command, template, option, minimum]
+            if command == "investigate" && template == "memory-headroom" && option == "--min-available-kib" =>
+        {
+            memory_headroom(minimum, false)
+        }
+        [_, command, template, option, minimum, format]
+            if command == "investigate" && template == "memory-headroom" && option == "--min-available-kib" && format == "--json" =>
+        {
+            memory_headroom(minimum, true)
+        }
         [_, command, label] if command == "capture" => capture(label, false),
         [_, command, label, option] if command == "capture" && option == "--pressure" => {
             capture(label, true)
@@ -31,11 +41,40 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active UNIT.service [--json]"
+                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json]"
             );
             std::process::exit(2);
         }
     }
+}
+
+fn memory_headroom(minimum: &str, json: bool) {
+    let report = mira::memory_investigation::parse_minimum(minimum)
+        .and_then(|minimum| mira::memory_investigation::collect(minimum, std::path::Path::new("/proc")));
+    let report = match report {
+        Ok(report) => report,
+        Err(_) => {
+            eprintln!("MIRA: memory minimum must be a positive integer KiB value");
+            std::process::exit(2);
+        }
+    };
+    if json {
+        println!("{}", report.to_json());
+    } else {
+        println!("MIRA memory-headroom/v1 scope=local/procfs minimum_available_kib={}", report.minimum());
+        println!("outcome={} reason={}", report.outcome().as_str(), report.reason());
+        println!("source=/proc/meminfo recorded_unix_ms={:?} clock_trust=unverified freshness=unknown", report.evidence().collected_unix_ms);
+        match &report.evidence().status {
+            mira::evidence::EvidenceStatus::Observed(memory) => {
+                println!("available_kib={} total_kib={}", memory.available_kib, memory.total_kib);
+            }
+            mira::evidence::EvidenceStatus::Unavailable { kind, .. } => {
+                println!("error_kind={kind:?}");
+            }
+        }
+        println!("Procfs estimate only; application health, cgroup limits and root cause are not assessed.");
+    }
+    std::process::exit(report.outcome().exit_code());
 }
 
 fn inspect() {

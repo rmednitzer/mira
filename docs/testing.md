@@ -38,13 +38,14 @@ cargo build --locked
 .schema-venv/bin/python scripts/test_compare_evidence.py
 .schema-venv/bin/python scripts/validate_investigation_schema.py
 .schema-venv/bin/python scripts/validate_capture_schema.py
+.schema-venv/bin/python scripts/validate_memory_investigation.py
 ```
 
 On an unprivileged Ubuntu 26.04 host with a system bus and `systemd-journald.service`, add `--live-systemd` to both evidence and investigation validators. CI requires this live comparison on both native architectures; local synthetic checks do not require systemd. Direct state is sampled before and after MIRA; changing fixture state makes the comparison inconclusive and fails the check. This validates one host service, not application health or fleet-wide compatibility.
 
 ## Packaging checks
 
-Native Ubuntu 26.04 amd64/arm64 CI builds and inspects the package, checks checksums, executes the extracted CLI, exercises isolated dpkg install/reinstall/remove/purge, and runs lintian. It checks evidence-v1/v2, investigation-v1 and capture-v1 schemas and their packaged guides, rejects systemd units, maintainer scripts and the native test helper in the package, and asserts package-root/document permissions. Archive metadata must advertise exactly `Suggests: systemd, default-dbus-system-bus | dbus-system-bus` and no `Recommends`; native ELF requirements remain generated in `Depends`. See the [runtime relationship rationale](debian-packaging.md#runtime-package-relationships).
+Native Ubuntu 26.04 amd64/arm64 CI builds and inspects the package, checks checksums, executes the extracted CLI, exercises isolated dpkg install/reinstall/remove/purge, and runs lintian. It checks evidence-v1/v2, investigation-v1, memory-headroom-v1 and capture-v1 schemas and their packaged guides, rejects systemd units, maintainer scripts and the native test helper in the package, and asserts package-root/document permissions. Archive metadata must advertise exactly `Suggests: systemd, default-dbus-system-bus | dbus-system-bus` and no `Recommends`; native ELF requirements remain generated in `Depends`. See the [runtime relationship rationale](debian-packaging.md#runtime-package-relationships).
 
 Repeated assembly compares the same binary under ordinary and restrictive (`077`) invoking umasks. The builder normalizes its own umask to `022`; source timestamps use exported `SOURCE_DATE_EPOCH`. This verifies archive assembly under those conditions. A separate fresh-build test compiles twice from independent git archives and target directories, varies source/target paths, timezone and umask, and compares raw binaries and full packages against the selected artifacts. Its scope is one native runner/compiler/system dependency environment, not independent-host or hermetic compilation. The isolated dpkg root bypasses dependency enforcement. A separate native disposable Ubuntu 26.04 container installs the exact package through apt without bypassing dependencies, checks installed binary bytes and runs the installed demo/capture contract. Its receipt binds source commit/tree, package/binary digests and container image identity. This is container loader/dependency evidence; clean physical-host behavior, genuine upgrades/downgrades and signed release provenance remain release gates.
 
@@ -87,3 +88,7 @@ Maintain the complete dependency closure together. Obtain exact-version metadata
 Successful native CI retains the tested candidate `.deb` and its checksum with both validation receipts for 30 days. This preserves real prior package bytes for a future genuinely different version, without publishing a release or fabricating an upgrade. Retention is temporary; durable release archival and provenance need their own reviewed policy.
 
 The schema lock covers the validation libraries and their transitive wheels. It does not lock the Python interpreter, pip bootstrap, rustup distribution or apt repository state. Those remain separate build-environment trust and availability dependencies.
+
+## Memory expectation acceptance
+
+[ADR 0005](adr/0005-explicit-memory-headroom.md) defines an explicit positive KiB minimum, not a default health threshold. Native tests use only a synthetic meminfo file for below/equal/above/zero-available/above-total/u64-limit cases, malformed and missing evidence, and refused CLI criteria. Seven valid and fourteen invalid independent reports exercise schema, value consistency and assessment binding. The independent validator checks actual CLI report/exit agreement for minimum 1 and u64::MAX; these are consistency checks on current evidence, not promises of a particular live outcome or workload allocation.

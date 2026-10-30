@@ -8,11 +8,11 @@ The mission, source boundaries and read-only collection foundation exist. Procfs
 
 ## Phase 1 — useful offline Linux investigator (in progress)
 
-Available: host memory/uptime/kernel/CPU-pressure observations, installed package metadata, selected service state, explicit provenance/unknown states, native CLI reports and one opt-in service-active investigation with a separate expectation assessment and preserved evidence. Native CI includes synthetic subprocess regressions and one unprivileged live systemd comparison.
+Available: host memory/uptime/kernel/CPU-pressure observations, installed package metadata, selected service state, explicit provenance/unknown states, native CLI reports and service-active and explicit memory-headroom investigations with separate expectation assessments and preserved evidence. Native CI includes synthetic subprocess regressions and one unprivileged live systemd comparison.
 
 Complete capture-v1 profiles add operator-asserted labels, per-source timing/reasons and opt-in memory/IO PSI; labels are not authentication.
 
-Remaining: authenticated host identity, freshness policy, representative real-host validation, bounded journal sources where justified, and broader read-only investigation templates. The existing activation template does not establish a general diagnostic workflow. Exit: a representative Ubuntu 26.04 investigation works without elevation, external inference or system mutation, with reproducible fixtures and explicit evidence gaps. One CI service does not satisfy this exit condition.
+Remaining: authenticated host identity, freshness policy, representative real-host validation, bounded journal sources where justified, and broader read-only investigation templates. The activation and memory-minimum templates do not establish a general diagnostic workflow. Exit: a representative Ubuntu 26.04 investigation works without elevation, external inference or system mutation, with reproducible fixtures and explicit evidence gaps. One CI service does not satisfy this exit condition.
 
 ### Packaging and test foundation
 

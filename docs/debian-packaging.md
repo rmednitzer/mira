@@ -1,6 +1,6 @@
 # Debian package foundation (experimental)
 
-`packaging/build-deb.sh` stages the already compiled release binary into a CLI-only Debian package. It installs `/usr/bin/mira`, the Apache-2.0 license, evidence/investigation/capture documentation and all four versioned schemas. It includes no maintainer scripts, systemd units, timers, daemon, user creation, configuration mutations or install-time activation.
+`packaging/build-deb.sh` stages the already compiled release binary into a CLI-only Debian package. It installs `/usr/bin/mira`, the Apache-2.0 license, evidence/investigation/capture documentation and all five versioned schemas. It includes no maintainer scripts, systemd units, timers, daemon, user creation, configuration mutations or install-time activation.
 
 Build on native Ubuntu 26.04 amd64 and arm64 with `cargo build --release --locked`, then `bash packaging/build-deb.sh`. Native `dpkg-dev` and binutils are required: `dpkg-shlibdeps` derives versioned runtime ABI requirements from the compiled binary and the build distribution metadata. The package script supports `SOURCE_DATE_EPOCH` for normalized file timestamps, uses root-owned package metadata, and writes a SHA-256 file. This is an initial binary packaging path, **not** a Debian source package, signed release or verified bit-for-bit reproducible build.
 
