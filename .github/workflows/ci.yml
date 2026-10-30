@@ -47,3 +47,12 @@ jobs:
           fi
           (cd dist && sha256sum -c *.sha256)
           package-extract/usr/bin/mira demo
+      - name: Test isolated Debian package lifecycle
+        run: |
+          deb="$(find dist -maxdepth 1 -name '*.deb' -print -quit)"
+          bash packaging/test-deb-lifecycle.sh "$deb"
+      - name: Lint Debian package
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends lintian
+          lintian --no-tag-display-limit dist/*.deb
