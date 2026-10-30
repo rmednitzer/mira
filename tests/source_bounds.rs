@@ -106,3 +106,16 @@ fn exact_limits_overflow_and_invalid_utf8_preserve_independent_evidence() {
     }
     assert!(fixture.capture().all_available());
 }
+
+#[test]
+fn malformed_memory_tokens_preserve_other_capture_sources() {
+    let fixture = Fixture::new();
+    for invalid in ["+50", "50\u{00a0}", "\u{00a0}50"] {
+        fs::write(
+            fixture.0.join("meminfo"),
+            format!("MemTotal: 100 kB\nMemAvailable: {invalid} kB\n"),
+        )
+        .unwrap();
+        assert_failure(&fixture.capture(), "meminfo", "malformed_data");
+    }
+}

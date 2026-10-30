@@ -23,6 +23,12 @@ Each typed `Evidence<T>` records the logical source path, an optional wall-clock
 
 These are whole-source acquisition limits, including whitespace and line endings. Valid input exactly at the limit is admitted; one extra byte produces limit_exceeded. Invalid UTF-8 within the budget produces malformed_data. Acquisition reads at most the budget plus one byte to detect overflow. A byte budget is not a filesystem I/O deadline.
 
+## Memory parsing
+
+The retained MemTotal and MemAvailable fields require unsigned ASCII decimal integers fitting u64, ASCII whitespace separators and exactly the kB unit. Signs, decimal points, exponents, non-ASCII digits/separators, duplicate retained fields, overflow, zero total and available greater than total produce unavailable evidence. Zero available is valid. Other meminfo fields are not interpreted. This is lexical and value validation, not source authentication.
+
+The [Linux producer](https://github.com/torvalds/linux/blob/v6.17/fs/proc/meminfo.c) emits these fields as unsigned decimal KiB counts. Malformed memory remains unavailable in inspect/capture and indeterminate in a memory expectation; independent sources remain available.
+
 ## Uptime parsing
 
 Both `/proc/uptime` fields must be unsigned decimal seconds with whole parts that fit `u64`. Integers are accepted; a decimal point requires a nonempty digit-only fraction. MIRA retains whole uptime seconds without floating-point conversion. The second field is aggregate CPU idle time and may exceed uptime; it is validated but not exported. Missing/extra fields, signs, exponents, nonfinite values, malformed fractions and overflow produce unavailable evidence. Existing byte bounds remain in force.

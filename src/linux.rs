@@ -44,8 +44,12 @@ pub fn parse_meminfo(text: &str) -> io::Result<MemoryEvidence> {
                         "duplicate field",
                     ));
                 }
-                let mut fields = rest.split_whitespace();
-                let number = fields.next().and_then(|n| n.parse::<u64>().ok());
+                // procfs emits unsigned ASCII decimal values with ASCII separators.
+                let mut fields = rest.split_ascii_whitespace();
+                let number = fields
+                    .next()
+                    .filter(|n| n.bytes().all(|byte| byte.is_ascii_digit()))
+                    .and_then(|n| n.parse::<u64>().ok());
                 if fields.next() != Some("kB") || fields.next().is_some() {
                     return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid unit"));
                 }
@@ -131,6 +135,12 @@ mod tests {
     fn valid_memory() {
         let m = parse_meminfo("MemTotal: 1000 kB\nMemAvailable: 750 kB\n").unwrap();
         assert_eq!(m.available_kib, 750);
+    }
+    #[test]
+    fn accepts_ascii_memory_layout_and_zero_available() {
+        let memory = parse_meminfo("MemTotal:\t00100 kB\nMemAvailable: 0\tkB \n").unwrap();
+        assert_eq!(memory.total_kib, 100);
+        assert_eq!(memory.available_kib, 0);
     }
     #[test]
     fn rejects_inconsistent_memory() {
