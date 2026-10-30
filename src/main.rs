@@ -40,7 +40,10 @@ fn inspect() {
     show(&snapshot.kernel_release);
     show(&snapshot.cpu_pressure);
     match mira::packages::collect(std::path::Path::new("/var/lib/dpkg/status")) {
-        Ok(packages) => println!("/var/lib/dpkg/status: observed {} installed package records (not vulnerability findings)", packages.len()),
+        Ok(packages) => println!(
+            "/var/lib/dpkg/status: observed {} installed package records (not vulnerability findings)",
+            packages.len()
+        ),
         Err(error) => {
             incomplete = true;
             println!("/var/lib/dpkg/status: unknown ({error})");

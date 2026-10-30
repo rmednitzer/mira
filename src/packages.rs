@@ -1,6 +1,10 @@
 //! Read-only Debian package database observations.
 //! Installed package metadata is not vulnerability applicability evidence.
-use std::{fs::File, io::{self, Read}, path::Path};
+use std::{
+    fs::File,
+    io::{self, Read},
+    path::Path,
+};
 
 pub const MAX_STATUS_BYTES: u64 = 32 * 1024 * 1024;
 
@@ -16,7 +20,12 @@ fn invalid(message: &'static str) -> io::Error {
 }
 
 fn finish_entry(
-    fields: &mut (Option<String>, Option<String>, Option<String>, Option<String>),
+    fields: &mut (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ),
     output: &mut Vec<Package>,
 ) -> io::Result<()> {
     let (name, version, architecture, status) = std::mem::take(fields);
@@ -104,7 +113,10 @@ mod tests {
 
     #[test]
     fn non_installed_entries_do_not_claim_exposure() {
-        let result = parse_status("Package: alpha\nVersion: 1\nArchitecture: all\nStatus: deinstall ok config-files\n").unwrap();
+        let result = parse_status(
+            "Package: alpha\nVersion: 1\nArchitecture: all\nStatus: deinstall ok config-files\n",
+        )
+        .unwrap();
         assert!(result.is_empty());
     }
 }
