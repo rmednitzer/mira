@@ -8,10 +8,10 @@ Use a local-first Rust core with typed, allowlisted Linux evidence collectors an
 ## Logical flow
 | Stage | Implemented | Planned |
 |---|---|---|
-| Operator selection | Explicit CLI command and service scope | Intent grammar and investigation templates |
+| Operator selection | Explicit CLI command, service scope and closed service-active template | Natural-language intent and additional reviewed templates |
 | Evidence acquisition | Bounded procfs/dpkg reads and selected systemd query | Additional reviewed collectors |
 | Evidence contract | Typed observations, unavailable states, JSON Lines v1 and schema | Host identity and freshness policy |
-| Comparison and analysis | Optional offline capture comparison | Cited diagnostic/advisory correlation |
+| Comparison and analysis | Offline comparison and versioned activation expectation with cited evidence | Broader diagnostic/advisory correlation |
 | Presentation | Human-readable CLI and JSON Lines | Registered adaptive views |
 | Authority | Caller OS permissions; no operational writes | Authenticated scoped executor and verified recovery |
 
@@ -27,7 +27,9 @@ No automatic privilege escalation, arbitrary command execution or outbound netwo
 3. **Chosen:** narrow read-only Linux core first, then intent and adaptive interface. Slower breadth, tractable evidence and control boundaries; modular and reversible.
 
 ## Current implementation
-The CLI collects bounded memory, uptime, kernel release, CPU pressure and installed dpkg metadata, and independently queries one selected systemd service. Observations share a typed evidence contract. JSON Lines v1 has an independent JSON Schema validator; an optional Python utility compares captures offline with explicit unknown freshness. Native CI covers subprocess failures and one unprivileged live systemd service. Experimental CLI-only Debian packaging has archive, lifecycle, lintian and repeatable-assembly checks. These are observations and packaging evidence, not a diagnostic service, advisory correlator, intent system or UI. The retained grid simulation and in-memory verifier use caller-supplied actor/grant values, not authenticated identities.
+The CLI collects bounded memory, uptime, kernel release, CPU pressure and installed dpkg metadata, and independently queries one selected systemd service. Observations share a typed evidence contract. JSON Lines v1 has an independent JSON Schema validator; an optional Python utility compares captures offline with explicit unknown freshness. Native CI covers subprocess failures and one unprivileged live systemd service. The opt-in service-active/v1 investigation separates its three-state expectation assessment from the embedded evidence and leaves application health/root cause unassessed. Its closed enum dispatch introduces no new execution capability. Experimental CLI-only Debian packaging has archive, lifecycle, lintian and repeatable-assembly checks. These are observations, one explicit expectation template and packaging evidence, not a general diagnostic service, advisory correlator, natural-language intent system or UI. The retained grid simulation and in-memory verifier use caller-supplied actor/grant values, not authenticated identities.
 
 ## Required follow-up
-Establish host/process identity and freshness policies; expand representative host and collector failure validation; add journal and further pressure sources only with bounded contracts; define read-only investigation templates before higher-level inference. Complete clean-system package dependency/upgrade and independent rebuild gates. Authentication, scoped authority and recovery remain prerequisites for any future write adapter. See [requirements](requirements.md), [roadmap](roadmap.md) and [validation](testing.md).
+Establish host/process identity and freshness policies; expand representative host and collector failure validation; add journal and further pressure sources only with bounded contracts; extend read-only templates only with explicit criteria and evidence contracts before higher-level inference. Complete clean-system package dependency/upgrade and independent rebuild gates. Authentication, scoped authority and recovery remain prerequisites for any future write adapter. See [requirements](requirements.md), [roadmap](roadmap.md) and [validation](testing.md).
+
+The [service investigation ADR](adr/0001-read-only-service-investigation.md) records pattern fit, alternatives, semantics and validation. Generic workflow engines, audit chains, transport authentication and background collection remain deferred until their boundaries are needed.

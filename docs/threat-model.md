@@ -1,6 +1,6 @@
 # Threat model — MIRA
 
-> Scope (2026-10-30): implemented local Linux evidence collection, serialization/comparison, native tests and experimental CLI packaging. The retained simulation has separate authority/control limitations below. Future intent, AI, UI, remote and write adapters require a new review; this document does not certify the proposed full operations product.
+> Scope (2026-10-30): implemented local Linux evidence collection, a closed activation-expectation template, serialization/comparison, native tests and experimental CLI packaging. The retained simulation has separate authority/control limitations below. Future natural-language intent, AI, UI, remote and write adapters require a new review; this document does not certify the proposed full operations product.
 
 ## Linux operations boundaries
 
@@ -21,7 +21,9 @@ flowchart TD
     C --> S["Fixed systemctl query"]
     S --> C
     C --> E["Typed evidence and JSON Lines"]
-    E --> H["Optional offline schema/history tooling"]
+    E --> I["Closed expectation assessment; no authority grant"]
+    I --> H["Versioned report with original evidence"]
+    E --> T["Optional offline schema/history tooling"]
 ```
 
 The executable search environment is supplied by the caller. Files, systemd output and stored captures cross untrusted-data boundaries; none can grant execution authority. Historical captures have no authenticated host identity or chronology.
@@ -31,6 +33,12 @@ The executable search environment is supplied by the caller. Files, systemd outp
 The systemd child uses fixed argv, closed stdin, no shell and no privilege escalation. A nonblocking local socket and one deadline cover execution and stdout EOF, including inherited writers after direct-child exit. Output is capped at 8 KiB and the direct child is reaped on every post-spawn return path. This bounds collection, not arbitrary descendant execution. The admitted production executable remains systemctl resolved through the caller's trusted PATH; the caller's environment is not an authentication boundary.
 
 Selection and error flags do not erase installed-package provenance. Local dpkg records and build-distribution ELF dependency metadata are unauthenticated inputs. Package assembly derives versioned ABI dependencies with dpkg-shlibdeps and normalizes its umask; repeated assembly compares one binary under different invoking masks, not independent clean compilations. Native Cargo subprocess fixtures are admitted only by the non-default test-support feature and are excluded from the package. They substitute a per-child PATH, never the test process environment; their inherited writer has a finite five-second lifetime. Python schema/history tooling is separate from the Rust CLI and native suite. These checks do not establish signed provenance, clean-system dependency resolution or an unattended collector sandbox.
+
+### Investigation boundary
+
+A closed enum selects service-active/v1 and validates one service scope before dispatch. It uses the existing systemctl query and no additional verb. The report binds the requested scope to its embedded evidence and a local evidence pointer. The pointer and enum are not authenticated provenance or an OS sandbox. A single assessment enum determines outcome and fixed reason, so unavailable/transitioning/unsupported states cannot silently become success. LoadState remains orthogonal to activation. Neither a satisfied condition nor schema validity grants mutation, proves application health or identifies a root cause.
+
+New report/schema consumers must preserve that distinction and reject unsupported versions. Existing evidence-v1 output remains separate. Errors expose no arbitrary backend message in reports; human state strings are escaped. The [decision record](adr/0001-read-only-service-investigation.md) records alternatives, scope, rollback and the state-table/alias/error validation. Generic command classification, audit chains, durable stores and background supervision remain outside this increment.
 
 ### Operational acceptance checks
 

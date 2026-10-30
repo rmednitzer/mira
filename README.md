@@ -4,7 +4,7 @@
 
 MIRA is a local-first Rust project for evidence-backed Linux diagnostics, security exposure analysis, and controlled human–AI cooperation. The goal is to help operators understand system state, choose proportionate actions and verify outcomes without granting AI implicit operational authority.
 
-**Status:** Early development. Implemented capabilities include bounded procfs and dpkg collection, explicitly selected systemd service observations, timestamped evidence, versioned JSON Lines with a JSON Schema, an optional offline comparison utility and experimental CLI-only Debian packaging. A deterministic coordination fixture and in-memory replay verifier remain for research. It is not yet a functioning AIOps application, vulnerability scanner, adaptive UI or secure remote-operations controller.
+**Status:** Early development. Implemented capabilities include bounded procfs and dpkg collection, explicitly selected systemd service observations, an opt-in activation investigation, timestamped evidence, versioned JSON Lines with a JSON Schema, an optional offline comparison utility and experimental CLI-only Debian packaging. A deterministic coordination fixture and in-memory replay verifier remain for research. It is not yet a functioning AIOps application, vulnerability scanner, adaptive UI or secure remote-operations controller.
 
 ## Primary use case
 
@@ -23,9 +23,12 @@ cargo test --all-targets --features test-support --locked
 cargo run --locked -- inspect
 cargo run --locked -- demo
 cargo run --locked -- service ssh.service
+cargo run --locked -- investigate service-active ssh.service --json
 ```
 
 `inspect` reports memory, uptime, kernel release, CPU pressure and installed package count. `service UNIT.service` independently observes one explicitly named systemd service. Add `--json` for versioned JSON Lines; unavailable evidence remains explicit and returns exit code 1. Local timestamps are unverified, collection is non-atomic and freshness is unknown. Package metadata does not establish vulnerability exposure, and systemd state does not establish application health.
+
+The opt-in [service-active investigation](docs/investigations.md) evaluates an explicit activation expectation and preserves its evidence. Its satisfied/not-satisfied/indeterminate outcomes are separate from application health and root cause.
 
 The Rust CLI and native tests do not require Python. Enable `test-support` for the complete native subprocess suite; its fixture is excluded from normal builds and packages. Python remains separate tooling for independent schema checks and the optional [history comparison](docs/evidence-history.md). See [development and validation](docs/testing.md), [host evidence](docs/host-evidence.md), [service evidence](docs/systemd-evidence.md), [JSON contract](docs/evidence-json.md), and [Debian packaging](docs/debian-packaging.md).
 
