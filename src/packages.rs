@@ -47,9 +47,10 @@ pub fn parse_status(input: &str) -> io::Result<Vec<Package>> {
         if line.starts_with(' ') || line.starts_with('\t') {
             continue;
         }
-        let Some((key, value)) = line.split_once(": ") else {
+        let Some((key, raw)) = line.split_once(':') else {
             return Err(invalid("invalid package field"));
         };
+        let value = raw.strip_prefix(' ').unwrap_or(raw);
         let target = match key {
             "Package" => Some(&mut fields.0),
             "Version" => Some(&mut fields.1),
