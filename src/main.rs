@@ -40,21 +40,18 @@ fn inspect() {
     show(&snapshot.uptime);
     show(&snapshot.kernel_release);
     show(&snapshot.cpu_pressure);
-    let operations = mira::evidence::collect_operations(
-        std::path::Path::new("/var/lib/dpkg/status"),
-        None,
-    );
-    match &operations.packages.status {
+    let packages = mira::evidence::collect_packages(std::path::Path::new("/var/lib/dpkg/status"));
+    match &packages.status {
         EvidenceStatus::Observed(packages) => println!(
             "{}: observed {} installed packages (not vulnerability findings) recorded_unix_ms={:?}",
-            operations.packages.source, packages.len(), operations.packages.collected_unix_ms
+            packages.source, packages.len(), packages.collected_unix_ms
         ),
         EvidenceStatus::Unavailable { kind, message } => println!(
             "{}: unknown ({kind:?}: {message}) recorded_unix_ms={:?}",
-            operations.packages.source, operations.packages.collected_unix_ms
+            packages.source, packages.collected_unix_ms
         ),
     }
-    let incomplete = !snapshot.complete() || !operations.complete();
+    let incomplete = !snapshot.complete() || !packages.is_available();
     if incomplete {
         eprintln!("MIRA: incomplete host evidence");
         std::process::exit(1);
@@ -81,11 +78,7 @@ fn demo() {
 
 fn service(unit: &str) {
     use mira::evidence::EvidenceStatus;
-    let report = mira::evidence::collect_operations(
-        std::path::Path::new("/var/lib/dpkg/status"),
-        Some(unit),
-    );
-    let observation = report.service.expect("explicitly selected service");
+    let observation = mira::evidence::collect_service(unit);
     match observation.status {
         EvidenceStatus::Observed(state) => println!(
             "{}: Id={} LoadState={} ActiveState={} SubState={} recorded_unix_ms={:?} (observation only)",
