@@ -41,9 +41,7 @@ jobs:
             echo "unexpected systemd unit in CLI package" >&2
             exit 1
           fi
-          if dpkg-deb --ctrl-tarfile "$deb" | tar -tf - | grep -E '(^|/)(postinst|preinst|prerm|postrm)
-          package-extract/usr/bin/mira demo
-; then
+          if dpkg-deb --ctrl-tarfile "$deb" | tar -tf - | grep -E '(^|/)(postinst|preinst|prerm|postrm)$'; then
             echo "unexpected maintainer script in CLI package" >&2
             exit 1
           fi
