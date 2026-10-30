@@ -29,7 +29,7 @@ Genuine release-to-release upgrade/downgrade and physical-host qualification rem
 
 ## Validation and rollback
 
-Require locked installation and pip consistency on both native CI architectures; actual modified-wheel refusal; existing Python contracts and Rust checks; fresh binary/package equality and source cleanliness; clean-container installation; exact-head review and post-merge CI. Retain both validation receipts for 30 days. Independent-host and long-term release archival need separate qualification.
+Require locked installation and pip consistency on both native CI architectures; actual modified-wheel refusal; existing Python contracts and Rust checks; fresh binary/package equality and source cleanliness; clean-container installation; exact-head review and post-merge CI. Retain both validation receipts, the tested candidate package and its checksum for 30 days. This creates actual candidate bytes for a future distinct-version test, not a published release or durable baseline archive. Independent-host and long-term release archival need separate qualification.
 
 Rollback restores the previous tooling install and removes the additional comparison job through a PR. Runtime CLI behavior and capture formats require no migration. Preserve retained historical receipts with their original source and scope.
 
