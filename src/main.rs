@@ -44,7 +44,9 @@ fn inspect() {
     match &packages.status {
         EvidenceStatus::Observed(packages) => println!(
             "{}: observed {} installed packages (not vulnerability findings) recorded_unix_ms={:?}",
-            packages.source, packages.len(), packages.collected_unix_ms
+            packages.source,
+            packages.len(),
+            packages.collected_unix_ms
         ),
         EvidenceStatus::Unavailable { kind, message } => println!(
             "{}: unknown ({kind:?}: {message}) recorded_unix_ms={:?}",
@@ -82,8 +84,12 @@ fn service(unit: &str) {
     match observation.status {
         EvidenceStatus::Observed(state) => println!(
             "{}: Id={} LoadState={} ActiveState={} SubState={} recorded_unix_ms={:?} (observation only)",
-            observation.source, state.id, state.load_state, state.active_state,
-            state.sub_state, observation.collected_unix_ms
+            observation.source,
+            state.id,
+            state.load_state,
+            state.active_state,
+            state.sub_state,
+            observation.collected_unix_ms
         ),
         EvidenceStatus::Unavailable { kind, message } => {
             eprintln!("{}: unknown ({kind:?}: {message})", observation.source);
