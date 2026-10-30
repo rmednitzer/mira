@@ -74,27 +74,41 @@ pub fn parse_meminfo(text: &str) -> io::Result<MemoryEvidence> {
     })
 }
 
+/// Validate both nonnegative decimal-second fields, retaining whole uptime seconds.
+/// Idle is summed across CPUs, so it may exceed uptime. Avoid floating point.
 pub fn parse_uptime(text: &str) -> io::Result<u64> {
-    let mut fields = text.split_whitespace();
-    let seconds = fields
+    fn seconds(field: &str) -> io::Result<u64> {
+        let (whole, fraction) = match field.split_once('.') {
+            Some((whole, fraction)) if !fraction.is_empty() => (whole, fraction),
+            Some(_) => {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "empty fraction"));
+            }
+            None => (field, ""),
+        };
+        if whole.is_empty()
+            || !whole.bytes().all(|b| b.is_ascii_digit())
+            || !fraction.bytes().all(|b| b.is_ascii_digit())
+        {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid seconds"));
+        }
+        whole
+            .parse::<u64>()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "seconds overflow"))
+    }
+
+    let mut fields = text.split_ascii_whitespace();
+    let uptime = fields
         .next()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing uptime"))?;
-    let (whole, fraction) = seconds.split_once('.').unwrap_or((seconds, ""));
-    if whole.is_empty()
-        || !whole.bytes().all(|b| b.is_ascii_digit())
-        || !fraction.bytes().all(|b| b.is_ascii_digit())
-    {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid uptime"));
+    let idle = fields
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing idle time"))?;
+    if fields.next().is_some() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "extra uptime field"));
     }
-    if fields.next().is_none() || fields.next().is_some() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid uptime fields",
-        ));
-    }
-    whole
-        .parse::<u64>()
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "uptime overflow"))
+    let uptime = seconds(uptime)?;
+    seconds(idle)?;
+    Ok(uptime)
 }
 
 /// Read a narrow allowlist of procfs sources. Caller selects the procfs root.
@@ -128,6 +142,42 @@ mod tests {
     #[test]
     fn parses_uptime() {
         assert_eq!(parse_uptime("123.45 678.90\n").unwrap(), 123);
+    }
+    #[test]
+    fn validates_both_uptime_fields() {
+        for invalid in [
+            "garbage",
+            "NaN",
+            "inf",
+            "-1.00",
+            "+1.00",
+            ".25",
+            "1.",
+            "1.2.3",
+            "1e3",
+            "18446744073709551616.00",
+            "0.00\\n",
+            "1\u{001b}",
+        ] {
+            for input in [format!("{invalid} 0.00"), format!("42.50 {invalid}")] {
+                assert_eq!(
+                    parse_uptime(&input).unwrap_err().kind(),
+                    io::ErrorKind::InvalidData
+                );
+            }
+        }
+        for input in ["42.50", "42.50 0.00 extra", "42.50\u{00a0}0.00"] {
+            assert!(parse_uptime(input).is_err());
+        }
+    }
+    #[test]
+    fn accepts_multicore_idle_and_exact_integer_limits() {
+        assert_eq!(parse_uptime("42.99 1234.56\n").unwrap(), 42);
+        assert_eq!(parse_uptime("0 0").unwrap(), 0);
+        assert_eq!(
+            parse_uptime("18446744073709551615.99 18446744073709551615.00").unwrap(),
+            u64::MAX
+        );
     }
     #[test]
     fn rejects_uptime_overflow() {
@@ -179,7 +229,7 @@ mod report_tests {
 
     #[test]
     fn invalid_memory_does_not_hide_valid_uptime() {
-        assert!(parse_meminfo("MemTotal: 100 kB\\nMemAvailable: 200 kB\\n").is_err());
-        assert_eq!(parse_uptime("42.50 0.00\\n").unwrap(), 42);
+        assert!(parse_meminfo("MemTotal: 100 kB\nMemAvailable: 200 kB\n").is_err());
+        assert_eq!(parse_uptime("42.50 0.00\n").unwrap(), 42);
     }
 }

@@ -33,3 +33,34 @@ fn fixture_parses_into_complete_host_evidence() {
         })
     ));
 }
+
+#[test]
+fn malformed_idle_time_is_unavailable_without_hiding_memory() {
+    // Exercise the same source-report and evidence projection used by inspect.
+    // A unique directory owns only these fixture files; no environment changes.
+    let root = std::env::temp_dir().join(format!("mira-uptime-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = Cleanup(root.clone());
+    std::fs::write(root.join("meminfo"), "MemTotal: 100 kB\nMemAvailable: 50 kB\n").unwrap();
+    std::fs::write(root.join("uptime"), "42.50 garbage\n").unwrap();
+    let snapshot = evidence::collect(&root);
+    assert!(snapshot.memory.is_available());
+    assert!(matches!(
+        snapshot.uptime.status,
+        EvidenceStatus::Unavailable {
+            kind: std::io::ErrorKind::InvalidData,
+            ..
+        }
+    ));
+    let json = mira::evidence_json::record(&snapshot.uptime, None, |value| value.to_string());
+    assert!(json.contains("\"status\":\"unavailable\""));
+    assert!(json.contains("\"value\":null"));
+    assert!(json.contains("\"error_kind\":\"InvalidData\""));
+    assert!(!json.contains("garbage"));
+}
