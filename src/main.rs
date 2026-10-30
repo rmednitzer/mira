@@ -14,54 +14,26 @@ fn main() {
 }
 
 fn inspect() {
-    let report = linux::report(std::path::Path::new("/proc"));
-    println!("MIRA Linux host evidence (read-only; no security conclusions)");
-    let mut incomplete = false;
-    match report.memory.result {
-        Ok(m) => println!(
-            "{}: MemTotal={} KiB MemAvailable={} KiB",
-            report.memory.source, m.total_kib, m.available_kib
-        ),
-        Err(e) => {
-            incomplete = true;
-            println!("{}: unknown ({e})", report.memory.source);
+    use mira::evidence::{Evidence, EvidenceStatus};
+    let snapshot = mira::evidence::collect(std::path::Path::new("/proc"));
+    println!("MIRA read-only host evidence (observations only)");
+    fn show<T: std::fmt::Debug>(entry: &Evidence<T>) {
+        let timestamp = entry.collected_unix_ms
+            .map_or_else(|| "unknown".to_string(), |v| v.to_string());
+        match &entry.status {
+            EvidenceStatus::Observed(value) => {
+                println!("{}: observed {:?} recorded_unix_ms={timestamp}", entry.source, value);
+            }
+            EvidenceStatus::Unavailable { kind, message } => {
+                println!("{}: unknown ({kind:?}: {message}) recorded_unix_ms={timestamp}", entry.source);
+            }
         }
     }
-    match report.uptime.result {
-        Ok(seconds) => println!("{}: uptime={} s", report.uptime.source, seconds),
-        Err(e) => {
-            incomplete = true;
-            println!("{}: unknown ({e})", report.uptime.source);
-        }
-    }
-    let additional = mira::host_extra::inspect(std::path::Path::new("/proc"));
-    match additional.kernel_release.result {
-        Ok(release) => println!("{}: {}", additional.kernel_release.source, release),
-        Err(e) => {
-            incomplete = true;
-            println!("{}: unknown ({e})", additional.kernel_release.source);
-        }
-    }
-    match additional.cpu_pressure.result {
-        Ok(pressure) => println!(
-            "{}: some.avg10={}.{:02}%{}",
-            additional.cpu_pressure.source,
-            pressure.some_avg10_basis_points / 100,
-            pressure.some_avg10_basis_points % 100,
-            pressure
-                .full_avg10_basis_points
-                .map_or(String::new(), |v| format!(
-                    " full.avg10={}.{:02}%",
-                    v / 100,
-                    v % 100
-                ))
-        ),
-        Err(e) => {
-            incomplete = true;
-            println!("{}: unknown ({e})", additional.cpu_pressure.source);
-        }
-    }
-    if incomplete {
+    show(&snapshot.memory);
+    show(&snapshot.uptime);
+    show(&snapshot.kernel_release);
+    show(&snapshot.cpu_pressure);
+    if !snapshot.complete() {
         eprintln!("MIRA: incomplete host evidence");
         std::process::exit(1);
     }
