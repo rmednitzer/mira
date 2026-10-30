@@ -8,7 +8,7 @@ trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/var/lib/dpkg/updates"
 : > "$root/var/lib/dpkg/status"
 run_dpkg() {
-  dpkg --force-not-root --root="$root" --admindir="$root/var/lib/dpkg" "$@"
+  NEEDRESTART_SUSPEND=1 dpkg --force-not-root --force-depends --log="$root/dpkg.log" --root="$root" --admindir="$root/var/lib/dpkg" "$@"
 }
 run_dpkg --install "$deb"
 test -x "$root/usr/bin/mira"
