@@ -100,14 +100,17 @@ pub struct OperationalSnapshot {
 
 impl OperationalSnapshot {
     pub fn complete(&self) -> bool {
-        self.packages.is_available()
-            && self.service.as_ref().is_none_or(Evidence::is_available)
+        self.packages.is_available() && self.service.as_ref().is_none_or(Evidence::is_available)
     }
 }
 
 /// Capture package database provenance without requiring a service query.
 pub fn collect_packages(status_path: &Path) -> Evidence<Vec<packages::Package>> {
-    Evidence::from_result("/var/lib/dpkg/status", packages::collect(status_path), timestamp())
+    Evidence::from_result(
+        "/var/lib/dpkg/status",
+        packages::collect(status_path),
+        timestamp(),
+    )
 }
 
 /// Capture one selected system service without requiring package database access.
