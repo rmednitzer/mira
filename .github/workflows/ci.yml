@@ -37,6 +37,15 @@ jobs:
           dpkg-deb -x "$deb" package-extract
           test -x package-extract/usr/bin/mira
           test -f package-extract/usr/share/mira/schemas/evidence-v1.schema.json
-          ! dpkg-deb --contents "$deb" | grep -E '/(systemd/system|systemd/user|DEBIAN/(postinst|preinst|prerm|postrm))'
+          if dpkg-deb --contents "$deb" | grep -E '/(systemd/system|systemd/user)/'; then
+            echo "unexpected systemd unit in CLI package" >&2
+            exit 1
+          fi
+          if dpkg-deb --ctrl-tarfile "$deb" | tar -tf - | grep -E '(^|/)(postinst|preinst|prerm|postrm)
+          package-extract/usr/bin/mira demo
+; then
+            echo "unexpected maintainer script in CLI package" >&2
+            exit 1
+          fi
           (cd dist && sha256sum -c *.sha256)
           package-extract/usr/bin/mira demo
