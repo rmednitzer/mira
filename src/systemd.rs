@@ -22,15 +22,26 @@ fn invalid(reason: &'static str) -> io::Error {
 /// Restrict callers to an explicitly selected system service unit.
 /// This checks syntax, not the caller's authority to inspect a service.
 pub fn validate_unit(unit: &str) -> io::Result<()> {
-    if unit.len() < 9
-        || unit.len() > 200
-        || !unit.ends_with(".service")
-        || unit.starts_with('-')
-        || !unit
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || b"._@:-".contains(&c))
-    {
+    if unit.len() < 9 || unit.len() > 200 || !unit.ends_with(".service") || unit.starts_with('-') {
         return Err(invalid("invalid systemd service name"));
+    }
+    let bytes = unit.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'\\' {
+            if index + 3 >= bytes.len()
+                || bytes[index + 1] != b'x'
+                || !bytes[index + 2].is_ascii_hexdigit()
+                || !bytes[index + 3].is_ascii_hexdigit()
+            {
+                return Err(invalid("invalid systemd escape"));
+            }
+            index += 4;
+        } else if bytes[index].is_ascii_alphanumeric() || b"._@:-".contains(&bytes[index]) {
+            index += 1;
+        } else {
+            return Err(invalid("invalid systemd service name"));
+        }
     }
     Ok(())
 }
@@ -46,11 +57,15 @@ pub fn parse_show(output: &str, requested: &str) -> io::Result<ServiceState> {
     let mut load = None;
     let mut active = None;
     let mut sub = None;
+    let mut names = None;
     for line in output.lines() {
         let (key, value) = line
             .split_once('=')
             .ok_or_else(|| invalid("malformed property"))?;
-        if value.is_empty() || value.len() > 256 || !value.is_ascii() {
+        if value.is_empty()
+            || value.len() > if key == "Names" { 8192 } else { 256 }
+            || !value.is_ascii()
+        {
             return Err(invalid("invalid property value"));
         }
         let slot = match key {
@@ -58,6 +73,7 @@ pub fn parse_show(output: &str, requested: &str) -> io::Result<ServiceState> {
             "LoadState" => &mut load,
             "ActiveState" => &mut active,
             "SubState" => &mut sub,
+            "Names" => &mut names,
             _ => return Err(invalid("unexpected property")),
         };
         if slot.replace(value.to_owned()).is_some() {
@@ -70,7 +86,11 @@ pub fn parse_show(output: &str, requested: &str) -> io::Result<ServiceState> {
         active_state: active.ok_or_else(|| invalid("missing ActiveState"))?,
         sub_state: sub.ok_or_else(|| invalid("missing SubState"))?,
     };
-    if result.id != requested {
+    validate_unit(&result.id)?;
+    let names = names.ok_or_else(|| invalid("missing Names"))?;
+    if !names.split_whitespace().any(|name| name == requested)
+        || !names.split_whitespace().any(|name| name == result.id)
+    {
         return Err(invalid("service identity mismatch"));
     }
     Ok(result)
@@ -86,7 +106,7 @@ pub fn inspect(unit: &str) -> io::Result<ServiceState> {
             "--no-pager",
             "--no-ask-password",
             "show",
-            "--property=Id,LoadState,ActiveState,SubState",
+            "--property=Id,Names,LoadState,ActiveState,SubState",
             "--",
             unit,
         ])
@@ -128,7 +148,7 @@ pub fn inspect(unit: &str) -> io::Result<ServiceState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const SAMPLE: &str = "Id=ssh.service\nLoadState=loaded\nActiveState=active\nSubState=running\n";
+    const SAMPLE: &str = "Id=ssh.service\nNames=ssh.service\nLoadState=loaded\nActiveState=active\nSubState=running\n";
 
     #[test]
     fn parses_service_state() {
@@ -142,6 +162,44 @@ mod tests {
         assert!(parse_show(SAMPLE, "other.service").is_err());
         assert!(parse_show("Id=ssh.service\nActiveState=active\n", "ssh.service").is_err());
         assert!(parse_show(&format!("{SAMPLE}ActiveState=failed\n"), "ssh.service").is_err());
+    }
+
+    #[test]
+    fn accepts_canonical_service_alias() {
+        let output = "Id=systemd-sysctl.service\nNames=systemd-sysctl.service procps.service\nLoadState=loaded\nActiveState=active\nSubState=exited\n";
+        assert_eq!(
+            parse_show(output, "procps.service").unwrap().id,
+            "systemd-sysctl.service"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_escaped_instances() {
+        let unit = r"systemd-fsck@dev-disk-by\x2duuid-1234\x2d5678.service";
+        assert!(validate_unit(unit).is_ok());
+        let output = format!(
+            "Id={unit}\nNames={unit}\nLoadState=loaded\nActiveState=inactive\nSubState=dead\n"
+        );
+        assert!(parse_show(&output, unit).is_ok());
+    }
+
+    #[test]
+    fn accepts_long_bounded_alias_lists() {
+        let canonical = format!("{}.service", "a".repeat(130));
+        let alias = format!("{}.service", "b".repeat(130));
+        let output = format!(
+            "Id={canonical}\nNames={canonical} {alias}\nLoadState=loaded\nActiveState=active\nSubState=running\n"
+        );
+        assert_eq!(parse_show(&output, &canonical).unwrap().id, canonical);
+        assert!(parse_show(&output, &alias).is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_escapes_or_unlisted_aliases() {
+        assert!(validate_unit(r"foo@bar\x2G.service").is_err());
+        assert!(validate_unit(r"foo@bar\x2.service").is_err());
+        let output = "Id=ssh.service\nNames=ssh.service other.service\nLoadState=loaded\nActiveState=active\nSubState=running\n";
+        assert!(parse_show(output, "wrong.service").is_err());
     }
 
     #[test]
