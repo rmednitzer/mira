@@ -1,0 +1,22 @@
+name: Temporary package rustfmt
+on:
+  push:
+    branches: [feat/package-provenance]
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/package-provenance
+      - run: rustup toolchain install 1.93.1 --profile minimal --component rustfmt
+      - name: Format and commit
+        run: |
+          cargo +1.93.1 fmt --all
+          git add src tests
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Apply rustfmt to package collector'
+            git push origin HEAD:feat/package-provenance
+          fi
