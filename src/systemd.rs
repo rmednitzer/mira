@@ -62,7 +62,10 @@ pub fn parse_show(output: &str, requested: &str) -> io::Result<ServiceState> {
         let (key, value) = line
             .split_once('=')
             .ok_or_else(|| invalid("malformed property"))?;
-        if value.is_empty() || value.len() > if key == "Names" { 8192 } else { 256 } || !value.is_ascii() {
+        if value.is_empty()
+            || value.len() > if key == "Names" { 8192 } else { 256 }
+            || !value.is_ascii()
+        {
             return Err(invalid("invalid property value"));
         }
         let slot = match key {
