@@ -1,5 +1,27 @@
 # Threat model — MIRA
 
+> Scope note (2026-10-30): The primary product direction is security-first Linux infrastructure investigation. The pre-existing simulation threat model below remains applicable to its retained test fixture, but does **not** cover the full proposed operations product. The additional boundaries below must be evaluated before expanding collectors or enabling remediation.
+
+## Linux operations boundaries (new)
+
+- **Host evidence boundary:** procfs, systemd, journal, package databases and advisories may be stale, malformed, attacker influenced or inaccessible. Treat them as observations, never commands; bound reads, parse strictly, report collection failures.
+- **Privilege boundary:** run as an ordinary user, never escalate automatically, avoid arbitrary shell and executable plugins; added privileged functionality requires a separate reviewed helper and explicit authorization.
+- **Intent boundary:** natural language must only select admitted capabilities; it never grants them. AI-produced action plans are untrusted proposals.
+- **Adaptive UI boundary:** only registered display components and scoped actions can be composed; never execute model-generated JavaScript or shell commands.
+- **Vulnerability evidence boundary:** identifiers and upstream package versions alone do not prove exposure on Ubuntu; correlate distribution backports, package provenance and runtime applicability, preserving unknown states.
+- **External inference boundary:** local is default; hosted AI receives only deliberately released synthetic/public inputs, has bounded budget and no direct execution access.
+- **Future execution boundary:** remediation is out of scope for the MVP. Before adding writes, require scoped grants, operator confirmation, preconditions, independent postcondition verification and a recovery design.
+
+### New acceptance tests
+
+1. Malformed, missing, oversized and contradictory Linux evidence cannot become a confirmed finding.
+2. Read-only inspection does not mutate host state or trigger network/model operations.
+3. Stale advisories, absent package provenance and uncertain backport status must produce *unknown*, not *affected* or *fixed*.
+4. UI layout/model-output changes cannot add unregistered execution capabilities.
+5. Remote/privileged adapters are rejected until separately modeled and authorized.
+
+
+
 Status: v0.1 design baseline, 2026-10-30. Review at each new trust boundary. This is a threat model, **not** a claim of security certification or control-system safety.
 
 ## System and assets
