@@ -34,6 +34,7 @@ python3 -m venv .schema-venv
 .schema-venv/bin/python -m pip check
 .schema-venv/bin/python scripts/test_schema_lock.py
 cargo build --locked
+.schema-venv/bin/python scripts/test_live_procfs.py
 .schema-venv/bin/python scripts/validate_evidence_schema.py
 .schema-venv/bin/python scripts/test_compare_evidence.py
 .schema-venv/bin/python scripts/validate_investigation_schema.py
@@ -42,6 +43,10 @@ cargo build --locked
 ```
 
 On an unprivileged Ubuntu 26.04 host with a system bus and `systemd-journald.service`, add `--live-systemd` to both evidence and investigation validators. CI requires this live comparison on both native architectures; local synthetic checks do not require systemd. Direct state is sampled before and after MIRA; changing fixture state makes the comparison inconclusive and fails the check. This validates one host service, not application health or fleet-wide compatibility.
+
+On an unprivileged Linux host with readable procfs, add `--live-procfs` to the evidence validator. Native CI requires it on both architectures. Independent bounded direct reads surround `mira inspect --json`: kernel release and MemTotal endpoint samples must agree and match MIRA, while whole uptime must fall inclusively between direct whole-second samples. Changed endpoints or reversed uptime make the check inconclusive and fail; required unavailable observations also fail. No retry hides a disagreement. Tests demonstrate that schema-valid but wrong values are refused and that valid interval endpoints and fluctuating available memory pass.
+
+The direct uptime parser uses integer whole seconds, including values above 2^53, without float conversion. MemAvailable and PSI fluctuate non-monotonically, so direct endpoint values cannot bound their intermediate samples; their existing schema, range and synthetic source checks remain separate. Package counts are not directly compared here. The check emits a fixed success line and disagreement diagnostics without sampled values; it does not upload captures or authenticate the host, clock or source. This controlled CI comparison does not close representative physical-host or fleet qualification.
 
 ## Packaging checks
 

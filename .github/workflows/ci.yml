@@ -40,7 +40,8 @@ jobs:
           .schema-venv/bin/python -m pip check
           .schema-venv/bin/python scripts/test_schema_lock.py
           cargo build --locked
-          .schema-venv/bin/python scripts/validate_evidence_schema.py --live-systemd
+          .schema-venv/bin/python scripts/test_live_procfs.py
+          .schema-venv/bin/python scripts/validate_evidence_schema.py --live-systemd --live-procfs
           .schema-venv/bin/python scripts/test_compare_evidence.py
           .schema-venv/bin/python scripts/validate_investigation_schema.py --live-systemd
           .schema-venv/bin/python scripts/validate_capture_schema.py
