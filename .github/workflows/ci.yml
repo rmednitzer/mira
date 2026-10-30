@@ -39,6 +39,7 @@ jobs:
           test "$(dpkg-deb -f "$deb" Architecture)" = "$(dpkg --print-architecture)"
           mkdir -p package-extract
           dpkg-deb -x "$deb" package-extract
+          test "$(stat -c '%a' package-extract)" = 755
           test -x package-extract/usr/bin/mira
           test -f package-extract/usr/share/mira/schemas/evidence-v1.schema.json
           if dpkg-deb --contents "$deb" | grep -E '/(systemd/system|systemd/user)/'; then
