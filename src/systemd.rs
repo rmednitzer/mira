@@ -181,47 +181,6 @@ mod tests {
     use super::*;
     const SAMPLE: &str = "Id=ssh.service\nNames=ssh.service\nLoadState=loaded\nActiveState=active\nSubState=running\n";
 
-    fn helper(code: &str, timeout: Duration) -> io::Result<ServiceState> {
-        query(
-            Command::new("python3").args(["-c", code]),
-            "ssh.service",
-            timeout,
-        )
-    }
-
-    #[test]
-    fn drains_large_valid_response_while_child_runs() {
-        let code = format!(
-            "import sys; sys.stdout.write({:?} + 'Names=ssh.service ' + 'alias.service ' * 500 + '\\n')",
-            "Id=ssh.service\nLoadState=loaded\nActiveState=active\nSubState=running\n"
-        );
-        assert!(helper(&code, Duration::from_secs(3)).is_ok());
-    }
-
-    #[test]
-    fn bounds_oversized_and_nonterminating_children() {
-        let error = helper(
-            "import sys; sys.stdout.write('x' * 100000)",
-            Duration::from_secs(3),
-        )
-        .unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        let error = helper("import time; time.sleep(10)", Duration::from_millis(100)).unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
-    }
-
-    #[test]
-    fn deadline_includes_inherited_stdout_after_parent_exit() {
-        let start = Instant::now();
-        let error = helper(
-            "import subprocess, sys; subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(1)'])",
-            Duration::from_millis(100),
-        )
-        .unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
-        assert!(start.elapsed() < Duration::from_secs(2));
-    }
-
     #[test]
     fn parses_service_state() {
         let service = parse_show(SAMPLE, "ssh.service").unwrap();

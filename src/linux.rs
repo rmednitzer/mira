@@ -1,7 +1,8 @@
 //! Bounded, read-only Linux host evidence collection.
 //!
 //! No command execution, privilege escalation, network calls or mutation.
-//! The root is injectable so tests never inspect the runner's actual /proc.
+//! Injectable roots support deterministic fixtures; CLI integration checks may
+//! inspect the runner's actual /proc.
 use std::fs;
 use std::io;
 use std::path::Path;

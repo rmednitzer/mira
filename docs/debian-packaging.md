@@ -12,6 +12,6 @@ Do not install or enable a unit yet. An eventual systemd oneshot + timer require
 
 ## Repeatable assembly boundary
 
-CI assembles the same compiled binary twice in separate staging directories and compares the resulting `.deb` bytes. `SOURCE_DATE_EPOCH` is exported to archive tools as well as used for file timestamps. This checks deterministic archive assembly only: independent clean Rust compilations, source-path independence, actual dependency resolution and version-to-version upgrades remain outstanding release gates.
+CI assembles the same compiled binary twice in separate staging directories under ordinary and restrictive invoking umasks, then compares the resulting `.deb` bytes. The builder sets umask 022 so package permissions do not inherit the caller's mask. Native test helpers are never installed. `SOURCE_DATE_EPOCH` is exported to archive tools as well as used for file timestamps. This checks deterministic archive assembly only: independent clean Rust compilations, source-path independence, actual dependency resolution and version-to-version upgrades remain outstanding release gates.
 
 On hosted amd64 runners, dpkg-shlibdeps reports the distribution's libc6 merged-/usr loader diversion. Keep that warning visible; the native dependency metadata is not a replacement for clean-system installation and loader validation before release.

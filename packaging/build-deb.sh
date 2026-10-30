@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Package modes must not depend on the invoking user's umask.
+umask 022
 cd "$(dirname "$0")/.."
 export LC_ALL=C
 version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
@@ -13,7 +15,7 @@ out="$(realpath "$out")"
 build_root="$(mktemp -d)"
 trap 'rm -rf "$build_root"' EXIT
 stage="$build_root/debian/mira"
-mkdir -p "$stage"
+mkdir -p "$stage/DEBIAN"
 chmod 755 "$stage"
 install -Dm755 target/release/mira "$stage/usr/bin/mira"
 strip --strip-unneeded "$stage/usr/bin/mira"
@@ -56,7 +58,6 @@ install -Dm644 schemas/evidence-v1.schema.json "$stage/usr/share/mira/schemas/ev
 printf 'Source: mira\nSection: admin\nPriority: optional\nMaintainer: MIRA Project <noreply@github.com>\n\nPackage: mira\nArchitecture: any\nDescription: Read-only Linux evidence CLI\n' > "$build_root/debian/control"
 depends="$(cd "$build_root" && dpkg-shlibdeps -O -edebian/mira/usr/bin/mira)"
 case "$depends" in shlibs:Depends=?*) depends="${depends#shlibs:Depends=}" ;; *) echo "missing ELF dependency metadata" >&2; exit 2 ;; esac
-mkdir -p "$stage/DEBIAN"
 cat >"$stage/DEBIAN/control" <<EOF
 Package: mira
 Version: ${version}-1

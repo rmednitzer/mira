@@ -9,14 +9,16 @@ Use GitHub's **private vulnerability reporting** for this repository when enable
 Provide a minimal reproducible case, affected revision, expected versus observed behavior, impact and safe reproduction steps. Do not attack third-party services or systems while testing. There is no promised response-time SLA.
 
 ## Security and safety boundaries
-- Current actor identifiers are caller-supplied enum values, **not identities**.
+- Linux evidence is untrusted observation, not authenticated provenance, a health verdict or a vulnerability finding. Run the CLI under ordinary caller permissions; no elevation or automatic remediation is implemented.
+- The fixed-argument systemctl adapter is read-only; arbitrary command adapters remain out of scope.
+- In the retained simulation, actor identifiers are caller-supplied enum values, **not identities**.
 - Delegation is illustrative and does **not** provide authenticated, scoped or revocable authorization.
 - Simulated collision and state checks must not be interpreted as real-world physical safety controls.
-- Do not connect MIRA to real robots, actuators, industrial systems or production infrastructure.
+- Do not connect the retained simulation to real robots, actuators or industrial control paths. Any production use of the experimental read-only CLI requires separately established validation and authorization.
 - Do not put secrets or private infrastructure details into scenarios, CI artifacts, issues or model prompts.
 - GitHub Models and other externally hosted inference backends are optional future integrations; submit only synthetic/public data unless separate controls and authorization are established.
 
 See [the threat model](docs/threat-model.md) for assets, trust boundaries, assumptions, threats and residual risks.
 
 ## Dependencies, verification and disclosure
-CI runs Rust formatting, Clippy, tests and a release build on Ubuntu 26.04 x64 and ARM64. Passing checks are not a substitute for security review. Coordinated fixes should include regression tests and appropriate advisories for issues affecting published versions.
+CI runs Rust formatting, Clippy, tests and a release build on Ubuntu 26.04 x64 and ARM64. The Rust CLI has no external crate dependencies; native subprocess fixtures are opt-in test support and are excluded from packages. Python/jsonschema are separate schema-validation and optional history tooling, with transitive hash-locking still outstanding. CI also checks the JSON contract, a live unprivileged systemd service and experimental Debian packaging. See [validation](docs/testing.md). Passing checks are not a substitute for security review. Coordinated fixes should include regression tests and appropriate advisories for issues affecting published versions.
