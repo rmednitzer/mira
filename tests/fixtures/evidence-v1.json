@@ -1,0 +1,114 @@
+{
+  "valid": [
+    {
+      "schema_version": 1,
+      "source": "/proc/uptime",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": 42,
+      "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "/proc/uptime",
+      "scope": null,
+      "recorded_unix_ms": null,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "unavailable",
+      "value": null,
+      "error_kind": "PermissionDenied"
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "ssh.service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": {
+        "id": "ssh.service",
+        "load_state": "loaded",
+        "active_state": "active",
+        "sub_state": "running"
+      },
+      "error_kind": null
+    }
+  ],
+  "invalid": [
+    {
+      "schema_version": 2,
+      "source": "/proc/uptime",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": 42,
+      "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "/proc/uptime",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "fresh",
+      "status": "observed",
+      "value": 42,
+      "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "/proc/uptime",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "unavailable",
+      "value": 42,
+      "error_kind": "TimedOut"
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": 42,
+      "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "/proc/uptime",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": 42,
+      "error_kind": null,
+      "unknown": true
+    },
+    {
+      "schema_version": 1,
+      "source": "/proc/meminfo",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": {
+        "total_kib": 20,
+        "available_kib": 30
+      },
+      "error_kind": null
+    }
+  ]
+}

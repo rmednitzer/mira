@@ -1,0 +1,356 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/evidence-v1.schema.json",
+  "title": "MIRA evidence record v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source",
+    "scope",
+    "recorded_unix_ms",
+    "clock_trust",
+    "freshness",
+    "status",
+    "value",
+    "error_kind"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "source": {
+      "enum": [
+        "/proc/meminfo",
+        "/proc/uptime",
+        "/proc/sys/kernel/osrelease",
+        "/proc/pressure/cpu",
+        "/var/lib/dpkg/status",
+        "systemd/system"
+      ]
+    },
+    "scope": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "recorded_unix_ms": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "clock_trust": {
+      "const": "unverified"
+    },
+    "freshness": {
+      "const": "unknown"
+    },
+    "status": {
+      "enum": [
+        "observed",
+        "unavailable"
+      ]
+    },
+    "value": {},
+    "error_kind": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 64
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "unavailable"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "null"
+          },
+          "error_kind": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "observed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "error_kind": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "systemd/system"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "scope": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "/proc/meminfo"
+          },
+          "status": {
+            "const": "observed"
+          }
+        },
+        "required": [
+          "source",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "object",
+            "required": [
+              "total_kib",
+              "available_kib"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "total_kib": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "available_kib": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "/proc/uptime"
+          },
+          "status": {
+            "const": "observed"
+          }
+        },
+        "required": [
+          "source",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "/proc/sys/kernel/osrelease"
+          },
+          "status": {
+            "const": "observed"
+          }
+        },
+        "required": [
+          "source",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "/proc/pressure/cpu"
+          },
+          "status": {
+            "const": "observed"
+          }
+        },
+        "required": [
+          "source",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "object",
+            "required": [
+              "some_avg10_basis_points",
+              "full_avg10_basis_points"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "some_avg10_basis_points": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
+              },
+              "full_avg10_basis_points": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 10000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "/var/lib/dpkg/status"
+          },
+          "status": {
+            "const": "observed"
+          }
+        },
+        "required": [
+          "source",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "object",
+            "required": [
+              "installed_count"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "installed_count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "systemd/system"
+          },
+          "status": {
+            "const": "observed"
+          }
+        },
+        "required": [
+          "source",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "object",
+            "required": [
+              "id",
+              "load_state",
+              "active_state",
+              "sub_state"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "load_state": {
+                "type": "string"
+              },
+              "active_state": {
+                "type": "string"
+              },
+              "sub_state": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "systemd/system"
+          },
+          "status": {
+            "const": "observed"
+          }
+        },
+        "required": [
+          "source",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "minLength": 9,
+            "maxLength": 200
+          }
+        }
+      }
+    }
+  ]
+}
