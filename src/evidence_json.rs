@@ -27,34 +27,65 @@ fn timestamp(time: Option<u128>) -> String {
 }
 
 /// Errors are reported by stable kind only. Never embed arbitrary OS error messages.
-pub fn record<T>(e: &Evidence<T>, scope: Option<&str>, encode: impl FnOnce(&T) -> String) -> String {
+pub fn record<T>(
+    e: &Evidence<T>,
+    scope: Option<&str>,
+    encode: impl FnOnce(&T) -> String,
+) -> String {
     let scope = scope.map_or_else(|| "null".to_owned(), quoted);
     let (status, value, error) = match &e.status {
         EvidenceStatus::Observed(value) => ("observed", encode(value), "null".to_owned()),
-        EvidenceStatus::Unavailable { kind, .. } => {
-            ("unavailable", "null".to_owned(), quoted(&format!("{kind:?}")))
-        }
+        EvidenceStatus::Unavailable { kind, .. } => (
+            "unavailable",
+            "null".to_owned(),
+            quoted(&format!("{kind:?}")),
+        ),
     };
     format!(
         "{{\"schema_version\":{SCHEMA_VERSION},\"source\":{},\"scope\":{scope},\"recorded_unix_ms\":{},\"clock_trust\":\"unverified\",\"freshness\":\"unknown\",\"status\":{},\"value\":{value},\"error_kind\":{error}}}",
-        quoted(e.source), timestamp(e.collected_unix_ms), quoted(status)
+        quoted(e.source),
+        timestamp(e.collected_unix_ms),
+        quoted(status)
     )
 }
 
-pub fn host_records(snapshot: &Snapshot, packages: &Evidence<Vec<packages::Package>>) -> Vec<String> {
+pub fn host_records(
+    snapshot: &Snapshot,
+    packages: &Evidence<Vec<packages::Package>>,
+) -> Vec<String> {
     vec![
-        record(&snapshot.memory, None, |m| format!("{{\"total_kib\":{},\"available_kib\":{}}}", m.total_kib, m.available_kib)),
+        record(&snapshot.memory, None, |m| {
+            format!(
+                "{{\"total_kib\":{},\"available_kib\":{}}}",
+                m.total_kib, m.available_kib
+            )
+        }),
         record(&snapshot.uptime, None, |v| v.to_string()),
         record(&snapshot.kernel_release, None, |v| quoted(v)),
-        record(&snapshot.cpu_pressure, None, |v| format!("{{\"some_avg10_basis_points\":{},\"full_avg10_basis_points\":{}}}",
-            v.some_avg10_basis_points, v.full_avg10_basis_points.map_or_else(|| "null".to_owned(), |n| n.to_string()))),
-        record(packages, None, |list| format!("{{\"installed_count\":{}}}", list.len())),
+        record(&snapshot.cpu_pressure, None, |v| {
+            format!(
+                "{{\"some_avg10_basis_points\":{},\"full_avg10_basis_points\":{}}}",
+                v.some_avg10_basis_points,
+                v.full_avg10_basis_points
+                    .map_or_else(|| "null".to_owned(), |n| n.to_string())
+            )
+        }),
+        record(packages, None, |list| {
+            format!("{{\"installed_count\":{}}}", list.len())
+        }),
     ]
 }
 
 pub fn service_record(unit: &str, observation: &Evidence<systemd::ServiceState>) -> String {
-    record(observation, Some(unit), |s| format!("{{\"id\":{},\"load_state\":{},\"active_state\":{},\"sub_state\":{}}}",
-        quoted(&s.id), quoted(&s.load_state), quoted(&s.active_state), quoted(&s.sub_state)))
+    record(observation, Some(unit), |s| {
+        format!(
+            "{{\"id\":{},\"load_state\":{},\"active_state\":{},\"sub_state\":{}}}",
+            quoted(&s.id),
+            quoted(&s.load_state),
+            quoted(&s.active_state),
+            quoted(&s.sub_state)
+        )
+    })
 }
 
 #[cfg(test)]
@@ -63,7 +94,14 @@ mod tests {
     use std::io;
     #[test]
     fn error_message_never_leaks_into_json() {
-        let e: Evidence<u64> = Evidence::from_result("test", Err(io::Error::new(io::ErrorKind::PermissionDenied, "private /home/secret")), None);
+        let e: Evidence<u64> = Evidence::from_result(
+            "test",
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "private /home/secret",
+            )),
+            None,
+        );
         let json = record(&e, None, |v| v.to_string());
         assert!(json.contains("\"error_kind\":\"PermissionDenied\""));
         assert!(!json.contains("private"));
