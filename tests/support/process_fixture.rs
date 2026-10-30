@@ -11,7 +11,10 @@ fn valid_output() -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "Id=ssh.service")?;
     writeln!(stdout, "Names=ssh.service {}", "alias.service ".repeat(500))?;
-    writeln!(stdout, "LoadState=loaded\nActiveState=active\nSubState=running")?;
+    writeln!(
+        stdout,
+        "LoadState=loaded\nActiveState=active\nSubState=running"
+    )?;
     stdout.flush()
 }
 
