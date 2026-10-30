@@ -161,23 +161,23 @@ mod tests {
 
     #[test]
     fn accepts_canonical_service_alias() {
-        let output = "Id=systemd-sysctl.service\\nNames=systemd-sysctl.service procps.service\\nLoadState=loaded\\nActiveState=active\\nSubState=exited\\n";
+        let output = "Id=systemd-sysctl.service\nNames=systemd-sysctl.service procps.service\nLoadState=loaded\nActiveState=active\nSubState=exited\n";
         assert_eq!(parse_show(output, "procps.service").unwrap().id, "systemd-sysctl.service");
     }
 
     #[test]
     fn accepts_valid_escaped_instances() {
-        let unit = r"systemd-fsck@dev-disk-by\\x2duuid-1234\\x2d5678.service";
+        let unit = r"systemd-fsck@dev-disk-by\x2duuid-1234\x2d5678.service";
         assert!(validate_unit(unit).is_ok());
-        let output = format!("Id={unit}\\nNames={unit}\\nLoadState=loaded\\nActiveState=inactive\\nSubState=dead\\n");
+        let output = format!("Id={unit}\nNames={unit}\nLoadState=loaded\nActiveState=inactive\nSubState=dead\n");
         assert!(parse_show(&output, unit).is_ok());
     }
 
     #[test]
     fn rejects_invalid_escapes_or_unlisted_aliases() {
-        assert!(validate_unit(r"foo@bar\\x2G.service").is_err());
-        assert!(validate_unit(r"foo@bar\\x2.service").is_err());
-        let output = "Id=ssh.service\\nNames=ssh.service other.service\\nLoadState=loaded\\nActiveState=active\\nSubState=running\\n";
+        assert!(validate_unit(r"foo@bar\x2G.service").is_err());
+        assert!(validate_unit(r"foo@bar\x2.service").is_err());
+        let output = "Id=ssh.service\nNames=ssh.service other.service\nLoadState=loaded\nActiveState=active\nSubState=running\n";
         assert!(parse_show(output, "wrong.service").is_err());
     }
 
