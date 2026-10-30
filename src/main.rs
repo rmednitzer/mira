@@ -48,9 +48,13 @@ fn inspect() {
             additional.cpu_pressure.source,
             pressure.some_avg10_basis_points / 100,
             pressure.some_avg10_basis_points % 100,
-            pressure.full_avg10_basis_points.map_or(String::new(), |v| format!(
-                " full.avg10={}.{:02}%", v / 100, v % 100
-            ))
+            pressure
+                .full_avg10_basis_points
+                .map_or(String::new(), |v| format!(
+                    " full.avg10={}.{:02}%",
+                    v / 100,
+                    v % 100
+                ))
         ),
         Err(e) => {
             incomplete = true;

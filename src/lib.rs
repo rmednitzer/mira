@@ -2,8 +2,8 @@
 //! This is an experimental simulator, not an authenticated or safety-certified controller.
 
 pub mod experiment;
-pub mod linux;
 pub mod host_extra;
+pub mod linux;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Position {
     pub x: i32,

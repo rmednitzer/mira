@@ -1,5 +1,9 @@
 //! Additional bounded Linux evidence. All fields are observations, not diagnoses.
-use std::{fs::File, io::{self, Read}, path::Path};
+use std::{
+    fs::File,
+    io::{self, Read},
+    path::Path,
+};
 
 const LIMIT: u64 = 16 * 1024;
 
@@ -7,9 +11,13 @@ fn bounded(path: &Path) -> io::Result<String> {
     let mut bytes = Vec::new();
     File::open(path)?.take(LIMIT + 1).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > LIMIT {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "source exceeds limit"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "source exceeds limit",
+        ));
     }
-    String::from_utf8(bytes).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "non-UTF8 source"))
+    String::from_utf8(bytes)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "non-UTF8 source"))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,15 +29,37 @@ pub struct CpuPressure {
 
 fn decimal_basis_points(input: &str) -> io::Result<u32> {
     let (whole, fraction) = input.split_once('.').unwrap_or((input, ""));
-    if whole.is_empty() || !whole.bytes().all(|c| c.is_ascii_digit())
-        || fraction.len() > 2 || !fraction.bytes().all(|c| c.is_ascii_digit()) {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid PSI decimal"));
+    if whole.is_empty()
+        || !whole.bytes().all(|c| c.is_ascii_digit())
+        || fraction.len() > 2
+        || !fraction.bytes().all(|c| c.is_ascii_digit())
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid PSI decimal",
+        ));
     }
-    let major: u32 = whole.parse().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "PSI overflow"))?;
-    let minor: u32 = if fraction.is_empty() { 0 } else { fraction.parse::<u32>().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "PSI fraction"))? * if fraction.len() == 1 { 10 } else { 1 } };
-    let result = major.checked_mul(100).and_then(|v| v.checked_add(minor))
+    let major: u32 = whole
+        .parse()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "PSI overflow"))?;
+    let minor: u32 = if fraction.is_empty() {
+        0
+    } else {
+        fraction
+            .parse::<u32>()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "PSI fraction"))?
+            * if fraction.len() == 1 { 10 } else { 1 }
+    };
+    let result = major
+        .checked_mul(100)
+        .and_then(|v| v.checked_add(minor))
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "PSI overflow"))?;
-    if result > 10_000 { return Err(io::Error::new(io::ErrorKind::InvalidData, "PSI out of range")); }
+    if result > 10_000 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "PSI out of range",
+        ));
+    }
     Ok(result)
 }
 
@@ -38,34 +68,57 @@ pub fn parse_cpu_pressure(input: &str) -> io::Result<CpuPressure> {
     let mut full = None;
     for line in input.lines() {
         let mut tokens = line.split_whitespace();
-        let kind = tokens.next().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty PSI line"))?;
-        if kind != "some" && kind != "full" { return Err(io::Error::new(io::ErrorKind::InvalidData, "unknown PSI type")); }
+        let kind = tokens
+            .next()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty PSI line"))?;
+        if kind != "some" && kind != "full" {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unknown PSI type",
+            ));
+        }
         let mut avg10 = None;
         for field in tokens {
             if let Some(v) = field.strip_prefix("avg10=") {
                 if avg10.replace(decimal_basis_points(v)?).is_some() {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "duplicate avg10"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "duplicate avg10",
+                    ));
                 }
             }
         }
-        let avg10 = avg10.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing avg10"))?;
+        let avg10 =
+            avg10.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing avg10"))?;
         match kind {
-            "some" if some.replace(avg10).is_some() => return Err(io::Error::new(io::ErrorKind::InvalidData, "duplicate some")),
-            "full" if full.replace(avg10).is_some() => return Err(io::Error::new(io::ErrorKind::InvalidData, "duplicate full")),
+            "some" if some.replace(avg10).is_some() => {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "duplicate some"));
+            }
+            "full" if full.replace(avg10).is_some() => {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "duplicate full"));
+            }
             _ => {}
         }
     }
     Ok(CpuPressure {
-        some_avg10_basis_points: some.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing some"))?,
+        some_avg10_basis_points: some
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing some"))?,
         full_avg10_basis_points: full,
     })
 }
 
 pub fn parse_kernel_release(input: &str) -> io::Result<String> {
     let trimmed = input.trim();
-    if trimmed.is_empty() || trimmed.len() > 256
-        || !trimmed.bytes().all(|c| c.is_ascii_alphanumeric() || b".-_+".contains(&c)) {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid kernel release"));
+    if trimmed.is_empty()
+        || trimmed.len() > 256
+        || !trimmed
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || b".-_+".contains(&c))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid kernel release",
+        ));
     }
     Ok(trimmed.to_owned())
 }
@@ -87,7 +140,8 @@ pub fn inspect(proc_root: &Path) -> ExtendedReport {
     ExtendedReport {
         kernel_release: Observation {
             source: "/proc/sys/kernel/osrelease",
-            result: bounded(&proc_root.join("sys/kernel/osrelease")).and_then(|v| parse_kernel_release(&v)),
+            result: bounded(&proc_root.join("sys/kernel/osrelease"))
+                .and_then(|v| parse_kernel_release(&v)),
         },
         cpu_pressure: Observation {
             source: "/proc/pressure/cpu",
@@ -113,7 +167,10 @@ mod tests {
     }
     #[test]
     fn validates_kernel_identity() {
-        assert_eq!(parse_kernel_release("6.17.0-5-generic\n").unwrap(), "6.17.0-5-generic");
+        assert_eq!(
+            parse_kernel_release("6.17.0-5-generic\n").unwrap(),
+            "6.17.0-5-generic"
+        );
         assert!(parse_kernel_release("kernel\nother\n").is_err());
     }
     #[test]
