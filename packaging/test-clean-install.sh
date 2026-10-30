@@ -14,6 +14,7 @@ source_tree="$(git rev-parse 'HEAD^{tree}')"
 if test -n "$(git status --porcelain --untracked-files=no)"; then
   echo "source checkout changed before clean-install validation" >&2
   git diff --name-status HEAD -- >&2
+  git diff -- Cargo.lock >&2
   exit 1
 fi
 package_sha="$(sha256sum "$deb" | cut -d' ' -f1)"

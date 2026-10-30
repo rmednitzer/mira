@@ -6,7 +6,7 @@ Before opening a PR:
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --all-targets --features test-support -- -D warnings
+cargo clippy --all-targets --features test-support --locked -- -D warnings
 cargo test --all-targets --features test-support --locked
 cargo build --release --locked
 ```
