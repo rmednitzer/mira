@@ -4,7 +4,7 @@
 
 The Rust CLI has no external Rust crate dependencies. Normal builds and the CLI-only Debian package require no Python. The non-default `test-support` Cargo feature admits only a native subprocess fixture binary; it adds no runtime capability to MIRA. The package installs only `mira`, never the fixture.
 
-Python and `jsonschema` are separate developer tooling for independent JSON Schema validation and the optional offline history-comparison script. They are not CLI runtime dependencies. The direct validator version is pinned in CI; transitive Python dependencies are not yet hash-locked. Capture and investigation validation reuse its existing referencing dependency to register the local evidence schema without network retrieval.
+Python and `jsonschema` are separate developer tooling for independent JSON Schema validation and the optional offline history-comparison script. They are not CLI runtime dependencies. The complete dependency closure is pinned by version and wheel SHA-256 in `requirements-schema.txt`. Installations require hashes and binary wheels; source builds are refused. Capture and investigation validation reuse its existing referencing dependency to register the local evidence schema without network retrieval.
 
 ## Rust checks
 
@@ -28,7 +28,9 @@ Host parser regressions validate both uptime fields, malformed/overflow inputs a
 
 ```sh
 python3 -m venv .schema-venv
-.schema-venv/bin/python -m pip install --disable-pip-version-check jsonschema==4.25.1
+.schema-venv/bin/python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r requirements-schema.txt
+.schema-venv/bin/python -m pip check
+.schema-venv/bin/python scripts/test_schema_lock.py
 cargo build --locked
 .schema-venv/bin/python scripts/validate_evidence_schema.py
 .schema-venv/bin/python scripts/test_compare_evidence.py
@@ -42,7 +44,7 @@ On an unprivileged Ubuntu 26.04 host with a system bus and `systemd-journald.ser
 
 Native Ubuntu 26.04 amd64/arm64 CI builds and inspects the package, checks checksums, executes the extracted CLI, exercises isolated dpkg install/reinstall/remove/purge, and runs lintian. It checks evidence-v1/v2, investigation-v1 and capture-v1 schemas and their packaged guides, rejects systemd units, maintainer scripts and the native test helper in the package, and asserts package-root/document permissions. Archive metadata must advertise exactly `Suggests: systemd, default-dbus-system-bus | dbus-system-bus` and no `Recommends`; native ELF requirements remain generated in `Depends`. See the [runtime relationship rationale](debian-packaging.md#runtime-package-relationships).
 
-Repeated assembly compares the same binary under ordinary and restrictive (`077`) invoking umasks. The builder normalizes its own umask to `022`; source timestamps use exported `SOURCE_DATE_EPOCH`. This verifies archive assembly under those conditions, not independently reproducible compilation. The isolated dpkg root bypasses dependency enforcement. A separate native disposable Ubuntu 26.04 container installs the exact package through apt without bypassing dependencies, checks installed binary bytes and runs the installed demo/capture contract. Its receipt binds source commit/tree, package/binary digests and container image identity. This is container loader/dependency evidence; clean physical-host behavior, genuine upgrades/downgrades and signed release provenance remain release gates.
+Repeated assembly compares the same binary under ordinary and restrictive (`077`) invoking umasks. The builder normalizes its own umask to `022`; source timestamps use exported `SOURCE_DATE_EPOCH`. This verifies archive assembly under those conditions. A separate fresh-build test compiles twice from independent git archives and target directories, varies source/target paths, timezone and umask, and compares raw binaries and full packages against the selected artifacts. Its scope is one native runner/compiler/system dependency environment, not independent-host or hermetic compilation. The isolated dpkg root bypasses dependency enforcement. A separate native disposable Ubuntu 26.04 container installs the exact package through apt without bypassing dependencies, checks installed binary bytes and runs the installed demo/capture contract. Its receipt binds source commit/tree, package/binary digests and container image identity. This is container loader/dependency evidence; clean physical-host behavior, genuine upgrades/downgrades and signed release provenance remain release gates.
 
 ## Review and CI
 
@@ -67,3 +69,15 @@ The comparator suite covers duplicate keys at nested levels, nonfinite/overflow 
 Run `bash packaging/test-clean-install.sh dist/mira_VERSION_ARCH.deb dist/clean-install-receipt.json` only with Docker, the schema venv and a clean committed checkout. It pulls a native Ubuntu 26.04 image, records its immutable identity, uses apt repositories for real dependency resolution and removes the container. The receipt must be a new file. It contains no captured host values, credentials or user identities. It is an unsigned integrity/test receipt, not independent provenance or a release attestation. No retained distinct-version release baseline is available in this foundation; same-version reinstall must not be relabeled as upgrade qualification.
 
 Successful native CI retains the installation receipt for 30 days as a separate artifact; no host capture values are uploaded. PR receipts can identify GitHub’s synthetic merge checkout rather than the branch tip. The receipt remains unsigned and does not establish independent provenance.
+
+## Tooling lock and fresh compilation
+
+[ADR 0003](adr/0003-locked-tooling-and-fresh-builds.md) records the design, alternatives and limits. The lock admits standard-ABI CPython 3.12/3.14 glibc-Linux x86_64/aarch64 wheels. Native CI runs Python 3.14; local Python 3.12 checks are separate evidence. Other interpreters, free-threaded ABIs and source distributions are not admitted. The runtime package still requires no Python or external Rust crates.
+
+Maintain the complete dependency closure together. Obtain exact-version metadata and candidate wheels from the publisher's PyPI records, verify downloaded SHA-256 values, inspect dependency markers and retain hashes for each intended native profile. Review version and hash changes in one PR and run the complete native matrix. Do not accept a new digest merely because a hash mismatch prints it. `test_schema_lock.py` acquires the admitted closure, changes a wheel locally and requires pip's hash-mismatch refusal without installing it. This does not audit the publisher or eliminate index/mirror availability dependencies.
+
+`bash packaging/test-rebuild.sh PACKAGE.deb NEW_RECEIPT.json` requires a clean committed checkout, the pinned Rust toolchain and native Debian tools. It uses two fresh git archives and independent Cargo target directories, compares their raw binaries and complete `.deb` files with the selected artifacts, and emits a new source/toolchain/artifact-bound receipt only after byte equality. No normalization hides a difference. The compiler, system libraries and package metadata are shared on that runner; different-host/compiler reproduction is not established. Both receipts are retained in each native CI artifact for 30 days.
+
+Successful native CI retains the tested candidate `.deb` and its checksum with both validation receipts for 30 days. This preserves real prior package bytes for a future genuinely different version, without publishing a release or fabricating an upgrade. Retention is temporary; durable release archival and provenance need their own reviewed policy.
+
+The schema lock covers the validation libraries and their transitive wheels. It does not lock the Python interpreter, pip bootstrap, rustup distribution or apt repository state. Those remain separate build-environment trust and availability dependencies.

@@ -18,3 +18,5 @@ Use a PR for material changes. Inspect Codex code/security reviews and all inlin
 For capture changes, follow [ADR 0002](docs/adr/0002-complete-captures-and-admission.md), preserve v1 compatibility and validate exact source coverage, completion/availability separation and operator-asserted scope. The authored availability matrix and strict decoder negatives must pass.
 
 For investigation changes, preserve evidence/assessment separation, template version and scope, and fixed failure codes. Validate the independent report schema and semantic fixtures as well as the native CLI. Follow the [service investigation decision](docs/adr/0001-read-only-service-investigation.md); additional infrastructure mechanisms require an actual MIRA requirement and a separate decision.
+
+Schema-tooling changes must preserve the complete version/wheel-hash lock, refuse source builds and pass the modified-wheel negative test. Build/packaging changes must pass both same-binary archive assembly and fresh source/target compilation comparisons. See [ADR 0003](docs/adr/0003-locked-tooling-and-fresh-builds.md) for evidence limits.
