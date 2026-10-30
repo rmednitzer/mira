@@ -1,1 +1,10 @@
 /target/
+
+# Local schema tooling and Python bytecode are generated, not source evidence.
+/.schema-venv/
+__pycache__/
+*.py[cod]
+
+# Package archives, validation receipts and extracted installation trees.
+/dist/
+/package-extract/

@@ -13,6 +13,16 @@ Each typed `Evidence<T>` records the logical source path, an optional wall-clock
 - Absence of evidence means *unknown*, never *healthy*, *not affected* or *secure*.
 - There is no vulnerability assessment, agent authority, remote target, service discovery, persistent storage or external inference.
 
+## Acquisition byte budgets
+
+| Source | Maximum input bytes |
+|---|---|
+| /proc/meminfo and /proc/uptime | 65,536 each (64 KiB) |
+| Kernel release and each selected PSI source | 16,384 each (16 KiB) |
+| /var/lib/dpkg/status | 33,554,432 (32 MiB); see [package provenance](package-provenance.md) |
+
+These are whole-source acquisition limits, including whitespace and line endings. Valid input exactly at the limit is admitted; one extra byte produces limit_exceeded. Invalid UTF-8 within the budget produces malformed_data. Acquisition reads at most the budget plus one byte to detect overflow. A byte budget is not a filesystem I/O deadline.
+
 ## Uptime parsing
 
 Both `/proc/uptime` fields must be unsigned decimal seconds with whole parts that fit `u64`. Integers are accepted; a decimal point requires a nonempty digit-only fraction. MIRA retains whole uptime seconds without floating-point conversion. The second field is aggregate CPU idle time and may exceed uptime; it is validated but not exported. Missing/extra fields, signs, exponents, nonfinite values, malformed fractions and overflow produce unavailable evidence. Existing byte bounds remain in force.
@@ -23,7 +33,7 @@ The opt-in [capture command](captures.md) retains monotonic per-source elapsed t
 
 ## Validation
 
-`tests/host_evidence.rs` reads a synthetic procfs directory with the same collector used by the CLI. Unit tests cover malformed source content, both uptime fields, multicore idle time, integer limits and missing data. A malformed-idle regression verifies unavailable uptime, preserved memory and redacted JSON output. Mandatory x64/ARM64 Ubuntu 26.04 CI runs Rust tests and release builds.
+`tests/host_evidence.rs` reads a synthetic procfs directory with the same collector used by the CLI. Unit tests cover malformed source content, both uptime fields, multicore idle time, integer limits and missing data. A malformed-idle regression verifies unavailable uptime, preserved memory and redacted JSON output. The default native source-boundary matrix exercises all seven pressure-profile sources at their exact byte budgets, one byte over and with invalid UTF-8 through complete captures. It checks the selected unavailable record, preservation of six independent observations and completion. Mandatory x64/ARM64 Ubuntu 26.04 CI runs Rust tests and release builds.
 
 ## Next criteria
 
