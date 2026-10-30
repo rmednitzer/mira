@@ -1,5 +1,13 @@
 name: Rust CI
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -9,14 +17,20 @@ jobs:
       matrix:
         runner: [ubuntu-26.04, ubuntu-26.04-arm]
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install repository toolchain
         run: rustup install
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --all-targets --features test-support -- -D warnings
       - run: cargo test --all-targets --locked
+      - run: cargo test --all-targets --features test-support --locked
       - run: cargo build --release --locked
+      - name: Verify production target boundaries
+        run: |
+          test ! -e target/release/mira-process-fixture
+          cargo run --locked -- demo
       - name: Validate versioned evidence JSON contract
         run: |
           python3 -m venv .schema-venv
@@ -41,6 +55,8 @@ jobs:
           dpkg-deb -x "$deb" package-extract
           test "$(stat -c '%a' package-extract)" = 755
           test -x package-extract/usr/bin/mira
+          test ! -e package-extract/usr/bin/mira-process-fixture
+          test "$(stat -c '%a' package-extract/usr/share/doc/mira/copyright)" = 644
           test -f package-extract/usr/share/mira/schemas/evidence-v1.schema.json
           if dpkg-deb --contents "$deb" | grep -E '/(systemd/system|systemd/user)/'; then
             echo "unexpected systemd unit in CLI package" >&2
@@ -63,6 +79,6 @@ jobs:
         run: |
           repeat_dir="$(mktemp -d)"
           trap 'rm -rf "$repeat_dir"' EXIT
-          bash packaging/build-deb.sh "$repeat_dir"
+          (umask 077; bash packaging/build-deb.sh "$repeat_dir")
           deb="$(find dist -maxdepth 1 -name '*.deb' -print -quit)"
           cmp "$deb" "$repeat_dir/$(basename "$deb")"

@@ -1,8 +1,8 @@
 # Threat model — MIRA
 
-> Scope note (2026-10-30): The primary product direction is security-first Linux infrastructure investigation. The pre-existing simulation threat model below remains applicable to its retained test fixture, but does **not** cover the full proposed operations product. The additional boundaries below must be evaluated before expanding collectors or enabling remediation.
+> Scope (2026-10-30): implemented local Linux evidence collection, serialization/comparison, native tests and experimental CLI packaging. The retained simulation has separate authority/control limitations below. Future intent, AI, UI, remote and write adapters require a new review; this document does not certify the proposed full operations product.
 
-## Linux operations boundaries (new)
+## Linux operations boundaries
 
 - **Host evidence boundary:** procfs, systemd, journal, package databases and advisories may be stale, malformed, attacker influenced or inaccessible. Treat them as observations, never commands; bound reads, parse strictly, report collection failures.
 - **Privilege boundary:** run as an ordinary user, never escalate automatically, avoid arbitrary shell and executable plugins; added privileged functionality requires a separate reviewed helper and explicit authorization.
@@ -12,13 +12,27 @@
 - **External inference boundary:** local is default; hosted AI receives only deliberately released synthetic/public inputs, has bounded budget and no direct execution access.
 - **Future execution boundary:** remediation is out of scope for the MVP. Before adding writes, require scoped grants, operator confirmation, preconditions, independent postcondition verification and a recovery design.
 
+### Current operational data flow
+
+```mermaid
+flowchart TD
+    O["Operator: explicit command and scope"] --> C["Read-only collector under caller permissions"]
+    P["Untrusted procfs and dpkg files"] --> C
+    C --> S["Fixed systemctl query"]
+    S --> C
+    C --> E["Typed evidence and JSON Lines"]
+    E --> H["Optional offline schema/history tooling"]
+```
+
+The executable search environment is supplied by the caller. Files, systemd output and stored captures cross untrusted-data boundaries; none can grant execution authority. Historical captures have no authenticated host identity or chronology.
+
 ### Collector and package controls
 
 The systemd child uses fixed argv, closed stdin, no shell and no privilege escalation. A nonblocking local socket and one deadline cover execution and stdout EOF, including inherited writers after direct-child exit. Output is capped at 8 KiB and the direct child is reaped on every post-spawn return path. This bounds collection, not arbitrary descendant execution. The admitted production executable remains systemctl resolved through the caller's trusted PATH; the caller's environment is not an authentication boundary.
 
-Selection and error flags do not erase installed-package provenance. Local dpkg records and build-distribution ELF dependency metadata are unauthenticated inputs. Package assembly derives versioned ABI dependencies with dpkg-shlibdeps; repeated assembly compares one binary, not independent clean compilations. These checks do not establish signed provenance, clean-system dependency resolution or an unattended collector sandbox.
+Selection and error flags do not erase installed-package provenance. Local dpkg records and build-distribution ELF dependency metadata are unauthenticated inputs. Package assembly derives versioned ABI dependencies with dpkg-shlibdeps and normalizes its umask; repeated assembly compares one binary under different invoking masks, not independent clean compilations. Native Cargo subprocess fixtures are admitted only by the non-default test-support feature and are excluded from the package. They substitute a per-child PATH, never the test process environment; their inherited writer has a finite five-second lifetime. Python schema/history tooling is separate from the Rust CLI and native suite. These checks do not establish signed provenance, clean-system dependency resolution or an unattended collector sandbox.
 
-### New acceptance tests
+### Operational acceptance checks
 
 1. Malformed, missing, oversized and contradictory Linux evidence cannot become a confirmed finding.
 2. Read-only inspection does not mutate host state or trigger network/model operations.
@@ -30,12 +44,12 @@ Selection and error flags do not erase installed-package provenance. Local dpkg 
 
 Status: v0.1 design baseline, 2026-10-30. Review at each new trust boundary. This is a threat model, **not** a claim of security certification or control-system safety.
 
-## System and assets
-MIRA coordinates a human and an autonomous participant in a deterministic Rust grid simulation. Inputs are caller-supplied proposals (`Actor`, `Move`, `tick`), optional time-bound grants, and scenarios. The engine applies an arbitration decision and records events in process memory. It has no built-in identity verification, network-facing APIs, persistent audit ledger, real robots, or LLM integration today.
+## Retained simulation: system and assets
+The retained fixture coordinates a human and an autonomous participant in a deterministic Rust grid simulation. Inputs are caller-supplied proposals (`Actor`, `Move`, `tick`), optional time-bound grants, and scenarios. The engine applies an arbitration decision and records events in process memory. It has no built-in identity verification, network-facing APIs, persistent audit ledger, real robots, or LLM integration today.
 
 Protect: integrity of simulation state and outcomes; validity of arbitration; availability and resource bounds; reliability of event records; source/CI integrity. Future extension assets include credentials, model requests, scenario provenance and user data.
 
-## Trust boundaries and DFD
+## Retained simulation: trust boundaries and DFD
 
 ```text
  [Human input]             [Scripted / future LLM agent]

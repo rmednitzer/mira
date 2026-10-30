@@ -1,20 +1,25 @@
 # Requirements and verification matrix
 
-Statuses are **implemented** only where code and tests currently exist. Design intent is not implementation evidence.
+Implemented status means code and stated checks exist; it does not imply production assurance. Primary CI targets are native Ubuntu 26.04 amd64/arm64. See [validation](testing.md) for commands and exact boundaries.
 
 | ID | Requirement | Acceptance / verification | Status |
 |---|---|---|---|
-| OPS-01 | Linux host observation is read-only | Collect supported procfs evidence without execution, mutation, privilege escalation or network access | Initial collector implemented; full runtime assurance pending |
-| OPS-02 | Evidence is bounded and parsed strictly | Reject invalid values, oversized input and absent fields using fixture tests | Initial meminfo/uptime implementation |
-| OPS-03 | Findings cite observed sources and freshness | Each result records source, timestamp, scope and missing data | Planned |
-| OPS-04 | Read-only investigation template | Operator obtains health/security report on Ubuntu 26.04 with no AI | Planned |
-| SEC-01 | No proposal grants itself authority | Forged identity and grant attempts are rejected by an independent gate | Not satisfied by current simulation API |
-| SEC-02 | No silent external inference | Offline runs generate no external model requests | Architectural constraint; integration tests planned |
-| SEC-03 | Vulnerability applicability is evidence-bound | Advisory/backport and installed package revision required; unknown is explicit | Planned |
-| SEC-04 | UI cannot add operational capabilities | Only registered components/actions can render and execute | Planned |
-| INT-01 | Operator intent selects a declared workflow | Ambiguous intent cannot invoke undeclared operations | Planned |
-| UI-01 | Task-oriented views improve usability without dynamic code | Same scenarios benchmarked with fixed and adaptive views | Research hypothesis |
-| EVA-01 | Reproducible synthetic experiments | Versioned inputs and repeatable traces; future external canonical format | In-process replay implemented |
-| REL-01 | Change verification and rollback | Approved changes verify postconditions and offer recovery | Deferred; no write capability in MVP |
+| OPS-01 | Host observation is read-only | Fixed procfs/dpkg reads and an explicitly named, fixed-argv systemctl query; no elevation or mutation | Implemented; representative fleet and isolation assurance pending |
+| OPS-02 | Evidence is bounded and parsed | Byte limits, strict supported-field parsing, package status validation, service execution/EOF deadline, unavailable-state regressions | Implemented for admitted sources; not a universal bound on arbitrary filesystem I/O or descendant lifetime |
+| OPS-03 | Evidence cites source, scope and uncertainty | Typed evidence and JSON Lines v1 identify logical sources, recording times and unavailable results | Implemented; clock trust unverified, freshness unknown, host identity unauthenticated |
+| OPS-04 | Read-only investigation template | Operator obtains an evidence-backed diagnostic workflow without AI | CLI observations implemented; investigation templates and diagnosis planned |
+| OPS-05 | Serialized evidence has an independent contract | JSON Schema v1, valid/invalid fixtures and actual CLI output validation | Implemented with separate Python/jsonschema tooling |
+| OPS-06 | Capture comparison preserves unknowns | Bounded regular-file inputs, source/scope matching and explicit indeterminate/missing outcomes | Optional offline Python utility implemented; no managed persistent store |
+| SEC-01 | No proposal grants itself authority | Authenticated principal and independent scoped authorization gate before any action | Not satisfied by retained simulation; operational writes absent |
+| SEC-02 | No silent external inference | Offline CLI does not invoke model/network adapters | No such adapters implemented; not an OS-level network-isolation proof |
+| SEC-03 | Vulnerability applicability is evidence-bound | Distribution advisory/backport and installed revision evidence required; unknown remains explicit | Planned; package metadata alone is not an exposure finding |
+| SEC-04 | UI cannot add capabilities | Only registered components/actions can render and execute | Planned; no adaptive UI exists |
+| INT-01 | Intent selects declared workflows | Ambiguous intent cannot invoke undeclared operations | Planned |
+| UI-01 | Task-oriented views improve evidence access | Matched task evaluation against a fixed interface | Research hypothesis |
+| EVA-01 | Synthetic experiments are reproducible | Typed inputs and deterministic in-process replay | Retained fixture implemented; no authenticated authorization guarantee |
+| TST-01 | Rust subprocess regressions are native | Cargo-built opt-in fixture tests the public CLI without Python or shell | Implemented under test-support; default core suite remains independent |
+| PKG-01 | CLI package has bounded installation scope | Inspect contents, permissions, metadata, checksums, isolated lifecycle and lintian; reject helper/unit/maintainer scripts | Experimental packaging implemented; dependency resolution and genuine upgrade tests outstanding |
+| PKG-02 | Archive assembly is repeatable | Same binary, fixed source epoch, separate staging and different invoking umasks yield identical archives | CI check implemented; independent compiler reproducibility not established |
+| REL-01 | Operational changes verify and recover | Approved writes verify preconditions/postconditions and provide rollback | Deferred; no operational write adapter in MVP |
 
-Release gates: passing Rust CI on Ubuntu 26.04 x64/ARM64, threat-model review for new boundaries, synthetic fixture coverage, and operator-visible limitations. Human or model claims must not be treated as evidence without an independently observed result.
+Release gates also include exact-head Codex review and resolved discussions, required native CI/CodeQL, synchronized source/docs and post-merge identity/CI verification. Signed provenance, real dependency resolution and version-to-version package lifecycle remain additional gates before stable distribution.

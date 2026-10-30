@@ -9,7 +9,7 @@ Each typed `Evidence<T>` records the logical source path, an optional wall-clock
 - This is a sequence of reads, not an atomic host snapshot. `collected_unix_ms` is recorded after each collector returns, not a trusted source timestamp.
 - Host clocks are not independently authenticated. Linux files might be unavailable, maliciously altered, or stale.
 - The injectable procfs root exists for fixtures, not as a sandbox boundary. The CLI uses the fixed `/proc` root.
-- The report is formatted for people, not a stable machine-readable serialization format.
+- Human-readable output is the default; `--json` exports versioned records under the [JSON contract](evidence-json.md).
 - Absence of evidence means *unknown*, never *healthy*, *not affected* or *secure*.
 - There is no vulnerability assessment, agent authority, remote target, service discovery, persistent storage or external inference.
 
@@ -19,4 +19,4 @@ Each typed `Evidence<T>` records the logical source path, an optional wall-clock
 
 ## Next criteria
 
-Before a durable API or machine-readable output is published: decide schema versioning, independent source timestamps and freshness, explicit collection scope, safe source error redaction, cross-source consistency, resource limits, and integrity of stored traces.
+Versioned JSON Lines, a formal JSON Schema and independent contract checks are implemented. Independent source timestamps/freshness, host identity, cross-source consistency and authenticated stored-trace integrity remain separate design and validation work. See [development and validation](testing.md).

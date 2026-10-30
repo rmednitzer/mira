@@ -7,6 +7,11 @@ license = "Apache-2.0"
 description = "Read-only Linux infrastructure evidence and coordination research"
 repository = "https://github.com/rmednitzer/mira"
 publish = false
+default-run = "mira"
+
+[features]
+# Native subprocess fixtures are opt-in and excluded from normal builds.
+test-support = []
 
 [lib]
 name = "mira"
@@ -15,6 +20,13 @@ path = "src/lib.rs"
 [[bin]]
 name = "mira"
 path = "src/main.rs"
+
+[[bin]]
+name = "mira-process-fixture"
+path = "tests/support/process_fixture.rs"
+required-features = ["test-support"]
+test = false
+bench = false
 
 [lints.rust]
 unsafe_code = "forbid"

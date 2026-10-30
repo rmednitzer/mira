@@ -27,10 +27,11 @@ Do not mistake passing unit tests for safety, formal verification, authentic ide
 Run:
 ```sh
 cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings
-cargo test --all-targets --locked
+cargo clippy --all-targets --features test-support -- -D warnings
+cargo test --all-targets --features test-support --locked
 cargo build --release --locked
 ```
+See [development and validation](docs/testing.md) for dependency boundaries and CI evidence. The non-default test-support feature enables native test fixtures only; never install them in the CLI package. Python is separate schema/history tooling, not a Rust test or CLI prerequisite.
 For collector changes, run the independent JSON Schema and history-comparison tests. For packaging changes, run archive inspection, isolated dpkg lifecycle, lintian and repeatable archive assembly on both native CI architectures. Same-binary archive comparison does not prove reproducible compilation.
 If the toolchain is missing or the command fails, report that limitation instead of declaring success. Add a focused regression test for every substantive defect. For public CI, use explicit least-privilege workflow permissions and reviewed, pinned actions where feasible.
 
