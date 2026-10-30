@@ -50,7 +50,7 @@ fn inspect() {
             println!("/var/lib/dpkg/status: unknown ({error})");
         }
     }
-    if !snapshot.complete() {
+    if incomplete {
         eprintln!("MIRA: incomplete host evidence");
         std::process::exit(1);
     }
