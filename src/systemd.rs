@@ -85,7 +85,9 @@ pub fn parse_show(output: &str, requested: &str) -> io::Result<ServiceState> {
     };
     validate_unit(&result.id)?;
     let names = names.ok_or_else(|| invalid("missing Names"))?;
-    if !names.split_whitespace().any(|name| name == requested) || !names.split_whitespace().any(|name| name == result.id) {
+    if !names.split_whitespace().any(|name| name == requested)
+        || !names.split_whitespace().any(|name| name == result.id)
+    {
         return Err(invalid("service identity mismatch"));
     }
     Ok(result)
@@ -162,14 +164,19 @@ mod tests {
     #[test]
     fn accepts_canonical_service_alias() {
         let output = "Id=systemd-sysctl.service\nNames=systemd-sysctl.service procps.service\nLoadState=loaded\nActiveState=active\nSubState=exited\n";
-        assert_eq!(parse_show(output, "procps.service").unwrap().id, "systemd-sysctl.service");
+        assert_eq!(
+            parse_show(output, "procps.service").unwrap().id,
+            "systemd-sysctl.service"
+        );
     }
 
     #[test]
     fn accepts_valid_escaped_instances() {
         let unit = r"systemd-fsck@dev-disk-by\x2duuid-1234\x2d5678.service";
         assert!(validate_unit(unit).is_ok());
-        let output = format!("Id={unit}\nNames={unit}\nLoadState=loaded\nActiveState=inactive\nSubState=dead\n");
+        let output = format!(
+            "Id={unit}\nNames={unit}\nLoadState=loaded\nActiveState=inactive\nSubState=dead\n"
+        );
         assert!(parse_show(&output, unit).is_ok());
     }
 
