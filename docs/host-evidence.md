@@ -6,7 +6,7 @@ Each typed `Evidence<T>` records the logical source path, an optional wall-clock
 
 ## Boundaries
 
-- This is a sequence of reads, not an atomic host snapshot. `collected_unix_ms` is recorded after each collector returns, not a trusted source timestamp.
+- This is a sequence of reads, not an atomic host snapshot. `collected_unix_ms` is recorded immediately after each individual acquisition returns, not a trusted source timestamp.
 - Host clocks are not independently authenticated. Linux files might be unavailable, maliciously altered, or stale.
 - The injectable procfs root exists for fixtures, not as a sandbox boundary. The CLI uses the fixed `/proc` root.
 - Human-readable output is the default; `--json` exports versioned records under the [JSON contract](evidence-json.md).
@@ -19,10 +19,12 @@ Both `/proc/uptime` fields must be unsigned decimal seconds with whole parts tha
 
 The [Linux producer](https://github.com/torvalds/linux/blob/v6.17/fs/proc/uptime.c) emits two decimal-second fields and sums idle across CPUs. This parser is not proof of source authenticity or freshness.
 
+The opt-in [capture command](captures.md) retains monotonic per-source elapsed time and fixed failure reasons in evidence-v2, and can add bounded memory/IO PSI through a closed profile. Existing inspect output stays evidence-v1.
+
 ## Validation
 
 `tests/host_evidence.rs` reads a synthetic procfs directory with the same collector used by the CLI. Unit tests cover malformed source content, both uptime fields, multicore idle time, integer limits and missing data. A malformed-idle regression verifies unavailable uptime, preserved memory and redacted JSON output. Mandatory x64/ARM64 Ubuntu 26.04 CI runs Rust tests and release builds.
 
 ## Next criteria
 
-Versioned JSON Lines, a formal JSON Schema and independent contract checks are implemented. Independent source timestamps/freshness, host identity, cross-source consistency and authenticated stored-trace integrity remain separate design and validation work. See [development and validation](testing.md).
+Versioned JSON Lines, a formal JSON Schema and independent contract checks are implemented. Trusted source timestamps/freshness, authenticated host identity, cross-source consistency and authenticated stored-trace integrity remain separate design and validation work. See [development and validation](testing.md).

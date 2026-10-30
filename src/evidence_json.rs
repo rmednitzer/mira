@@ -32,6 +32,24 @@ pub fn record<T>(
     scope: Option<&str>,
     encode: impl FnOnce(&T) -> String,
 ) -> String {
+    project(e, scope, encode, false)
+}
+
+/// Capture-only v2 metadata; the public v1 projection remains unchanged.
+pub fn record_v2<T>(
+    e: &Evidence<T>,
+    scope: Option<&str>,
+    encode: impl FnOnce(&T) -> String,
+) -> String {
+    project(e, scope, encode, true)
+}
+
+fn project<T>(
+    e: &Evidence<T>,
+    scope: Option<&str>,
+    encode: impl FnOnce(&T) -> String,
+    v2: bool,
+) -> String {
     let scope = scope.map_or_else(|| "null".to_owned(), quoted);
     let (status, value, error) = match &e.status {
         EvidenceStatus::Observed(value) => ("observed", encode(value), "null".to_owned()),
@@ -41,8 +59,21 @@ pub fn record<T>(
             quoted(&format!("{kind:?}")),
         ),
     };
+    let version = if v2 { 2 } else { SCHEMA_VERSION };
+    let metadata = if v2 {
+        let reason = match &e.status {
+            EvidenceStatus::Observed(_) => "null".to_owned(),
+            EvidenceStatus::Unavailable { reason, .. } => quoted(reason.as_str()),
+        };
+        format!(
+            ",\"elapsed_ms\":{},\"failure_reason\":{reason}",
+            timestamp(e.elapsed_ms)
+        )
+    } else {
+        String::new()
+    };
     format!(
-        "{{\"schema_version\":{SCHEMA_VERSION},\"source\":{},\"scope\":{scope},\"recorded_unix_ms\":{},\"clock_trust\":\"unverified\",\"freshness\":\"unknown\",\"status\":{},\"value\":{value},\"error_kind\":{error}}}",
+        "{{\"schema_version\":{version},\"source\":{},\"scope\":{scope},\"recorded_unix_ms\":{},\"clock_trust\":\"unverified\",\"freshness\":\"unknown\",\"status\":{},\"value\":{value},\"error_kind\":{error}{metadata}}}",
         quoted(e.source),
         timestamp(e.collected_unix_ms),
         quoted(status)

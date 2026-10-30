@@ -21,16 +21,13 @@ pub struct HostEvidence {
     pub uptime_seconds: u64,
 }
 
-fn read_bounded(path: &Path) -> io::Result<String> {
+pub(crate) fn read_bounded(path: &Path) -> io::Result<String> {
     let file = fs::File::open(path)?;
     let mut contents = Vec::new();
     use std::io::Read;
     file.take(MAX_SOURCE_BYTES + 1).read_to_end(&mut contents)?;
     if contents.len() as u64 > MAX_SOURCE_BYTES {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "source too large",
-        ));
+        return Err(crate::collector::limit_exceeded());
     }
     String::from_utf8(contents)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid UTF-8"))
@@ -238,4 +235,12 @@ mod report_tests {
         assert!(parse_meminfo("MemTotal: 100 kB\nMemAvailable: 200 kB\n").is_err());
         assert_eq!(parse_uptime("42.50 0.00\n").unwrap(), 42);
     }
+}
+
+/// Read one source so callers can timestamp it before starting the next.
+pub fn memory(proc_root: &Path) -> io::Result<MemoryEvidence> {
+    read_bounded(&proc_root.join("meminfo")).and_then(|value| parse_meminfo(&value))
+}
+pub fn uptime(proc_root: &Path) -> io::Result<u64> {
+    read_bounded(&proc_root.join("uptime")).and_then(|value| parse_uptime(&value))
 }

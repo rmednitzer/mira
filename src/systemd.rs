@@ -144,7 +144,7 @@ fn query(command: &mut Command, unit: &str, timeout: Duration) -> io::Result<Ser
                     Ok(0) => eof = true,
                     Ok(count) => {
                         if bytes.len() + count > 8192 {
-                            return Err(invalid("systemd response exceeds limit"));
+                            return Err(crate::collector::limit_exceeded());
                         }
                         bytes.extend_from_slice(&buffer[..count]);
                         continue;
@@ -159,7 +159,7 @@ fn query(command: &mut Command, unit: &str, timeout: Duration) -> io::Result<Ser
             }
             if let Some(status) = status {
                 if !status.success() {
-                    return Err(io::Error::other("systemd query unavailable or failed"));
+                    return Err(crate::collector::backend_failed());
                 }
                 if eof {
                     let text = String::from_utf8(bytes)

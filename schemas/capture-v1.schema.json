@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/capture-v1.schema.json",
+  "title": "MIRA complete capture v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "capture_version",
+    "capture_scope",
+    "scope_trust",
+    "profile",
+    "expected_sources",
+    "collection_complete",
+    "all_available",
+    "records"
+  ],
+  "properties": {
+    "capture_version": {
+      "const": 1
+    },
+    "capture_scope": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "scope_trust": {
+      "const": "operator_asserted"
+    },
+    "profile": {
+      "enum": [
+        "host/v1",
+        "host-pressure/v1"
+      ]
+    },
+    "expected_sources": {
+      "type": "array"
+    },
+    "collection_complete": {
+      "const": true
+    },
+    "all_available": {
+      "type": "boolean"
+    },
+    "records": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 7,
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://github.com/rmednitzer/mira/blob/main/schemas/evidence-v2.schema.json"
+          },
+          {
+            "properties": {
+              "elapsed_ms": {
+                "type": "integer"
+              },
+              "scope": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "host/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "expected_sources": {
+            "const": [
+              "/proc/meminfo",
+              "/proc/uptime",
+              "/proc/sys/kernel/osrelease",
+              "/proc/pressure/cpu",
+              "/var/lib/dpkg/status"
+            ]
+          },
+          "records": {
+            "minItems": 5,
+            "maxItems": 5
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "host-pressure/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "expected_sources": {
+            "const": [
+              "/proc/meminfo",
+              "/proc/uptime",
+              "/proc/sys/kernel/osrelease",
+              "/proc/pressure/cpu",
+              "/var/lib/dpkg/status",
+              "/proc/pressure/memory",
+              "/proc/pressure/io"
+            ]
+          },
+          "records": {
+            "minItems": 7,
+            "maxItems": 7
+          }
+        }
+      }
+    }
+  ]
+}

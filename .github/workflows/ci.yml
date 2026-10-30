@@ -23,10 +23,12 @@ jobs:
       - name: Install repository toolchain
         run: rustup install
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets --features test-support -- -D warnings
+      - run: cargo clippy --all-targets --features test-support --locked -- -D warnings
       - run: cargo test --all-targets --locked
       - run: cargo test --all-targets --features test-support --locked
       - run: cargo build --release --locked
+      - name: Verify lockfile identity after native checks
+        run: git diff --exit-code -- Cargo.lock
       - name: Verify production target boundaries
         run: |
           test ! -e target/release/mira-process-fixture
@@ -39,6 +41,7 @@ jobs:
           .schema-venv/bin/python scripts/validate_evidence_schema.py --live-systemd
           .schema-venv/bin/python scripts/test_compare_evidence.py
           .schema-venv/bin/python scripts/validate_investigation_schema.py --live-systemd
+          .schema-venv/bin/python scripts/validate_capture_schema.py
       - name: Install native packaging tools
         run: |
           sudo apt-get update -qq
@@ -60,6 +63,9 @@ jobs:
           test "$(stat -c '%a' package-extract/usr/share/doc/mira/copyright)" = 644
           test -f package-extract/usr/share/mira/schemas/evidence-v1.schema.json
           test -f package-extract/usr/share/mira/schemas/investigation-v1.schema.json
+          test -f package-extract/usr/share/mira/schemas/evidence-v2.schema.json
+          test -f package-extract/usr/share/mira/schemas/capture-v1.schema.json
+          test -f package-extract/usr/share/doc/mira/captures.md
           test -f package-extract/usr/share/doc/mira/investigations.md
           if dpkg-deb --contents "$deb" | grep -E '/(systemd/system|systemd/user)/'; then
             echo "unexpected systemd unit in CLI package" >&2
@@ -85,3 +91,14 @@ jobs:
           (umask 077; bash packaging/build-deb.sh "$repeat_dir")
           deb="$(find dist -maxdepth 1 -name '*.deb' -print -quit)"
           cmp "$deb" "$repeat_dir/$(basename "$deb")"
+      - name: Validate real dependency resolution and installed artifact
+        run: |
+          deb="$(find dist -maxdepth 1 -name '*.deb' -print -quit)"
+          bash packaging/test-clean-install.sh "$deb" dist/clean-install-receipt.json
+      - name: Retain source-bound installation receipt
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: clean-install-${{ matrix.runner }}
+          path: dist/clean-install-receipt.json
+          if-no-files-found: error
+          retention-days: 30

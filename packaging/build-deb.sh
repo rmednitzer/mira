@@ -44,6 +44,8 @@ cat <<'EOF' | gzip -n -9 > "$stage/usr/share/man/man1/mira.1.gz"
 .SH NAME
 mira \- read-only Linux evidence CLI
 .SH SYNOPSIS
+.B mira capture LABEL [--pressure]
+.br
 .B mira inspect [--json]
 .br
 .B mira service UNIT.service [--json]
@@ -56,12 +58,16 @@ Experimental read-only host evidence inspection and explicit activation expectat
 No remediation or background service.
 .SH EXIT STATUS
 Inspect/service: 0 for available evidence, 1 for unavailable evidence, 2 for usage.
+Capture: 0 all sources available, 1 complete with unavailable sources, 2 usage.
 Investigation: 0 satisfied, 1 not satisfied, 3 indeterminate, 2 rejected invocation.
 EOF
 install -Dm644 docs/evidence-json.md "$stage/usr/share/doc/mira/evidence-json.md"
 install -Dm644 schemas/evidence-v1.schema.json "$stage/usr/share/mira/schemas/evidence-v1.schema.json"
 install -Dm644 schemas/investigation-v1.schema.json "$stage/usr/share/mira/schemas/investigation-v1.schema.json"
 install -Dm644 docs/investigations.md "$stage/usr/share/doc/mira/investigations.md"
+install -Dm644 schemas/evidence-v2.schema.json "$stage/usr/share/mira/schemas/evidence-v2.schema.json"
+install -Dm644 schemas/capture-v1.schema.json "$stage/usr/share/mira/schemas/capture-v1.schema.json"
+install -Dm644 docs/captures.md "$stage/usr/share/doc/mira/captures.md"
 # Derive versioned ABI dependencies from the native binary and distro metadata.
 printf 'Source: mira\nSection: admin\nPriority: optional\nMaintainer: MIRA Project <noreply@github.com>\n\nPackage: mira\nArchitecture: any\nDescription: Read-only Linux evidence CLI\n' > "$build_root/debian/control"
 depends="$(cd "$build_root" && dpkg-shlibdeps -O -edebian/mira/usr/bin/mira)"

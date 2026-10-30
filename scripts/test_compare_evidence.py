@@ -3,9 +3,10 @@ import json
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from jsonschema import Draft202012Validator
-from compare_evidence import compare, load, MAX_BYTES
+from compare_evidence import compare, load, strict_json, MAX_BYTES, MAX_DEPTH
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ROOT / "schemas/evidence-v1.schema.json").read_text())
@@ -86,6 +87,64 @@ class ComparisonTests(unittest.TestCase):
         result = compare({(a["source"], a["scope"]): a},
                          {(b["source"], b["scope"]): b})
         self.assertEqual([x["outcome"] for x in result["changes"]], ["added", "missing"])
+
+
+class AdmissionTests(unittest.TestCase):
+    def test_duplicate_keys_at_every_level_are_rejected_before_schema(self):
+        for data in [b'{"schema_version":999,"schema_version":1}',
+                     b'{"value":{"x":1,"x":2}}']:
+            with self.assertRaisesRegex(ValueError, "duplicate JSON key"):
+                strict_json(data)
+
+    def test_invalid_json_unicode_and_depth_are_refused(self):
+        for data in [b'{"x":NaN}', b'{"x":Infinity}', b'{"x":-Infinity}',
+                     b'{"x":1e999}', b'{"x":"\\ud800"}', b'\xff',
+                     b'[' * (MAX_DEPTH + 1) + b'0' + b']' * (MAX_DEPTH + 1)]:
+            with self.assertRaises((ValueError, UnicodeError)):
+                strict_json(data)
+        self.assertEqual(strict_json(b'{"x":"[\\\"quoted]"}'), {"x": '["quoted]'})
+
+    def test_empty_capture_is_not_a_successful_comparison(self):
+        with tempfile.TemporaryDirectory() as temp:
+            p = Path(temp) / "empty"
+            p.write_bytes(b" \n")
+            with self.assertRaisesRegex(ValueError, "empty capture"):
+                load(p, VALIDATOR)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO not supported")
+    def test_replacement_at_open_cannot_wait_for_a_fifo_writer(self):
+        with tempfile.TemporaryDirectory() as temp:
+            p = Path(temp) / "capture"
+            fifo = Path(temp) / "fifo"
+            p.write_text(json.dumps(record()))
+            os.mkfifo(fifo)
+            original = os.open
+            seen = []
+            def replace_then_open(path, flags, *args, **kwargs):
+                seen.append(flags)
+                os.replace(fifo, p)
+                return original(path, flags, *args, **kwargs)
+            with patch("compare_evidence.os.open", replace_then_open):
+                with self.assertRaisesRegex(ValueError, "regular file"):
+                    load(p, VALIDATOR)
+            self.assertEqual(len(seen), 1)
+            self.assertTrue(seen[0] & os.O_NONBLOCK)
+
+    def test_symlink_compatibility_and_growth_bound(self):
+        with tempfile.TemporaryDirectory() as temp:
+            p = Path(temp) / "capture"
+            link = Path(temp) / "link"
+            p.write_text(json.dumps(record()))
+            link.symlink_to(p)
+            self.assertEqual(load(link, VALIDATOR), load(p, VALIDATOR))
+            original = os.fstat
+            def grow(descriptor):
+                info = original(descriptor)
+                p.write_bytes(b"x" * (MAX_BYTES + 1))
+                return info
+            with patch("compare_evidence.os.fstat", grow):
+                with self.assertRaisesRegex(ValueError, "exceeds"):
+                    load(p, VALIDATOR)
 
 
 if __name__ == "__main__":

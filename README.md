@@ -4,7 +4,7 @@
 
 MIRA is a local-first Rust project for evidence-backed Linux diagnostics, security exposure analysis, and controlled human–AI cooperation. The goal is to help operators understand system state, choose proportionate actions and verify outcomes without granting AI implicit operational authority.
 
-**Status:** Early development. Implemented capabilities include bounded procfs and dpkg collection, explicitly selected systemd service observations, an opt-in activation investigation, timestamped evidence, versioned JSON Lines with a JSON Schema, an optional offline comparison utility and experimental CLI-only Debian packaging. A deterministic coordination fixture and in-memory replay verifier remain for research. It is not yet a functioning AIOps application, vulnerability scanner, adaptive UI or secure remote-operations controller.
+**Status:** Early development. Implemented capabilities include bounded procfs and dpkg collection, explicitly selected systemd service observations, an opt-in activation investigation, per-source timing, versioned JSON Lines and complete scoped captures with JSON Schemas, an optional offline comparison utility and experimental CLI-only Debian packaging. A deterministic coordination fixture and in-memory replay verifier remain for research. It is not yet a functioning AIOps application, vulnerability scanner, adaptive UI or secure remote-operations controller.
 
 ## Primary use case
 
@@ -26,7 +26,7 @@ cargo run --locked -- service ssh.service
 cargo run --locked -- investigate service-active ssh.service --json
 ```
 
-`inspect` reports memory, uptime, kernel release, CPU pressure and installed package count. `service UNIT.service` independently observes one explicitly named systemd service. Add `--json` for versioned JSON Lines; unavailable evidence remains explicit and returns exit code 1. Local timestamps are unverified, collection is non-atomic and freshness is unknown. Package metadata does not establish vulnerability exposure, and systemd state does not establish application health.
+`capture LABEL [--pressure]` emits a complete scoped JSON document with per-source timing/failure reasons; explicit `--pressure` adds memory and IO stalls. See [capture contracts](docs/captures.md). `inspect` reports memory, uptime, kernel release, CPU pressure and installed package count. `service UNIT.service` independently observes one explicitly named systemd service. Add `--json` for versioned JSON Lines; unavailable evidence remains explicit and returns exit code 1. Local timestamps are unverified, collection is non-atomic and freshness is unknown. Package metadata does not establish vulnerability exposure, and systemd state does not establish application health.
 
 The opt-in [service-active investigation](docs/investigations.md) evaluates an explicit activation expectation and preserves its evidence. Its satisfied/not-satisfied/indeterminate outcomes are separate from application health and root cause.
 
