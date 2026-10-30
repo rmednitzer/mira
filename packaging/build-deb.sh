@@ -31,4 +31,4 @@ Description: Read-only Linux infrastructure evidence CLI
 EOF
 find "$stage" -exec touch -h -d "@${SOURCE_DATE_EPOCH:-0}" {} +
 dpkg-deb --root-owner-group --build "$stage" "$out/mira_${version}-1_${arch}.deb"
-sha256sum "$out/mira_${version}-1_${arch}.deb" > "$out/mira_${version}-1_${arch}.deb.sha256"
+(cd "$out" && sha256sum "mira_${version}-1_${arch}.deb" > "mira_${version}-1_${arch}.deb.sha256")
