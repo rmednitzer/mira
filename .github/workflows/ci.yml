@@ -10,7 +10,7 @@ jobs:
         runner: [ubuntu-26.04, ubuntu-26.04-arm]
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.93.1 --profile minimal --component rustfmt --component clippy
       - run: cargo +1.93.1 fmt --all -- --check
