@@ -138,7 +138,11 @@ mod tests {
 
     #[test]
     fn malformed_status_cannot_become_installed_evidence() {
-        for status in ["bogus ok installed", "hold bogus installed", "install ok bogus"] {
+        for status in [
+            "bogus ok installed",
+            "hold bogus installed",
+            "install ok bogus",
+        ] {
             let input =
                 format!("Package: alpha\nVersion: 1\nArchitecture: all\nStatus: {status}\n");
             assert!(parse_status(&input).is_err());
