@@ -26,9 +26,27 @@ License: Apache-2.0
  On Debian systems the complete Apache License, Version 2.0,
  is available at /usr/share/common-licenses/Apache-2.0.
 EOF
-printf 'mira (%s-1) unstable; urgency=medium\\n\\n  * Experimental CLI-only package.\\n\\n -- MIRA Project <noreply@github.com>  Fri, 30 Oct 2026 12:00:00 +0000\\n' "$version" | gzip -n -9 > "$stage/usr/share/doc/mira/changelog.Debian.gz"
+cat <<EOF | gzip -n -9 > "$stage/usr/share/doc/mira/changelog.Debian.gz"
+mira (${version}-1) unstable; urgency=medium
+
+  * Experimental CLI-only package.
+
+ -- MIRA Project <noreply@github.com>  Fri, 30 Oct 2026 12:00:00 +0000
+EOF
 mkdir -p "$stage/usr/share/man/man1"
-printf '.TH MIRA 1 "2026-10-30" "MIRA" "User Commands"\\n.SH NAME\\nmira \\- read-only Linux evidence CLI\\n.SH SYNOPSIS\\n.B mira inspect [--json]\\n.br\\n.B mira service UNIT.service [--json]\\n.br\\n.B mira demo\\n.SH DESCRIPTION\\nExperimental read-only host evidence inspection. No remediation or background service.\\n' | gzip -n -9 > "$stage/usr/share/man/man1/mira.1.gz"
+cat <<'EOF' | gzip -n -9 > "$stage/usr/share/man/man1/mira.1.gz"
+.TH MIRA 1 "2026-10-30" "MIRA" "User Commands"
+.SH NAME
+mira \- read-only Linux evidence CLI
+.SH SYNOPSIS
+.B mira inspect [--json]
+.br
+.B mira service UNIT.service [--json]
+.br
+.B mira demo
+.SH DESCRIPTION
+Experimental read-only host evidence inspection. No remediation or background service.
+EOF
 install -Dm644 docs/evidence-json.md "$stage/usr/share/doc/mira/evidence-json.md"
 install -Dm644 schemas/evidence-v1.schema.json "$stage/usr/share/mira/schemas/evidence-v1.schema.json"
 mkdir -p "$stage/DEBIAN"
