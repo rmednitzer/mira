@@ -112,10 +112,13 @@ mod tests {
     #[test]
     fn selection_does_not_hide_currently_installed_packages() {
         for selection in ["install", "hold", "deinstall", "purge"] {
-            let input = format!("Package: alpha\nVersion: 1\nArchitecture: all\nStatus: {selection} ok installed\n");
+            let input = format!(
+                "Package: alpha\nVersion: 1\nArchitecture: all\nStatus: {selection} ok installed\n"
+            );
             assert_eq!(parse_status(&input).unwrap().len(), 1);
         }
-        let input = "Package: alpha\nVersion: 1\nArchitecture: all\nStatus: hold reinstreq installed\n";
+        let input =
+            "Package: alpha\nVersion: 1\nArchitecture: all\nStatus: hold reinstreq installed\n";
         assert_eq!(parse_status(input).unwrap().len(), 1);
     }
 
