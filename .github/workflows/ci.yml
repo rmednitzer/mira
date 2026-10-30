@@ -17,3 +17,9 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test --all-targets --locked
       - run: cargo build --release --locked
+      - name: Validate versioned evidence JSON contract
+        run: |
+          python3 -m venv .schema-venv
+          .schema-venv/bin/python -m pip install --disable-pip-version-check jsonschema==4.25.1
+          cargo build --locked
+          .schema-venv/bin/python scripts/validate_evidence_schema.py
