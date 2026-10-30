@@ -2,7 +2,7 @@
 //!
 //! A snapshot is a sequence of file observations, not an atomic host state.
 //! Wall-clock values are informational and do not establish trusted provenance.
-use crate::{host_extra, linux};
+use crate::{host_extra, linux, packages, systemd};
 use std::{
     io,
     path::Path,
@@ -26,7 +26,7 @@ pub struct Evidence<T> {
 }
 
 impl<T> Evidence<T> {
-    fn from_result(source: &'static str, result: io::Result<T>, at: Option<u128>) -> Self {
+    pub fn from_result(source: &'static str, result: io::Result<T>, at: Option<u128>) -> Self {
         let status = match result {
             Ok(value) => EvidenceStatus::Observed(value),
             Err(error) => EvidenceStatus::Unavailable {
@@ -88,6 +88,39 @@ pub fn collect(proc_root: &Path) -> Snapshot {
             timestamp(),
         ),
     }
+}
+
+/// Read-only observations from a single, explicitly selected operational scope.
+/// A package database is not a vulnerability verdict; a service state is not health assurance.
+#[derive(Debug)]
+pub struct OperationalSnapshot {
+    pub packages: Evidence<Vec<packages::Package>>,
+    pub service: Option<Evidence<systemd::ServiceState>>,
+}
+
+impl OperationalSnapshot {
+    pub fn complete(&self) -> bool {
+        self.packages.is_available()
+            && self.service.as_ref().is_none_or(Evidence::is_available)
+    }
+}
+
+/// The status path is injectable for offline tests. Service queries are optional,
+/// explicit and bounded by the systemd collector; no automatic unit discovery.
+pub fn collect_operations(status_path: &Path, unit: Option<&str>) -> OperationalSnapshot {
+    let packages = Evidence::from_result(
+        "/var/lib/dpkg/status",
+        packages::collect(status_path),
+        timestamp(),
+    );
+    let service = unit.map(|name| {
+        Evidence::from_result(
+            "systemd/system",
+            systemd::inspect(name),
+            timestamp(),
+        )
+    });
+    OperationalSnapshot { packages, service }
 }
 
 #[cfg(test)]
