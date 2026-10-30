@@ -35,7 +35,21 @@ fn finish_entry(
     let name = name.ok_or_else(|| invalid("missing package name"))?;
     let status = status.ok_or_else(|| invalid("missing package status"))?;
     let status_fields: Vec<_> = status.split_whitespace().collect();
-    if status_fields.len() != 3 {
+    if status_fields.len() != 3
+        || !["unknown", "install", "hold", "deinstall", "purge"].contains(&status_fields[0])
+        || !["ok", "reinstreq"].contains(&status_fields[1])
+        || ![
+            "not-installed",
+            "config-files",
+            "half-installed",
+            "unpacked",
+            "half-configured",
+            "triggers-awaited",
+            "triggers-pending",
+            "installed",
+        ]
+        .contains(&status_fields[2])
+    {
         return Err(invalid("invalid package status"));
     }
     // Selection and error flags must not hide installed package provenance.
@@ -120,6 +134,15 @@ mod tests {
         let input =
             "Package: alpha\nVersion: 1\nArchitecture: all\nStatus: hold reinstreq installed\n";
         assert_eq!(parse_status(input).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn malformed_status_cannot_become_installed_evidence() {
+        for status in ["bogus ok installed", "hold bogus installed", "install ok bogus"] {
+            let input =
+                format!("Package: alpha\nVersion: 1\nArchitecture: all\nStatus: {status}\n");
+            assert!(parse_status(&input).is_err());
+        }
     }
 
     #[test]
