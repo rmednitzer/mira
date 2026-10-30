@@ -49,6 +49,12 @@ Experimental read-only host evidence inspection. No remediation or background se
 EOF
 install -Dm644 docs/evidence-json.md "$stage/usr/share/doc/mira/evidence-json.md"
 install -Dm644 schemas/evidence-v1.schema.json "$stage/usr/share/mira/schemas/evidence-v1.schema.json"
+# Derive versioned ABI dependencies from the native binary and distro metadata.
+mkdir -p "$stage/debian"
+printf 'Source: mira\nSection: admin\nPriority: optional\nMaintainer: MIRA Project <noreply@github.com>\n\nPackage: mira\nArchitecture: any\nDescription: Read-only Linux evidence CLI\n' > "$stage/debian/control"
+depends="$(cd "$stage" && dpkg-shlibdeps -O -eusr/bin/mira)"
+case "$depends" in shlibs:Depends=?*) depends="${depends#shlibs:Depends=}" ;; *) echo "missing ELF dependency metadata" >&2; exit 2 ;; esac
+rm -r "$stage/debian"
 mkdir -p "$stage/DEBIAN"
 cat >"$stage/DEBIAN/control" <<EOF
 Package: mira
@@ -57,13 +63,13 @@ Architecture: $arch
 Maintainer: MIRA Project <noreply@github.com>
 Section: admin
 Priority: optional
-Depends: libc6, libgcc-s1
+Depends: $depends
 Homepage: https://github.com/rmednitzer/mira
 Description: Read-only Linux infrastructure evidence CLI
  Local-first experimental Linux inspection and structured evidence reporting.
  No background service or automatic remediation is installed.
 EOF
-SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}"
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}"
 find "$stage" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
 dpkg-deb --root-owner-group --build "$stage" "$out/mira_${version}-1_${arch}.deb"
 (cd "$out" && sha256sum "mira_${version}-1_${arch}.deb" > "mira_${version}-1_${arch}.deb.sha256")

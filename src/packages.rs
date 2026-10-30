@@ -29,20 +29,24 @@ fn finish_entry(
     output: &mut Vec<Package>,
 ) -> io::Result<()> {
     let (name, version, architecture, status) = std::mem::take(fields);
-    match (name, version, architecture, status) {
-        (None, None, None, None) => Ok(()),
-        (Some(name), Some(version), Some(architecture), Some(status)) => {
-            if status == "install ok installed" {
-                output.push(Package {
-                    name,
-                    version,
-                    architecture,
-                });
-            }
-            Ok(())
-        }
-        _ => Err(invalid("incomplete package record")),
+    if name.is_none() && version.is_none() && architecture.is_none() && status.is_none() {
+        return Ok(());
     }
+    let name = name.ok_or_else(|| invalid("missing package name"))?;
+    let status = status.ok_or_else(|| invalid("missing package status"))?;
+    let status_fields: Vec<_> = status.split_whitespace().collect();
+    if status_fields.len() != 3 {
+        return Err(invalid("invalid package status"));
+    }
+    // Selection and error flags must not hide installed package provenance.
+    if status_fields[2] == "installed" {
+        output.push(Package {
+            name,
+            version: version.ok_or_else(|| invalid("missing installed version"))?,
+            architecture: architecture.ok_or_else(|| invalid("missing installed architecture"))?,
+        });
+    }
+    Ok(())
 }
 
 pub fn parse_status(input: &str) -> io::Result<Vec<Package>> {
@@ -103,6 +107,24 @@ mod tests {
         assert_eq!(packages.len(), 1);
         assert_eq!(packages[0].name, "alpha");
         assert_eq!(packages[0].version, "1.2-3ubuntu1");
+    }
+
+    #[test]
+    fn selection_does_not_hide_currently_installed_packages() {
+        for selection in ["install", "hold", "deinstall", "purge"] {
+            let input = format!("Package: alpha\nVersion: 1\nArchitecture: all\nStatus: {selection} ok installed\n");
+            assert_eq!(parse_status(&input).unwrap().len(), 1);
+        }
+        let input = "Package: alpha\nVersion: 1\nArchitecture: all\nStatus: hold reinstreq installed\n";
+        assert_eq!(parse_status(input).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn sparse_noninstalled_records_do_not_hide_installed_packages() {
+        let input = "Package: removed\nStatus: purge ok not-installed\n\nPackage: alpha\nStatus: hold ok installed\nArchitecture: all\nVersion: 1\n";
+        let packages = parse_status(input).unwrap();
+        assert_eq!(packages.len(), 1);
+        assert_eq!(packages[0].name, "alpha");
     }
 
     #[test]
