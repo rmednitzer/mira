@@ -7,6 +7,7 @@ pub mod experiment;
 pub mod host_extra;
 pub mod investigation;
 pub mod linux;
+pub mod memory_investigation;
 pub mod packages;
 pub mod systemd;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

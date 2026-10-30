@@ -11,3 +11,5 @@ Consumers must validate schema version, source and scope and must not infer host
 The separate [complete capture format](captures.md) uses evidence-v2 records with elapsed timing and fixed failure reasons. Existing JSON Lines v1 is unchanged. Strict offline admission rejects ambiguous JSON before schema validation.
 
 The opt-in [investigation report](investigations.md) has a separate version/schema and embeds one unchanged evidence-v1 record. It is not an evidence JSONL record and is not accepted by the history comparator. Assessment outcomes are expectations over the embedded observation, not additional observed facts.
+
+The separate [memory-headroom report](memory-investigation.md) embeds one unchanged memory evidence-v1 record and an explicit criterion. It has a dedicated schema and is not an evidence capture or a service investigation report.

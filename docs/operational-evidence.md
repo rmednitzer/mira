@@ -15,3 +15,5 @@ This is an observation API, not vulnerability determination or application-healt
 
 ## Remaining
 JSON Lines v1 and its JSON Schema are implemented; exported errors use kind labels without raw OS messages. Native Ubuntu CI includes one unprivileged live systemd comparison. Independent freshness verification, authenticated source identity, representative fleet validation and package advisory correlation remain future work. See [JSON contract](evidence-json.md) and [validation](testing.md).
+
+The [memory-headroom investigation](memory-investigation.md) reads only meminfo and assesses an explicit minimum. It neither requires nor adds package/service queries.

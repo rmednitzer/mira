@@ -1,0 +1,610 @@
+{
+  "valid": [
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 50
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 49
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 51
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 1
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 0
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 101
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 18446744073709551615
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 18446744073709551615,
+          "available_kib": 18446744073709551615
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 50
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "PermissionDenied"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 0
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": -1
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 1.5
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 18446744073709551616
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "another-host",
+      "expectation": {
+        "minimum_available_kib": 50
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 50
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 50
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "healthy",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 50
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 50
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": "local/procfs",
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 50
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 50
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "PermissionDenied"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 1
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 1,
+          "available_kib": 2
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 50
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 18446744073709551616,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "memory-headroom/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_available_kib": 50,
+        "command": "allocate"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "total_kib": 100,
+          "available_kib": 50
+        },
+        "error_kind": null
+      }
+    }
+  ]
+}

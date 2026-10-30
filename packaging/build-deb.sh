@@ -52,6 +52,8 @@ mira \- read-only Linux evidence CLI
 .br
 .B mira investigate service-active UNIT.service [--json]
 .br
+.B mira investigate memory-headroom --min-available-kib N [--json]
+.br
 .B mira demo
 .SH DESCRIPTION
 Experimental read-only host evidence inspection and explicit activation expectations.
@@ -59,7 +61,7 @@ No remediation or background service.
 .SH EXIT STATUS
 Inspect/service: 0 for available evidence, 1 for unavailable evidence, 2 for usage.
 Capture: 0 all sources available, 1 complete with unavailable sources, 2 usage.
-Investigation: 0 satisfied, 1 not satisfied, 3 indeterminate, 2 rejected invocation.
+Investigations (service-active and memory-headroom): 0 satisfied, 1 not satisfied, 3 indeterminate, 2 rejected invocation.
 EOF
 install -Dm644 docs/evidence-json.md "$stage/usr/share/doc/mira/evidence-json.md"
 install -Dm644 schemas/evidence-v1.schema.json "$stage/usr/share/mira/schemas/evidence-v1.schema.json"
@@ -68,6 +70,8 @@ install -Dm644 docs/investigations.md "$stage/usr/share/doc/mira/investigations.
 install -Dm644 schemas/evidence-v2.schema.json "$stage/usr/share/mira/schemas/evidence-v2.schema.json"
 install -Dm644 schemas/capture-v1.schema.json "$stage/usr/share/mira/schemas/capture-v1.schema.json"
 install -Dm644 docs/captures.md "$stage/usr/share/doc/mira/captures.md"
+install -Dm644 schemas/memory-headroom-v1.schema.json "$stage/usr/share/mira/schemas/memory-headroom-v1.schema.json"
+install -Dm644 docs/memory-investigation.md "$stage/usr/share/doc/mira/memory-investigation.md"
 # Derive versioned ABI dependencies from the native binary and distro metadata.
 printf 'Source: mira\nSection: admin\nPriority: optional\nMaintainer: MIRA Project <noreply@github.com>\n\nPackage: mira\nArchitecture: any\nDescription: Read-only Linux evidence CLI\n' > "$build_root/debian/control"
 depends="$(cd "$build_root" && dpkg-shlibdeps -O -edebian/mira/usr/bin/mira)"

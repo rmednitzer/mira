@@ -1,6 +1,6 @@
 # Threat model — MIRA
 
-> Scope (2026-10-30): implemented local Linux evidence collection, a closed activation-expectation template, serialization/comparison, native tests and experimental CLI packaging. The retained simulation has separate authority/control limitations below. Future natural-language intent, AI, UI, remote and write adapters require a new review; this document does not certify the proposed full operations product.
+> Scope (2026-10-30): implemented local Linux evidence collection, closed activation and explicit memory-expectation templates, serialization/comparison, native tests and experimental CLI packaging. The retained simulation has separate authority/control limitations below. Future natural-language intent, AI, UI, remote and write adapters require a new review; this document does not certify the proposed full operations product.
 
 ## Linux operations boundaries
 
@@ -49,6 +49,10 @@ Offline import opens nonblocking before descriptor validation, preserving symlin
 A closed enum selects service-active/v1 and validates one service scope before dispatch. It uses the existing systemctl query and no additional verb. The report binds the requested scope to its embedded evidence and a local evidence pointer. The pointer and enum are not authenticated provenance or an OS sandbox. A single assessment enum determines outcome and fixed reason, so unavailable/transitioning/unsupported states cannot silently become success. LoadState remains orthogonal to activation. Neither a satisfied condition nor schema validity grants mutation, proves application health or identifies a root cause.
 
 New report/schema consumers must preserve that distinction and reject unsupported versions. Existing evidence-v1 output remains separate. Errors expose no arbitrary backend message in reports; human state strings are escaped. The [decision record](adr/0001-read-only-service-investigation.md) records alternatives, scope, rollback and the state-table/alias/error validation. Generic command classification, audit chains, durable stores and background supervision remain outside this increment.
+
+### Explicit memory expectation
+
+memory-headroom/v1 admits only a positive ASCII integer KiB criterion of at most 20 digits fitting u64. It reads only the existing bounded meminfo source. A private report binds criterion, observation and derived outcome; no model, network, new file source, command or authority is introduced. Missing/malformed evidence stays indeterminate. MemAvailable is a changing kernel estimate, not workload/cgroup capacity, application health, allocation assurance or a remediation trigger. The local/procfs scope is not authenticated identity. A separate schema preserves existing service/evidence/capture contracts. See [ADR 0005](adr/0005-explicit-memory-headroom.md).
 
 ### Planned platform observation boundary
 
