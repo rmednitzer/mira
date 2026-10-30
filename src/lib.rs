@@ -1,5 +1,7 @@
 //! MIRA: deterministic offline human-autonomy coordination.
 //! This is an experimental simulator, not an authenticated or safety-certified controller.
+
+pub mod experiment;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Position {
     pub x: i32,
