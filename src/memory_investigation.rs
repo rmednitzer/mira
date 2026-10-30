@@ -100,7 +100,19 @@ mod tests {
 
     #[test]
     fn criteria_are_exact_positive_ascii_integers() {
-        for invalid in ["", "0", "-1", "+1", "1.0", "1e3", " 1", "1 ", "١", "18446744073709551616", "000000000000000000001"] {
+        for invalid in [
+            "",
+            "0",
+            "-1",
+            "+1",
+            "1.0",
+            "1e3",
+            " 1",
+            "1 ",
+            "١",
+            "18446744073709551616",
+            "000000000000000000001",
+        ] {
             assert!(parse_minimum(invalid).is_err(), "{invalid}");
         }
         assert_eq!(parse_minimum("0001").unwrap(), 1);
