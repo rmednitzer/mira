@@ -17,7 +17,10 @@ fn inspect() {
     println!("MIRA Linux host evidence (read-only; no security conclusions)");
     let mut incomplete = false;
     match report.memory.result {
-        Ok(m) => println!("{}: MemTotal={} KiB MemAvailable={} KiB", report.memory.source, m.total_kib, m.available_kib),
+        Ok(m) => println!(
+            "{}: MemTotal={} KiB MemAvailable={} KiB",
+            report.memory.source, m.total_kib, m.available_kib
+        ),
         Err(e) => {
             incomplete = true;
             println!("{}: unknown ({e})", report.memory.source);
