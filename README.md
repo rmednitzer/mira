@@ -24,7 +24,7 @@ cargo run --locked -- inspect
 cargo run --locked -- demo
 ```
 
-The `inspect` command prints a bounded read-only report from `/proc/meminfo` and `/proc/uptime`. Missing or invalid sources are shown as unknown; exit code 1 indicates incomplete evidence. The `demo` subcommand retains the original grid control fixture. There is no privileged collector daemon, network service, external model call, or automated remediation.
+The `inspect` command prints source-aware observations with wall-clock recording timestamps and explicit unknown/error states. See [host evidence contract](docs/host-evidence.md). It prints a bounded read-only report from `/proc/meminfo` and `/proc/uptime`. Missing or invalid sources are shown as unknown; exit code 1 indicates incomplete evidence. The `demo` subcommand retains the original grid control fixture. There is no privileged collector daemon, network service, external model call, or automated remediation.
 
 ## Security and sovereignty
 
