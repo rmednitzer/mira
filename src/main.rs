@@ -7,9 +7,13 @@ fn main() {
         [_, command, format] if command == "inspect" && format == "--json" => inspect_json(),
         [_, command] if command == "demo" => demo(),
         [_, command, unit] if command == "service" => service(unit),
-        [_, command, unit, format] if command == "service" && format == "--json" => service_json(unit),
+        [_, command, unit, format] if command == "service" && format == "--json" => {
+            service_json(unit)
+        }
         _ => {
-            eprintln!("Usage: mira inspect [--json] | mira demo | mira service UNIT.service [--json]");
+            eprintln!(
+                "Usage: mira inspect [--json] | mira demo | mira service UNIT.service [--json]"
+            );
             std::process::exit(2);
         }
     }
@@ -113,7 +117,10 @@ fn inspect_json() {
 
 fn service_json(unit: &str) {
     let observation = mira::evidence::collect_service(unit);
-    println!("{}", mira::evidence_json::service_record(unit, &observation));
+    println!(
+        "{}",
+        mira::evidence_json::service_record(unit, &observation)
+    );
     if !observation.is_available() {
         std::process::exit(1);
     }
