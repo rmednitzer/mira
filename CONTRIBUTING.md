@@ -15,4 +15,6 @@ The native subprocess suite needs `test-support`; normal builds and core tests d
 
 Use a PR for material changes. Inspect Codex code/security reviews and all inline threads on the final head before merging. Resolve valid findings with regression evidence; explain findings that do not apply. Keep source, architecture, requirements and roadmap aligned; distinguish implemented behavior from planned capability and observed CI from real-host assurance. Do not weaken checks to obtain a green build.
 
+For capture changes, follow [ADR 0002](docs/adr/0002-complete-captures-and-admission.md), preserve v1 compatibility and validate exact source coverage, completion/availability separation and operator-asserted scope. The authored availability matrix and strict decoder negatives must pass.
+
 For investigation changes, preserve evidence/assessment separation, template version and scope, and fixed failure codes. Validate the independent report schema and semantic fixtures as well as the native CLI. Follow the [service investigation decision](docs/adr/0001-read-only-service-investigation.md); additional infrastructure mechanisms require an actual MIRA requirement and a separate decision.

@@ -10,13 +10,17 @@ The mission, source boundaries and read-only collection foundation exist. Procfs
 
 Available: host memory/uptime/kernel/CPU-pressure observations, installed package metadata, selected service state, explicit provenance/unknown states, native CLI reports and one opt-in service-active investigation with a separate expectation assessment and preserved evidence. Native CI includes synthetic subprocess regressions and one unprivileged live systemd comparison.
 
-Remaining: authenticated or explicitly scoped host identity, freshness policy, representative real-host validation, bounded journal/IO-pressure sources where justified, and broader read-only investigation templates. The existing activation template does not establish a general diagnostic workflow. Exit: a representative Ubuntu 26.04 investigation works without elevation, external inference or system mutation, with reproducible fixtures and explicit evidence gaps. One CI service does not satisfy this exit condition.
+Complete capture-v1 profiles add operator-asserted labels, per-source timing/reasons and opt-in memory/IO PSI; labels are not authentication.
+
+Remaining: authenticated host identity, freshness policy, representative real-host validation, bounded journal sources where justified, and broader read-only investigation templates. The existing activation template does not establish a general diagnostic workflow. Exit: a representative Ubuntu 26.04 investigation works without elevation, external inference or system mutation, with reproducible fixtures and explicit evidence gaps. One CI service does not satisfy this exit condition.
 
 ### Packaging and test foundation
 
 CLI-only Debian packaging has archive inspection, isolated install/reinstall/remove/purge, lintian, versioned ABI dependencies and repeatable assembly under different invoking umasks. Native subprocess fixtures use opt-in Cargo test support; Python remains separate schema/history tooling.
 
-Next release gates: clean-system dependency resolution, genuine version-to-version upgrades/downgrades, independent reproducible compilations and signed provenance. Optional hardened collector units remain a separate design requiring justified unattended collection, bounded output/retention, verified sandbox/IPC access and explicit operator activation. No daemon or unit is installed now.
+Native CI also checks apt dependency resolution and installed bytes/contracts in disposable Ubuntu containers, with source/artifact/image-bound receipts.
+
+Next release gates: clean physical-host qualification, genuine version-to-version upgrades/downgrades, independent reproducible compilations and signed provenance. Optional hardened collector units remain a separate design requiring justified unattended collection, bounded output/retention, verified sandbox/IPC access and explicit operator activation. No daemon or unit is installed now.
 
 ## Phase 2 — security exposure and evidence correlation
 

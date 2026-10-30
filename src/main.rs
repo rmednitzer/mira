@@ -3,6 +3,8 @@ use mira::{Actor, Engine, Mode, Move, Outcome, Proposal, demo_scenario};
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.as_slice() {
+        [_, command, label] if command == "capture" => capture(label, false),
+        [_, command, label, option] if command == "capture" && option == "--pressure" => capture(label, true),
         [_, command] if command == "inspect" => inspect(),
         [_, command, format] if command == "inspect" && format == "--json" => inspect_json(),
         [_, command, template, unit] if command == "investigate" => {
@@ -18,7 +20,7 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "Usage: mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active UNIT.service [--json]"
+                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active UNIT.service [--json]"
             );
             std::process::exit(2);
         }
@@ -40,9 +42,9 @@ fn inspect() {
                     entry.source, value
                 );
             }
-            EvidenceStatus::Unavailable { kind, message } => {
+            EvidenceStatus::Unavailable { kind, message, .. } => {
                 println!(
-                    "{}: unknown ({kind:?}: {message}) recorded_unix_ms={timestamp}",
+                    "{}: unknown ({kind:?}: {message:?}) recorded_unix_ms={timestamp}",
                     entry.source
                 );
             }
@@ -60,8 +62,8 @@ fn inspect() {
             installed.len(),
             packages.collected_unix_ms
         ),
-        EvidenceStatus::Unavailable { kind, message } => println!(
-            "{}: unknown ({kind:?}: {message}) recorded_unix_ms={:?}",
+        EvidenceStatus::Unavailable { kind, message, .. } => println!(
+            "{}: unknown ({kind:?}: {message:?}) recorded_unix_ms={:?}",
             packages.source, packages.collected_unix_ms
         ),
     }
@@ -103,8 +105,8 @@ fn service(unit: &str) {
             state.sub_state,
             observation.collected_unix_ms
         ),
-        EvidenceStatus::Unavailable { kind, message } => {
-            eprintln!("{}: unknown ({kind:?}: {message})", observation.source);
+        EvidenceStatus::Unavailable { kind, message, .. } => {
+            eprintln!("{}: unknown ({kind:?}: {message:?})", observation.source);
             std::process::exit(1);
         }
     }
@@ -170,4 +172,15 @@ fn investigate(name: &str, unit: &str, json: bool) {
         println!("Reported activation only; application health and root cause are not assessed.");
     }
     std::process::exit(report.assessment().outcome().exit_code());
+}
+
+fn capture(label: &str, pressure: bool) {
+    use mira::capture::{self, Profile};
+    let profile = if pressure { Profile::HostPressure } else { Profile::Host };
+    let report = match capture::collect(label, profile, std::path::Path::new("/proc"), std::path::Path::new("/var/lib/dpkg/status")) {
+        Ok(report) => report,
+        Err(_) => { eprintln!("MIRA: invalid capture label"); std::process::exit(2); }
+    };
+    println!("{}", report.to_json());
+    if !report.all_available() { std::process::exit(1); }
 }

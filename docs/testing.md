@@ -4,7 +4,7 @@
 
 The Rust CLI has no external Rust crate dependencies. Normal builds and the CLI-only Debian package require no Python. The non-default `test-support` Cargo feature admits only a native subprocess fixture binary; it adds no runtime capability to MIRA. The package installs only `mira`, never the fixture.
 
-Python and `jsonschema` are separate developer tooling for independent JSON Schema validation and the optional offline history-comparison script. They are not CLI runtime dependencies. The direct validator version is pinned in CI; transitive Python dependencies are not yet hash-locked. Investigation validation reuses its existing referencing dependency to register the local evidence schema without network retrieval.
+Python and `jsonschema` are separate developer tooling for independent JSON Schema validation and the optional offline history-comparison script. They are not CLI runtime dependencies. The direct validator version is pinned in CI; transitive Python dependencies are not yet hash-locked. Capture and investigation validation reuse its existing referencing dependency to register the local evidence schema without network retrieval.
 
 ## Rust checks
 
@@ -33,15 +33,16 @@ cargo build --locked
 .schema-venv/bin/python scripts/validate_evidence_schema.py
 .schema-venv/bin/python scripts/test_compare_evidence.py
 .schema-venv/bin/python scripts/validate_investigation_schema.py
+.schema-venv/bin/python scripts/validate_capture_schema.py
 ```
 
 On an unprivileged Ubuntu 26.04 host with a system bus and `systemd-journald.service`, add `--live-systemd` to both evidence and investigation validators. CI requires this live comparison on both native architectures; local synthetic checks do not require systemd. Direct state is sampled before and after MIRA; changing fixture state makes the comparison inconclusive and fails the check. This validates one host service, not application health or fleet-wide compatibility.
 
 ## Packaging checks
 
-Native Ubuntu 26.04 amd64/arm64 CI builds and inspects the package, checks checksums, executes the extracted CLI, exercises isolated dpkg install/reinstall/remove/purge, and runs lintian. It checks both evidence/investigation schemas and the investigation guide, rejects systemd units, maintainer scripts and the native test helper in the package, and asserts package-root/document permissions.
+Native Ubuntu 26.04 amd64/arm64 CI builds and inspects the package, checks checksums, executes the extracted CLI, exercises isolated dpkg install/reinstall/remove/purge, and runs lintian. It checks evidence-v1/v2, investigation-v1 and capture-v1 schemas and their packaged guides, rejects systemd units, maintainer scripts and the native test helper in the package, and asserts package-root/document permissions.
 
-Repeated assembly compares the same binary under ordinary and restrictive (`077`) invoking umasks. The builder normalizes its own umask to `022`; source timestamps use exported `SOURCE_DATE_EPOCH`. This verifies archive assembly under those conditions, not independently reproducible compilation. The isolated dpkg root bypasses dependency enforcement; clean-system dependency resolution, genuine upgrades/downgrades and signed release provenance remain release gates.
+Repeated assembly compares the same binary under ordinary and restrictive (`077`) invoking umasks. The builder normalizes its own umask to `022`; source timestamps use exported `SOURCE_DATE_EPOCH`. This verifies archive assembly under those conditions, not independently reproducible compilation. The isolated dpkg root bypasses dependency enforcement. A separate native disposable Ubuntu 26.04 container installs the exact package through apt without bypassing dependencies, checks installed binary bytes and runs the installed demo/capture contract. Its receipt binds source commit/tree, package/binary digests and container image identity. This is container loader/dependency evidence; clean physical-host behavior, genuine upgrades/downgrades and signed release provenance remain release gates.
 
 ## Review and CI
 
@@ -56,3 +57,11 @@ CI runs on PRs and pushes to `main`, avoiding duplicate branch-push builds. New 
 ## Investigation-specific acceptance
 
 The [decision record](adr/0001-read-only-service-investigation.md) precedes the implementation. Native unit and CLI fixtures cover the supported state table and negative paths; `tests/fixtures/investigation-v1.json` contains independent valid and deliberately invalid reports. Its validator checks structure, source/scope identity, evidence binding, assessment semantics and exit-code agreement. Unknown/error/transient cases cannot become satisfied results. Existing evidence-v1 compatibility is checked separately. The live sample compares both embedded state and assessment with stable direct systemctl observations, not application health.
+
+## Capture acceptance and authored matrix
+
+`tests/capture.rs` freezes eight source/availability cases before execution: complete host, complete pressure, malformed memory, malformed uptime, missing CPU PSI, missing memory PSI, malformed IO PSI and unavailable optional IO outside the host profile. Results come from the actual collectors. `tests/fixtures/capture-v1.json` supplies nine valid and nineteen invalid independent documents for structural and semantic admission. These authored synthetic cases are not a representative fleet benchmark.
+
+The comparator suite covers duplicate keys at nested levels, nonfinite/overflow numbers, invalid Unicode, excess depth, empty input, FIFO replacement at open, symlink compatibility and files growing after descriptor inspection. The actual CLI capture is checked independently for exact sources, exit status, scope binding, mixed-format refusal and preserved completion. Schemas do not establish source authenticity.
+
+Run `bash packaging/test-clean-install.sh dist/mira_VERSION_ARCH.deb dist/clean-install-receipt.json` only with Docker, the schema venv and a clean committed checkout. It pulls a native Ubuntu 26.04 image, records its immutable identity, uses apt repositories for real dependency resolution and removes the container. The receipt must be a new file. It contains no captured host values, credentials or user identities. It is an unsigned integrity/test receipt, not independent provenance or a release attestation. No retained distinct-version release baseline is available in this foundation; same-version reinstall must not be relabeled as upgrade qualification.

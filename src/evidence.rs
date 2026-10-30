@@ -2,11 +2,11 @@
 //!
 //! A snapshot is a sequence of file observations, not an atomic host state.
 //! Wall-clock values are informational and do not establish trusted provenance.
-use crate::{host_extra, linux, packages, systemd};
+use crate::{collector::FailureReason, host_extra, linux, packages, systemd};
 use std::{
     io,
     path::Path,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +15,7 @@ pub enum EvidenceStatus<T> {
     Unavailable {
         kind: io::ErrorKind,
         message: String,
+        reason: FailureReason,
     },
 }
 
@@ -22,6 +23,7 @@ pub enum EvidenceStatus<T> {
 pub struct Evidence<T> {
     pub source: &'static str,
     pub collected_unix_ms: Option<u128>,
+    pub elapsed_ms: Option<u128>,
     pub status: EvidenceStatus<T>,
 }
 
@@ -30,6 +32,7 @@ impl<T> Evidence<T> {
         let status = match result {
             Ok(value) => EvidenceStatus::Observed(value),
             Err(error) => EvidenceStatus::Unavailable {
+                reason: FailureReason::from_error(&error),
                 kind: error.kind(),
                 message: error.to_string(),
             },
@@ -37,6 +40,7 @@ impl<T> Evidence<T> {
         Self {
             source,
             collected_unix_ms: at,
+            elapsed_ms: None,
             status,
         }
     }
@@ -72,21 +76,11 @@ fn timestamp() -> Option<u128> {
 /// Reads only the four registered procfs sources, without executing commands.
 /// An injectable root supports isolated fixture tests. The root is not a security boundary.
 pub fn collect(proc_root: &Path) -> Snapshot {
-    let base = linux::report(proc_root);
-    let extra = host_extra::inspect(proc_root);
     Snapshot {
-        memory: Evidence::from_result(base.memory.source, base.memory.result, timestamp()),
-        uptime: Evidence::from_result(base.uptime.source, base.uptime.result, timestamp()),
-        kernel_release: Evidence::from_result(
-            extra.kernel_release.source,
-            extra.kernel_release.result,
-            timestamp(),
-        ),
-        cpu_pressure: Evidence::from_result(
-            extra.cpu_pressure.source,
-            extra.cpu_pressure.result,
-            timestamp(),
-        ),
+        memory: observe("/proc/meminfo", || linux::memory(proc_root)),
+        uptime: observe("/proc/uptime", || linux::uptime(proc_root)),
+        kernel_release: observe("/proc/sys/kernel/osrelease", || host_extra::kernel_release(proc_root)),
+        cpu_pressure: observe("/proc/pressure/cpu", || host_extra::pressure(proc_root, host_extra::PressureResource::Cpu)),
     }
 }
 
@@ -106,16 +100,12 @@ impl OperationalSnapshot {
 
 /// Capture package database provenance without requiring a service query.
 pub fn collect_packages(status_path: &Path) -> Evidence<Vec<packages::Package>> {
-    Evidence::from_result(
-        "/var/lib/dpkg/status",
-        packages::collect(status_path),
-        timestamp(),
-    )
+    observe("/var/lib/dpkg/status", || packages::collect(status_path))
 }
 
 /// Capture one selected system service without requiring package database access.
 pub fn collect_service(unit: &str) -> Evidence<systemd::ServiceState> {
-    Evidence::from_result("systemd/system", systemd::inspect(unit), timestamp())
+    observe("systemd/system", || systemd::inspect(unit))
 }
 
 /// The status path is injectable for offline tests. Service queries are optional,
@@ -151,5 +141,42 @@ mod tests {
         );
         assert!(!bad.is_available());
         assert_eq!(bad.collected_unix_ms, None);
+    }
+}
+
+/// The wall-clock completion and monotonic duration surround only this acquisition.
+/// Duration is informational, not a deadline or a trusted freshness assertion.
+pub fn observe<T>(source: &'static str, collect: impl FnOnce() -> io::Result<T>) -> Evidence<T> {
+    let start = Instant::now();
+    let result = collect();
+    let at = timestamp();
+    let elapsed_ms = start.elapsed().as_millis();
+    let mut observation = Evidence::from_result(source, result, at);
+    observation.elapsed_ms = Some(elapsed_ms);
+    observation
+}
+
+#[cfg(test)]
+mod acquisition_tests {
+    use super::*;
+    #[test]
+    fn measured_success_and_typed_failures_preserve_metadata() {
+        let observation = observe("fixture", || Ok(7));
+        assert_eq!(observation.status, EvidenceStatus::Observed(7));
+        assert!(observation.elapsed_ms.is_some());
+        assert!(observation.collected_unix_ms.is_some());
+        for (error, expected) in [
+            (crate::collector::limit_exceeded(), FailureReason::LimitExceeded),
+            (crate::collector::backend_failed(), FailureReason::BackendFailed),
+            (io::Error::new(io::ErrorKind::TimedOut, "private"), FailureReason::Timeout),
+            (io::Error::new(io::ErrorKind::PermissionDenied, "private"), FailureReason::PermissionDenied),
+            (io::Error::new(io::ErrorKind::NotFound, "private"), FailureReason::NotFound),
+            (io::Error::new(io::ErrorKind::InvalidData, "private"), FailureReason::MalformedData),
+            (io::Error::other("private"), FailureReason::IoFailure),
+        ] {
+            let observation = observe::<u64>("fixture", || Err(error));
+            assert!(observation.elapsed_ms.is_some());
+            assert!(matches!(observation.status, EvidenceStatus::Unavailable { reason, .. } if reason == expected));
+        }
     }
 }

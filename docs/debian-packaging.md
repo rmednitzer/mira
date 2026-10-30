@@ -1,10 +1,10 @@
 # Debian package foundation (experimental)
 
-`packaging/build-deb.sh` stages the already compiled release binary into a CLI-only Debian package. It installs `/usr/bin/mira`, the Apache-2.0 license, evidence/investigation documentation and both versioned schemas. It includes no maintainer scripts, systemd units, timers, daemon, user creation, configuration mutations or install-time activation.
+`packaging/build-deb.sh` stages the already compiled release binary into a CLI-only Debian package. It installs `/usr/bin/mira`, the Apache-2.0 license, evidence/investigation/capture documentation and all four versioned schemas. It includes no maintainer scripts, systemd units, timers, daemon, user creation, configuration mutations or install-time activation.
 
 Build on native Ubuntu 26.04 amd64 and arm64 with `cargo build --release --locked`, then `bash packaging/build-deb.sh`. Native `dpkg-dev` and binutils are required: `dpkg-shlibdeps` derives versioned runtime ABI requirements from the compiled binary and the build distribution metadata. The package script supports `SOURCE_DATE_EPOCH` for normalized file timestamps, uses root-owned package metadata, and writes a SHA-256 file. This is an initial binary packaging path, **not** a Debian source package, signed release or verified bit-for-bit reproducible build.
 
-CI must inspect the archive for unexpected paths, validate metadata, extract and execute the CLI and test installation/removal in an isolated disposable environment before promotion. Release signing, dependency scanning, hermetic compilation, build provenance, clean-system upgrade/downgrade and apt repository publishing are later gates. Package contents should not expose host configuration or private infrastructure.
+CI must inspect the archive for unexpected paths, validate metadata, extract and execute the CLI and test installation/removal in an isolated disposable environment before promotion. Release signing, dependency scanning, hermetic compilation, build provenance, genuine version-to-version upgrade/downgrade and apt repository publishing are later gates. Package contents should not expose host configuration or private infrastructure.
 
 ## Optional collector: design only
 
@@ -12,6 +12,10 @@ Do not install or enable a unit yet. An eventual systemd oneshot + timer require
 
 ## Repeatable assembly boundary
 
-CI assembles the same compiled binary twice in separate staging directories under ordinary and restrictive invoking umasks, then compares the resulting `.deb` bytes. The builder sets umask 022 so package permissions do not inherit the caller's mask. Native test helpers are never installed. `SOURCE_DATE_EPOCH` is exported to archive tools as well as used for file timestamps. This checks deterministic archive assembly only: independent clean Rust compilations, source-path independence, actual dependency resolution and version-to-version upgrades remain outstanding release gates.
+CI assembles the same compiled binary twice in separate staging directories under ordinary and restrictive invoking umasks, then compares the resulting `.deb` bytes. The builder sets umask 022 so package permissions do not inherit the caller's mask. Native test helpers are never installed. `SOURCE_DATE_EPOCH` is exported to archive tools as well as used for file timestamps. This checks deterministic archive assembly only: independent clean Rust compilations, source-path independence, physical-host behavior and version-to-version upgrades remain outstanding release gates.
 
 On hosted amd64 runners, dpkg-shlibdeps reports the distribution's libc6 merged-/usr loader diversion. Keep that warning visible; the native dependency metadata is not a replacement for clean-system installation and loader validation before release.
+
+## Real dependency-resolution check
+
+`packaging/test-clean-install.sh` installs the exact built archive into a fresh native Ubuntu 26.04 container through apt, without `--force-depends`. It compares the installed binary with the archive bytes and runs the installed demo and independently validated pressure capture. A new receipt binds the clean source commit/tree, package version/architecture/hash, installed binary hash and container image identity. The image is pulled by release tag then executed by immutable local image ID; apt repository state is current, not hermetically frozen. CI trust, registry availability and package repositories remain dependencies. No release upload or signing is performed. Clean physical hosts, real upgrades/downgrades, independent compilation and signed provenance remain unqualified.

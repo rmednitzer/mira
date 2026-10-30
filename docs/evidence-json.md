@@ -8,4 +8,6 @@ Known values: memory has `total_kib` and `available_kib`; uptime is seconds; ker
 
 Consumers must validate schema version, source and scope and must not infer host health, permission or remediation authorization from these records. An optional offline [history comparison](evidence-history.md) validates captures against the schema and distinguishes changes, missing observations and indeterminate evidence. There is no managed persistent evidence store. Independent schema checks use separate Python tooling; the Rust serializer and CLI have no Python runtime dependency.
 
+The separate [complete capture format](captures.md) uses evidence-v2 records with elapsed timing and fixed failure reasons. Existing JSON Lines v1 is unchanged. Strict offline admission rejects ambiguous JSON before schema validation.
+
 The opt-in [investigation report](investigations.md) has a separate version/schema and embeds one unchanged evidence-v1 record. It is not an evidence JSONL record and is not accepted by the history comparator. Assessment outcomes are expectations over the embedded observation, not additional observed facts.

@@ -5,6 +5,9 @@ import json
 import sys
 import stat
 import os
+import math
+
+from capture_contract import check_capture
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -13,23 +16,108 @@ MAX_BYTES = 1024 * 1024
 MAX_RECORDS = 128
 
 
-def load(path, validator):
-    # Only regular capture files are supported. Refuse FIFOs/devices.
-    if not stat.S_ISREG(path.stat().st_mode):
-        raise ValueError("capture must be a regular file")
-    with path.open("rb") as handle:
-        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+MAX_DEPTH = 32
+
+
+class Capture(dict):
+    """Legacy records have no completion or scope binding."""
+    def __init__(self, records=(), *, scope=None, profile=None):
+        super().__init__(records)
+        self.scope = scope
+        self.profile = profile
+
+
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _constant(value):
+    raise ValueError("nonfinite JSON number")
+
+
+def _float(value):
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError("nonfinite JSON number")
+    return result
+
+
+def strict_json(data):
+    text = data.decode("utf-8")
+    depth = 0
+    quoted = False
+    escaped = False
+    for character in text:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                quoted = False
+        elif character == '"':
+            quoted = True
+        elif character in "[{":
+            depth += 1
+            if depth > MAX_DEPTH:
+                raise ValueError("JSON nesting limit")
+        elif character in "]}":
+            depth -= 1
+    result = json.loads(text, object_pairs_hook=_unique_object,
+                        parse_constant=_constant, parse_float=_float)
+    pending = [result]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, str):
+            value.encode("utf-8")
+        elif isinstance(value, dict):
+            pending.extend(value.keys())
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+    return result
+
+
+def read_capture(path):
+    # Open nonblocking first: path metadata cannot authorize the opened object.
+    # Symlinks retain legacy compatibility; directory custody is caller-trusted.
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ValueError("capture must be a regular file")
-        data = handle.read(MAX_BYTES + 1)
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            data = handle.read(MAX_BYTES + 1)
+    finally:
+        os.close(descriptor)
     if len(data) > MAX_BYTES:
         raise ValueError("evidence file exceeds 1 MiB")
-    result = {}
-    for line in data.splitlines():
+    if not data.strip():
+        raise ValueError("empty capture")
+    return data
+
+
+def load(path, validator):
+    data = read_capture(path)
+    try:
+        document = strict_json(data)
+    except json.JSONDecodeError:
+        document = None  # Multiple JSONL records are decoded separately below.
+    if isinstance(document, dict) and "capture_version" in document:
+        check_capture(document)
+        return Capture((((r["source"], r["scope"]), r) for r in document["records"]),
+                       scope=document["capture_scope"], profile=document["profile"])
+    result = Capture()
+    for line in data.split(b"\n"):
         if not line.strip():
             continue
         if len(result) >= MAX_RECORDS:
             raise ValueError("too many evidence records")
-        record = json.loads(line)
+        record = strict_json(line)
         validator.validate(record)
         if record["source"] == "/proc/meminfo" and record["status"] == "observed":
             v = record["value"]
@@ -43,6 +131,10 @@ def load(path, validator):
 
 
 def compare(before, after):
+    before_scope = getattr(before, "scope", None)
+    after_scope = getattr(after, "scope", None)
+    if before_scope != after_scope or getattr(before, "profile", None) != getattr(after, "profile", None):
+        raise ValueError("incompatible capture scope or profile")
     changes = []
     for source, scope in sorted(before.keys() | after.keys(), key=lambda k: (k[0], k[1] or "")):
         old = before.get((source, scope))
@@ -64,7 +156,11 @@ def compare(before, after):
             "freshness": "unknown",
             "clock_order": "unverified",
         })
-    return {"comparison_version": 1, "overall_freshness": "unknown", "changes": changes}
+    result = {"comparison_version": 1, "overall_freshness": "unknown", "changes": changes}
+    if before_scope is not None:
+        result.update(comparison_version=2, capture_scope=before_scope,
+                      scope_trust="operator_asserted", collection_complete=True)
+    return result
 
 
 def main(argv=None):
@@ -83,7 +179,7 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, OSError, UnicodeError, json.JSONDecodeError) as exc:
+    except (ValueError, OSError, UnicodeError, RecursionError) as exc:
         print(f"evidence comparison failed: {type(exc).__name__}", file=sys.stderr)
         sys.exit(2)
     except Exception as exc:

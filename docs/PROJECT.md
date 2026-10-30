@@ -6,4 +6,6 @@ The existing grid simulation is a retained regression fixture, not the product's
 
 Current implementation and validation boundaries are summarized in the [requirements matrix](requirements.md) and [development checks](testing.md). Keep all overview/status text synchronized with collector, schema, history and packaging changes.
 
+Complete scoped collection and strict admission are specified in [captures](captures.md) and [ADR 0002](adr/0002-complete-captures-and-admission.md).
+
 The first closed investigation template is specified in [investigations](investigations.md) and its [decision record](adr/0001-read-only-service-investigation.md).

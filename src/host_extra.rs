@@ -11,10 +11,7 @@ fn bounded(path: &Path) -> io::Result<String> {
     let mut bytes = Vec::new();
     File::open(path)?.take(LIMIT + 1).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > LIMIT {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "source exceeds limit",
-        ));
+        return Err(crate::collector::limit_exceeded());
     }
     String::from_utf8(bytes)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "non-UTF8 source"))
@@ -29,7 +26,8 @@ pub struct CpuPressure {
 
 fn decimal_basis_points(input: &str) -> io::Result<u32> {
     let (whole, fraction) = input.split_once('.').unwrap_or((input, ""));
-    if whole.is_empty()
+    if input.ends_with('.')
+        || whole.is_empty()
         || !whole.bytes().all(|c| c.is_ascii_digit())
         || fraction.len() > 2
         || !fraction.bytes().all(|c| c.is_ascii_digit())
@@ -162,6 +160,7 @@ mod tests {
     #[test]
     fn rejects_invalid_psi() {
         assert!(parse_cpu_pressure("some avg10=101.00\n").is_err());
+        assert!(parse_cpu_pressure("some avg10=1.\n").is_err());
         assert!(parse_cpu_pressure("some avg10=1.00\nsome avg10=2.00\n").is_err());
         assert!(parse_cpu_pressure("full avg10=0.00\n").is_err());
     }
@@ -179,4 +178,30 @@ mod tests {
         assert!(r.cpu_pressure.result.is_err());
         assert!(r.kernel_release.result.is_err());
     }
+}
+
+/// Closed resource selection; no caller-supplied path or trigger writes.
+#[derive(Debug, Clone, Copy)]
+pub enum PressureResource { Cpu, Memory, Io }
+impl PressureResource {
+    pub fn source(self) -> &'static str {
+        match self {
+            Self::Cpu => "/proc/pressure/cpu",
+            Self::Memory => "/proc/pressure/memory",
+            Self::Io => "/proc/pressure/io",
+        }
+    }
+    fn relative(self) -> &'static str {
+        match self {
+            Self::Cpu => "pressure/cpu",
+            Self::Memory => "pressure/memory",
+            Self::Io => "pressure/io",
+        }
+    }
+}
+pub fn pressure(proc_root: &Path, resource: PressureResource) -> io::Result<CpuPressure> {
+    bounded(&proc_root.join(resource.relative())).and_then(|value| parse_cpu_pressure(&value))
+}
+pub fn kernel_release(proc_root: &Path) -> io::Result<String> {
+    bounded(&proc_root.join("sys/kernel/osrelease")).and_then(|value| parse_kernel_release(&value))
 }

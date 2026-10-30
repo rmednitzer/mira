@@ -379,3 +379,6 @@ mod tests {
         assert_eq!(run(), run());
     }
 }
+
+pub mod capture;
+pub mod collector;

@@ -1,6 +1,7 @@
 //! Read-only Debian package database observations.
 //! Installed package metadata is not vulnerability applicability evidence.
 use std::{
+    collections::BTreeSet,
     fs::File,
     io::{self, Read},
     path::Path,
@@ -27,6 +28,7 @@ fn finish_entry(
         Option<String>,
     ),
     output: &mut Vec<Package>,
+    identities: &mut BTreeSet<(String, String)>,
 ) -> io::Result<()> {
     let (name, version, architecture, status) = std::mem::take(fields);
     if name.is_none() && version.is_none() && architecture.is_none() && status.is_none() {
@@ -54,10 +56,14 @@ fn finish_entry(
     }
     // Selection and error flags must not hide installed package provenance.
     if status_fields[2] == "installed" {
+        let architecture = architecture.ok_or_else(|| invalid("missing installed architecture"))?;
+        if !identities.insert((name.clone(), architecture.clone())) {
+            return Err(invalid("duplicate installed package identity"));
+        }
         output.push(Package {
             name,
             version: version.ok_or_else(|| invalid("missing installed version"))?,
-            architecture: architecture.ok_or_else(|| invalid("missing installed architecture"))?,
+            architecture,
         });
     }
     Ok(())
@@ -65,10 +71,11 @@ fn finish_entry(
 
 pub fn parse_status(input: &str) -> io::Result<Vec<Package>> {
     let mut entries = Vec::new();
+    let mut identities = BTreeSet::new();
     let mut fields = (None, None, None, None);
     for line in input.lines().chain(std::iter::once("")) {
         if line.is_empty() {
-            finish_entry(&mut fields, &mut entries)?;
+            finish_entry(&mut fields, &mut entries, &mut identities)?;
             continue;
         }
         if line.starts_with(' ') || line.starts_with('\t') {
@@ -104,7 +111,7 @@ pub fn collect(status_path: &Path) -> io::Result<Vec<Package>> {
         .take(MAX_STATUS_BYTES + 1)
         .read_to_end(&mut content)?;
     if content.len() as u64 > MAX_STATUS_BYTES {
-        return Err(invalid("package database exceeds limit"));
+        return Err(crate::collector::limit_exceeded());
     }
     let content = String::from_utf8(content).map_err(|_| invalid("invalid UTF-8"))?;
     parse_status(&content)
@@ -170,5 +177,18 @@ mod tests {
         )
         .unwrap();
         assert!(result.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+    #[test]
+    fn duplicate_identity_is_rejected_but_multiarch_is_preserved() {
+        let entry = "Package: alpha\nStatus: hold ok installed\nArchitecture: amd64\nVersion: 1\n\n";
+        assert!(parse_status(&format!("{entry}{entry}")).is_err());
+        assert!(parse_status(&format!("{entry}{}", entry.replace("Version: 1", "Version: 2"))).is_err());
+        let multiarch = format!("{entry}{}", entry.replace("amd64", "arm64"));
+        assert_eq!(parse_status(&multiarch).unwrap().len(), 2);
     }
 }
