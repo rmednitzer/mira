@@ -156,13 +156,11 @@ pub fn report(proc_root: &Path) -> HostReport {
     HostReport {
         memory: SourceResult {
             source: "/proc/meminfo",
-            result: read_bounded(&proc_root.join("meminfo"))
-                .and_then(|s| parse_meminfo(&s)),
+            result: read_bounded(&proc_root.join("meminfo")).and_then(|s| parse_meminfo(&s)),
         },
         uptime: SourceResult {
             source: "/proc/uptime",
-            result: read_bounded(&proc_root.join("uptime"))
-                .and_then(|s| parse_uptime(&s)),
+            result: read_bounded(&proc_root.join("uptime")).and_then(|s| parse_uptime(&s)),
         },
     }
 }
