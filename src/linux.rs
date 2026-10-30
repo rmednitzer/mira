@@ -89,7 +89,10 @@ pub fn parse_uptime(text: &str) -> io::Result<u64> {
             || !whole.bytes().all(|b| b.is_ascii_digit())
             || !fraction.bytes().all(|b| b.is_ascii_digit())
         {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid seconds"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "invalid seconds",
+            ));
         }
         whole
             .parse::<u64>()
@@ -104,7 +107,10 @@ pub fn parse_uptime(text: &str) -> io::Result<u64> {
         .next()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing idle time"))?;
     if fields.next().is_some() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "extra uptime field"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "extra uptime field",
+        ));
     }
     let uptime = seconds(uptime)?;
     seconds(idle)?;

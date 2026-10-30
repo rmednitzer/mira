@@ -47,7 +47,11 @@ fn malformed_idle_time_is_unavailable_without_hiding_memory() {
         }
     }
     let _cleanup = Cleanup(root.clone());
-    std::fs::write(root.join("meminfo"), "MemTotal: 100 kB\nMemAvailable: 50 kB\n").unwrap();
+    std::fs::write(
+        root.join("meminfo"),
+        "MemTotal: 100 kB\nMemAvailable: 50 kB\n",
+    )
+    .unwrap();
     std::fs::write(root.join("uptime"), "42.50 garbage\n").unwrap();
     let snapshot = evidence::collect(&root);
     assert!(snapshot.memory.is_available());
