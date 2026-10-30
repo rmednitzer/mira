@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -58,6 +59,23 @@ class ComparisonTests(unittest.TestCase):
             p = Path(temp) / "evidence.jsonl"
             p.write_bytes(b"x" * (MAX_BYTES + 1))
             with self.assertRaisesRegex(ValueError, "exceeds"):
+                load(p, VALIDATOR)
+
+    def test_reject_semantically_invalid_memory_record(self):
+        with tempfile.TemporaryDirectory() as temp:
+            p = Path(temp) / "evidence.jsonl"
+            invalid = record(source="/proc/meminfo",
+                             value={"total_kib": 20, "available_kib": 30})
+            p.write_text(json.dumps(invalid))
+            with self.assertRaisesRegex(ValueError, "available memory"):
+                load(p, VALIDATOR)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO not supported")
+    def test_reject_fifo_without_reading(self):
+        with tempfile.TemporaryDirectory() as temp:
+            p = Path(temp) / "capture"
+            os.mkfifo(p)
+            with self.assertRaisesRegex(ValueError, "regular file"):
                 load(p, VALIDATOR)
 
     def test_distinct_service_scopes_never_compare_as_same(self):
