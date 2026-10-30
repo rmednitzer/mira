@@ -66,7 +66,10 @@ fn assert_failure(capture: &capture::Capture, path: &str, reason: &str) {
     let start = json.find(&format!("\"source\":\"{source}\"")).unwrap();
     let record = json[start..].split('}').next().unwrap();
     assert!(record.contains("\"status\":\"unavailable\""), "{path}");
-    assert!(record.contains(&format!("\"failure_reason\":\"{reason}\"")), "{path}");
+    assert!(
+        record.contains(&format!("\"failure_reason\":\"{reason}\"")),
+        "{path}"
+    );
     assert_eq!(json.matches("\"status\":\"observed\"").count(), 6, "{path}");
     assert!(json.contains("\"collection_complete\":true"));
     assert!(!json.contains("mira-source-bounds-"));
