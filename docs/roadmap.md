@@ -28,6 +28,12 @@ Next release gates: clean physical-host qualification, genuine version-to-versio
 
 Ingest versioned distribution advisories and machine-readable security data. Reconcile package revisions/backports, runtime/configuration applicability and evidence freshness. Produce affected/not-affected/unknown with citations. Exit: representative fixtures distinguish true/false exposure without inferring vulnerability from upstream versions alone.
 
+### Conditional platform observation track
+
+Plan Kubernetes workload/cluster evidence first and Talos node OS evidence separately, followed only where justified by bounded Prometheus-compatible queries and GitOps status. Additional local network/storage/container sources require a demonstrated diagnostic gap. See [platform integrations](platform-integrations.md) and [ADR 0004](adr/0004-staged-platform-observation.md) for ordering, exclusions, sovereignty and admission gates.
+
+This track may proceed after the offline investigator exit and adapter-specific identity, credentials, transport and evidence contracts are validated; it is independent of AI/UI delivery and does not require remediation capability. No adapters are implemented or scheduled. A separately reviewed implementation is required; this plan adds no network, credentials or runtime dependencies.
+
 ## Phase 3 — intent-driven adaptive workspace
 
 The CLI already has closed explicit template selection. Add a natural-language intent grammar, further admitted capabilities and registered UI components. Exit: operators navigate evidence and incident workflows without gaining privileges from layout or model output. Compare against a fixed UI with matched tasks.
@@ -36,9 +42,9 @@ The CLI already has closed explicit template selection. Add a natural-language i
 
 Evaluate interchangeable local inference and optional hosted models; hosted evaluation uses synthetic/public inputs only by default. Capture model/prompt/output revisions and failures. Exit: model failure cannot alter admitted access, and useful offline investigation remains available.
 
-## Phase 5 — governed remediation and broader infrastructure
+## Phase 5 — governed remediation
 
-Only after a separate design/threat review: authenticated principals, scoped grants, dry-run, operator authorization, preconditions, postcondition verification, recovery and remote adapters. Exit: adversarial authorization/failure tests pass under stated conditions. No production-readiness claim follows automatically.
+Only after a separate design/threat review: authenticated principals, scoped grants, dry-run, operator authorization, preconditions, postcondition verification, recovery and any write adapters. Exit: adversarial authorization/failure tests pass under stated conditions. No production-readiness claim follows automatically.
 
 ## Retained fixture
 

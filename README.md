@@ -18,7 +18,7 @@ Rust 2024; pinned toolchain is specified in `rust-toolchain.toml`.
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --all-targets --features test-support -- -D warnings
+cargo clippy --all-targets --features test-support --locked -- -D warnings
 cargo test --all-targets --features test-support --locked
 cargo run --locked -- inspect
 cargo run --locked -- demo
@@ -31,6 +31,8 @@ cargo run --locked -- investigate service-active ssh.service --json
 The opt-in [service-active investigation](docs/investigations.md) evaluates an explicit activation expectation and preserves its evidence. Its satisfied/not-satisfied/indeterminate outcomes are separate from application health and root cause.
 
 The Rust CLI and native tests do not require Python. Enable `test-support` for the complete native subprocess suite; its fixture is excluded from normal builds and packages. Python remains separate tooling for independent schema checks and the optional [history comparison](docs/evidence-history.md). See [development and validation](docs/testing.md), [host evidence](docs/host-evidence.md), [service evidence](docs/systemd-evidence.md), [JSON contract](docs/evidence-json.md), and [Debian packaging](docs/debian-packaging.md).
+
+The [platform roadmap](docs/platform-integrations.md) plans conditional Kubernetes and Talos observation adapters; neither is implemented or a runtime dependency.
 
 The `demo` subcommand retains the original grid fixture. There is no privileged collector daemon, network service, external model call or automated remediation.
 
