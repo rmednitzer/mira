@@ -26,7 +26,10 @@ fn read_bounded(path: &Path) -> io::Result<String> {
     use std::io::Read;
     file.take(MAX_SOURCE_BYTES + 1).read_to_end(&mut contents)?;
     if contents.len() as u64 > MAX_SOURCE_BYTES {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "source too large"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "source too large",
+        ));
     }
     String::from_utf8(contents)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid UTF-8"))
@@ -38,7 +41,10 @@ pub fn parse_meminfo(text: &str) -> io::Result<MemoryEvidence> {
         for line in text.lines() {
             if let Some(rest) = line.strip_prefix(name).and_then(|s| s.strip_prefix(':')) {
                 if found.is_some() {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "duplicate field"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "duplicate field",
+                    ));
                 }
                 let mut fields = rest.split_whitespace();
                 let number = fields.next().and_then(|n| n.parse::<u64>().ok());
@@ -56,30 +62,48 @@ pub fn parse_meminfo(text: &str) -> io::Result<MemoryEvidence> {
     let total_kib = value(text, "MemTotal")?;
     let available_kib = value(text, "MemAvailable")?;
     if total_kib == 0 || available_kib > total_kib {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid memory values"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid memory values",
+        ));
     }
-    Ok(MemoryEvidence { total_kib, available_kib })
+    Ok(MemoryEvidence {
+        total_kib,
+        available_kib,
+    })
 }
 
 pub fn parse_uptime(text: &str) -> io::Result<u64> {
     let mut fields = text.split_whitespace();
-    let seconds = fields.next().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing uptime"))?;
+    let seconds = fields
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing uptime"))?;
     let (whole, fraction) = seconds.split_once('.').unwrap_or((seconds, ""));
-    if whole.is_empty() || !whole.bytes().all(|b| b.is_ascii_digit())
-        || !fraction.bytes().all(|b| b.is_ascii_digit()) {
+    if whole.is_empty()
+        || !whole.bytes().all(|b| b.is_ascii_digit())
+        || !fraction.bytes().all(|b| b.is_ascii_digit())
+    {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid uptime"));
     }
     if fields.next().is_none() || fields.next().is_some() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid uptime fields"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid uptime fields",
+        ));
     }
-    whole.parse::<u64>().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "uptime overflow"))
+    whole
+        .parse::<u64>()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "uptime overflow"))
 }
 
 /// Read a narrow allowlist of procfs sources. Caller selects the procfs root.
 pub fn collect(proc_root: &Path) -> io::Result<HostEvidence> {
     let memory = parse_meminfo(&read_bounded(&proc_root.join("meminfo"))?)?;
     let uptime_seconds = parse_uptime(&read_bounded(&proc_root.join("uptime"))?)?;
-    Ok(HostEvidence { memory, uptime_seconds })
+    Ok(HostEvidence {
+        memory,
+        uptime_seconds,
+    })
 }
 
 #[cfg(test)]
@@ -96,7 +120,9 @@ mod tests {
     }
     #[test]
     fn rejects_duplicate_fields() {
-        assert!(parse_meminfo("MemTotal: 100 kB\nMemTotal: 200 kB\nMemAvailable: 80 kB\n").is_err());
+        assert!(
+            parse_meminfo("MemTotal: 100 kB\nMemTotal: 200 kB\nMemAvailable: 80 kB\n").is_err()
+        );
     }
     #[test]
     fn parses_uptime() {
