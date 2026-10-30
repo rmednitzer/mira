@@ -42,10 +42,10 @@ fn inspect() {
     show(&snapshot.cpu_pressure);
     let packages = mira::evidence::collect_packages(std::path::Path::new("/var/lib/dpkg/status"));
     match &packages.status {
-        EvidenceStatus::Observed(packages) => println!(
+        EvidenceStatus::Observed(installed) => println!(
             "{}: observed {} installed packages (not vulnerability findings) recorded_unix_ms={:?}",
             packages.source,
-            packages.len(),
+            installed.len(),
             packages.collected_unix_ms
         ),
         EvidenceStatus::Unavailable { kind, message } => println!(
