@@ -3,6 +3,7 @@
 
 pub mod experiment;
 pub mod linux;
+pub mod host_extra;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Position {
     pub x: i32,
