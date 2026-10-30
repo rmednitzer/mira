@@ -2,6 +2,7 @@
 //! This is an experimental simulator, not an authenticated or safety-certified controller.
 
 pub mod evidence;
+pub mod evidence_json;
 pub mod experiment;
 pub mod host_extra;
 pub mod linux;
