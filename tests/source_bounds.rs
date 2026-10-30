@@ -10,7 +10,8 @@ struct Fixture(PathBuf);
 
 impl Fixture {
     fn new(name: &str) -> Self {
-        let root = std::env::temp_dir().join(format!("mira-source-bounds-{}-{name}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("mira-source-bounds-{}-{name}", std::process::id()));
         // Own only a newly created directory; never reuse another run's files.
         fs::create_dir(&root).unwrap();
         let fixture = Self(root);
