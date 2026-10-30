@@ -40,17 +40,20 @@ fn inspect() {
     show(&snapshot.uptime);
     show(&snapshot.kernel_release);
     show(&snapshot.cpu_pressure);
-    let mut incomplete = !snapshot.complete();
-    match mira::packages::collect(std::path::Path::new("/var/lib/dpkg/status")) {
-        Ok(packages) => println!(
-            "/var/lib/dpkg/status: observed {} installed package records (not vulnerability findings)",
-            packages.len()
+    let packages = mira::evidence::collect_packages(std::path::Path::new("/var/lib/dpkg/status"));
+    match &packages.status {
+        EvidenceStatus::Observed(installed) => println!(
+            "{}: observed {} installed packages (not vulnerability findings) recorded_unix_ms={:?}",
+            packages.source,
+            installed.len(),
+            packages.collected_unix_ms
         ),
-        Err(error) => {
-            incomplete = true;
-            println!("/var/lib/dpkg/status: unknown ({error})");
-        }
+        EvidenceStatus::Unavailable { kind, message } => println!(
+            "{}: unknown ({kind:?}: {message}) recorded_unix_ms={:?}",
+            packages.source, packages.collected_unix_ms
+        ),
     }
+    let incomplete = !snapshot.complete() || !packages.is_available();
     if incomplete {
         eprintln!("MIRA: incomplete host evidence");
         std::process::exit(1);
@@ -76,13 +79,20 @@ fn demo() {
 }
 
 fn service(unit: &str) {
-    match mira::systemd::inspect(unit) {
-        Ok(state) => println!(
-            "systemd {}: LoadState={} ActiveState={} SubState={} (observation only)",
-            state.id, state.load_state, state.active_state, state.sub_state
+    use mira::evidence::EvidenceStatus;
+    let observation = mira::evidence::collect_service(unit);
+    match observation.status {
+        EvidenceStatus::Observed(state) => println!(
+            "{}: Id={} LoadState={} ActiveState={} SubState={} recorded_unix_ms={:?} (observation only)",
+            observation.source,
+            state.id,
+            state.load_state,
+            state.active_state,
+            state.sub_state,
+            observation.collected_unix_ms
         ),
-        Err(error) => {
-            eprintln!("systemd {unit}: unknown ({error})");
+        EvidenceStatus::Unavailable { kind, message } => {
+            eprintln!("{}: unknown ({kind:?}: {message})", observation.source);
             std::process::exit(1);
         }
     }
