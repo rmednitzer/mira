@@ -2,6 +2,8 @@
 
 `mira inspect` reads `/var/lib/dpkg/status` with a 32 MiB byte limit and parses declared package name, version, architecture and installed status. Selection states such as hold or deinstall and error flags such as reinstreq do not hide installed packages. Duplicate installed (package name, architecture) identities are rejected rather than counted twice. Different architectures remain valid multiarch observations. This is provenance, not a claim of a clean installation. Sparse non-installed records can omit version and architecture; installed records must supply both. `tests/package_status.rs` exercises a synthetic fixture. It is read-only and does not invoke dpkg, apt, a shell or a network service.
 
+`tests/source_bounds.rs` also exercises the actual status-file reader at exactly 32 MiB, one byte over and with invalid UTF-8. Rejected status input must not suppress the six independent procfs observations in the pressure capture.
+
 **Limitations:** This is a snapshot of dpkg's local status database, not an authenticated SBOM, proof of running code, full dependency graph, or vulnerability finding. The database may be inaccessible, inconsistent, stale or attacker-influenced. The CLI currently reports only the installed-record count; the count is also exported through the versioned evidence JSONL protocol. Installed version strings alone cannot establish Ubuntu vulnerability exposure because vendor security backports and specific advisory applicability must be evaluated separately.
 
 Systemd runtime-state observation is available independently through `mira service UNIT.service [--json]`; it does not establish application health.
