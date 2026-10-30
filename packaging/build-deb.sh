@@ -80,6 +80,7 @@ Maintainer: MIRA Project <noreply@github.com>
 Section: admin
 Priority: optional
 Depends: $depends
+Suggests: systemd, default-dbus-system-bus | dbus-system-bus
 Homepage: https://github.com/rmednitzer/mira
 Description: Read-only Linux infrastructure evidence CLI
  Local-first experimental Linux inspection and structured evidence reporting.

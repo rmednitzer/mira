@@ -55,6 +55,8 @@ jobs:
           dpkg-deb --contents "$deb"
           test "$(dpkg-deb -f "$deb" Package)" = mira
           test "$(dpkg-deb -f "$deb" Architecture)" = "$(dpkg --print-architecture)"
+          test "$(dpkg-deb -f "$deb" Suggests)" = "systemd, default-dbus-system-bus | dbus-system-bus"
+          test -z "$(dpkg-deb -f "$deb" Recommends)"
           mkdir -p package-extract
           dpkg-deb -x "$deb" package-extract
           test "$(stat -c '%a' package-extract)" = 755
