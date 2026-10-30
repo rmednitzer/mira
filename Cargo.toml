@@ -1,0 +1,20 @@
+[package]
+name = "mira"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+description = "Mixed-Initiative Reasoning and Autonomy"
+repository = "https://github.com/rmednitzer/mira"
+publish = false
+
+[lib]
+name = "mira"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mira"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
