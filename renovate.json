@@ -17,20 +17,65 @@
   ],
   "packageRules": [
     {
+      "description": "Pin GitHub Action references to immutable digests in a separately reviewable PR.",
       "matchManagers": [
         "github-actions"
       ],
-      "groupName": "GitHub Actions dependencies"
+      "matchUpdateTypes": [
+        "pin",
+        "pinDigest"
+      ],
+      "groupName": "Pin GitHub Actions",
+      "schedule": [
+        "at any time"
+      ]
     },
     {
+      "description": "Separate non-major Actions updates from pinning and major upgrades.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "groupName": "GitHub Actions non-major updates"
+    },
+    {
+      "description": "Require explicit dashboard approval for major dependency changes.",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    },
+    {
+      "description": "Rust toolchain updates affect supported compiler, targets and binary behavior and require explicit approval.",
+      "matchManagers": [
+        "rust-toolchain"
+      ],
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    },
+    {
+      "description": "Group compatible non-major Cargo dependencies.",
       "matchManagers": [
         "cargo"
       ],
-      "groupName": "Rust dependencies",
       "matchUpdateTypes": [
         "minor",
         "patch"
-      ]
+      ],
+      "groupName": "Rust dependencies"
     }
-  ]
+  ],
+  "minimumReleaseAge": "3 days",
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "automerge": false,
+    "schedule": [
+      "at any time"
+    ]
+  }
 }
