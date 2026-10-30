@@ -3,7 +3,10 @@ use std::path::Path;
 
 #[test]
 fn package_fixture_has_source_and_timestamp() {
-    let fixture = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/dpkg/status"));
+    let fixture = Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/dpkg/status"
+    ));
     let result = evidence::collect_packages(fixture);
     assert_eq!(result.source, "/var/lib/dpkg/status");
     assert!(result.collected_unix_ms.is_some());
