@@ -7,15 +7,23 @@ use std::{
     time::Duration,
 };
 
-fn valid_output() -> io::Result<()> {
+fn state_output(id: &str, load: &str, active: &str, sub: &str) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
-    writeln!(stdout, "Id=ssh.service")?;
-    writeln!(stdout, "Names=ssh.service {}", "alias.service ".repeat(500))?;
+    writeln!(stdout, "Id={id}")?;
     writeln!(
         stdout,
-        "LoadState=loaded\nActiveState=active\nSubState=running"
+        "Names={id} ssh.service {}",
+        "alias.service ".repeat(500)
+    )?;
+    writeln!(
+        stdout,
+        "LoadState={load}\nActiveState={active}\nSubState={sub}"
     )?;
     stdout.flush()
+}
+
+fn valid_output() -> io::Result<()> {
+    state_output("ssh.service", "loaded", "active", "running")
 }
 
 fn main() -> io::Result<()> {
@@ -40,6 +48,17 @@ fn main() -> io::Result<()> {
     }
     match mode.as_str() {
         "valid" => valid_output(),
+        "reported-failed" => state_output("ssh.service", "loaded", "failed", "failed"),
+        "reported-inactive" => state_output("ssh.service", "loaded", "inactive", "dead"),
+        "reloading" => state_output("ssh.service", "loaded", "reloading", "reload"),
+        "refreshing" => state_output("ssh.service", "loaded", "refreshing", "refreshing"),
+        "activating" => state_output("ssh.service", "loaded", "activating", "start"),
+        "deactivating" => state_output("ssh.service", "loaded", "deactivating", "stop"),
+        "maintenance" => state_output("ssh.service", "loaded", "maintenance", "cleaning"),
+        "future-state" => state_output("ssh.service", "loaded", "future-state", "future-sub"),
+        "masked-active" => state_output("ssh.service", "masked", "active", "running"),
+        "alias-active" => state_output("canonical.service", "loaded", "active", "running"),
+        "control-state" => state_output("ssh.service", "loaded", "future-\u{1b}[2J", "future-sub"),
         "oversized" => io::stdout().write_all(&vec![b'x'; 100_000]),
         "timeout" => {
             thread::sleep(Duration::from_secs(10));

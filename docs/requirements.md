@@ -7,14 +7,15 @@ Implemented status means code and stated checks exist; it does not imply product
 | OPS-01 | Host observation is read-only | Fixed procfs/dpkg reads and an explicitly named, fixed-argv systemctl query; no elevation or mutation | Implemented; representative fleet and isolation assurance pending |
 | OPS-02 | Evidence is bounded and parsed | Byte limits, strict supported-field parsing, package status validation, service execution/EOF deadline, unavailable-state regressions | Implemented for admitted sources; not a universal bound on arbitrary filesystem I/O or descendant lifetime |
 | OPS-03 | Evidence cites source, scope and uncertainty | Typed evidence and JSON Lines v1 identify logical sources, recording times and unavailable results | Implemented; clock trust unverified, freshness unknown, host identity unauthenticated |
-| OPS-04 | Read-only investigation template | Operator obtains an evidence-backed diagnostic workflow without AI | CLI observations implemented; investigation templates and diagnosis planned |
+| OPS-04 | Read-only investigation template | Explicit service-active expectation, preserved evidence reference, three outcomes, rejected scope and independent contract tests | One narrow activation template implemented; broader diagnosis remains planned |
 | OPS-05 | Serialized evidence has an independent contract | JSON Schema v1, valid/invalid fixtures and actual CLI output validation | Implemented with separate Python/jsonschema tooling |
 | OPS-06 | Capture comparison preserves unknowns | Bounded regular-file inputs, source/scope matching and explicit indeterminate/missing outcomes | Optional offline Python utility implemented; no managed persistent store |
 | SEC-01 | No proposal grants itself authority | Authenticated principal and independent scoped authorization gate before any action | Not satisfied by retained simulation; operational writes absent |
 | SEC-02 | No silent external inference | Offline CLI does not invoke model/network adapters | No such adapters implemented; not an OS-level network-isolation proof |
 | SEC-03 | Vulnerability applicability is evidence-bound | Distribution advisory/backport and installed revision evidence required; unknown remains explicit | Planned; package metadata alone is not an exposure finding |
 | SEC-04 | UI cannot add capabilities | Only registered components/actions can render and execute | Planned; no adaptive UI exists |
-| INT-01 | Intent selects declared workflows | Ambiguous intent cannot invoke undeclared operations | Planned |
+| INT-01 | Intent selects declared workflows | Unknown templates/invalid scopes cannot dispatch collection | Closed explicit service-active selection implemented; natural-language intent remains planned |
+| OPS-07 | Assessment does not become unsupported health or authority | Source-bound observation, fixed reason, unknown states preserved, application health/root cause unassessed | service-active/v1 state-table, native failure and independent schema/semantic tests |
 | UI-01 | Task-oriented views improve evidence access | Matched task evaluation against a fixed interface | Research hypothesis |
 | EVA-01 | Synthetic experiments are reproducible | Typed inputs and deterministic in-process replay | Retained fixture implemented; no authenticated authorization guarantee |
 | TST-01 | Rust subprocess regressions are native | Cargo-built opt-in fixture tests the public CLI without Python or shell | Implemented under test-support; default core suite remains independent |

@@ -5,6 +5,12 @@ fn main() {
     match args.as_slice() {
         [_, command] if command == "inspect" => inspect(),
         [_, command, format] if command == "inspect" && format == "--json" => inspect_json(),
+        [_, command, template, unit] if command == "investigate" => {
+            investigate(template, unit, false)
+        }
+        [_, command, template, unit, format] if command == "investigate" && format == "--json" => {
+            investigate(template, unit, true)
+        }
         [_, command] if command == "demo" => demo(),
         [_, command, unit] if command == "service" => service(unit),
         [_, command, unit, format] if command == "service" && format == "--json" => {
@@ -12,7 +18,7 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "Usage: mira inspect [--json] | mira demo | mira service UNIT.service [--json]"
+                "Usage: mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active UNIT.service [--json]"
             );
             std::process::exit(2);
         }
@@ -89,7 +95,7 @@ fn service(unit: &str) {
     let observation = mira::evidence::collect_service(unit);
     match observation.status {
         EvidenceStatus::Observed(state) => println!(
-            "{}: Id={} LoadState={} ActiveState={} SubState={} recorded_unix_ms={:?} (observation only)",
+            "{}: Id={:?} LoadState={:?} ActiveState={:?} SubState={:?} recorded_unix_ms={:?} (observation only)",
             observation.source,
             state.id,
             state.load_state,
@@ -124,4 +130,44 @@ fn service_json(unit: &str) {
     if !observation.is_available() {
         std::process::exit(1);
     }
+}
+
+fn investigate(name: &str, unit: &str, json: bool) {
+    use mira::evidence::EvidenceStatus;
+    use mira::investigation::{self, Template};
+    let Some(template) = Template::from_name(name) else {
+        eprintln!("MIRA: unknown investigation template");
+        std::process::exit(2);
+    };
+    let report = match investigation::run(template, unit) {
+        Ok(report) => report,
+        Err(_) => {
+            eprintln!("MIRA: invalid investigation scope");
+            std::process::exit(2);
+        }
+    };
+    if json {
+        println!("{}", report.to_json());
+    } else {
+        println!("MIRA {} scope={:?}", report.template().id(), report.scope());
+        println!(
+            "outcome={} reason={} evidence_ref=#/evidence",
+            report.assessment().outcome().as_str(),
+            report.assessment().reason()
+        );
+        println!(
+            "source={} recorded_unix_ms={:?} clock_trust=unverified freshness=unknown",
+            report.evidence().source,
+            report.evidence().collected_unix_ms
+        );
+        if let EvidenceStatus::Observed(state) = &report.evidence().status {
+            // Debug formatting escapes control characters in untrusted state strings.
+            println!(
+                "Id={:?} LoadState={:?} ActiveState={:?} SubState={:?}",
+                state.id, state.load_state, state.active_state, state.sub_state
+            );
+        }
+        println!("Reported activation only; application health and root cause are not assessed.");
+    }
+    std::process::exit(report.assessment().outcome().exit_code());
 }

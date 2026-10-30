@@ -1,10 +1,11 @@
-//! MIRA: read-only Linux infrastructure evidence and retained coordination research.
+//! MIRA: read-only Linux evidence, explicit investigations and retained coordination research.
 //! Evidence is observational; the simulation is not an authenticated or safety-certified controller.
 
 pub mod evidence;
 pub mod evidence_json;
 pub mod experiment;
 pub mod host_extra;
+pub mod investigation;
 pub mod linux;
 pub mod packages;
 pub mod systemd;

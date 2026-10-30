@@ -38,6 +38,7 @@ jobs:
           cargo build --locked
           .schema-venv/bin/python scripts/validate_evidence_schema.py --live-systemd
           .schema-venv/bin/python scripts/test_compare_evidence.py
+          .schema-venv/bin/python scripts/validate_investigation_schema.py --live-systemd
       - name: Install native packaging tools
         run: |
           sudo apt-get update -qq
@@ -58,6 +59,8 @@ jobs:
           test ! -e package-extract/usr/bin/mira-process-fixture
           test "$(stat -c '%a' package-extract/usr/share/doc/mira/copyright)" = 644
           test -f package-extract/usr/share/mira/schemas/evidence-v1.schema.json
+          test -f package-extract/usr/share/mira/schemas/investigation-v1.schema.json
+          test -f package-extract/usr/share/doc/mira/investigations.md
           if dpkg-deb --contents "$deb" | grep -E '/(systemd/system|systemd/user)/'; then
             echo "unexpected systemd unit in CLI package" >&2
             exit 1

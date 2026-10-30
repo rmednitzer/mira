@@ -8,6 +8,8 @@ Package and systemd observations use the same typed `Evidence<T>` contract as pr
 - `collect_operations(path, unit)` is an optional composite collector; it does not provide an atomic snapshot.
 - `mira inspect` and `mira service` do not depend on each other's data sources.
 
+- `investigation::run(Template::ServiceActive, unit)` reuses the service collector and returns a separate versioned expectation report; it does not change the observation contract. See [investigations](investigations.md).
+
 ## Trust and safety
 This is an observation API, not vulnerability determination or application-health certification. The host clock is not trusted provenance. The `systemd/system` source is a logical collector identifier; the requested unit and canonical ID are included in the returned state only on success. An unavailable result can include untrusted OS error text. Neither the service collector nor the package parser authenticates the host or the source. No privilege escalation or remediation is attempted.
 

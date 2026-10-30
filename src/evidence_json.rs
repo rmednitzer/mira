@@ -5,7 +5,7 @@ use crate::{packages, systemd};
 
 pub const SCHEMA_VERSION: u32 = 1;
 
-fn quoted(value: &str) -> String {
+pub(crate) fn quoted(value: &str) -> String {
     let mut out = String::from("\"");
     for c in value.chars() {
         match c {

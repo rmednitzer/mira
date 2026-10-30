@@ -8,9 +8,9 @@ The mission, source boundaries and read-only collection foundation exist. Procfs
 
 ## Phase 1 — useful offline Linux investigator (in progress)
 
-Available: host memory/uptime/kernel/CPU-pressure observations, installed package metadata, selected service state, explicit provenance/unknown states and native CLI reports. Native CI includes synthetic subprocess regressions and one unprivileged live systemd comparison.
+Available: host memory/uptime/kernel/CPU-pressure observations, installed package metadata, selected service state, explicit provenance/unknown states, native CLI reports and one opt-in service-active investigation with a separate expectation assessment and preserved evidence. Native CI includes synthetic subprocess regressions and one unprivileged live systemd comparison.
 
-Remaining: authenticated or explicitly scoped host identity, freshness policy, representative real-host validation, bounded journal/IO-pressure sources where justified, and read-only investigation templates. Exit: a representative Ubuntu 26.04 investigation works without elevation, external inference or system mutation, with reproducible fixtures and explicit evidence gaps. One CI service does not satisfy this exit condition.
+Remaining: authenticated or explicitly scoped host identity, freshness policy, representative real-host validation, bounded journal/IO-pressure sources where justified, and broader read-only investigation templates. The existing activation template does not establish a general diagnostic workflow. Exit: a representative Ubuntu 26.04 investigation works without elevation, external inference or system mutation, with reproducible fixtures and explicit evidence gaps. One CI service does not satisfy this exit condition.
 
 ### Packaging and test foundation
 
@@ -24,7 +24,7 @@ Ingest versioned distribution advisories and machine-readable security data. Rec
 
 ## Phase 3 — intent-driven adaptive workspace
 
-Add a declared intent grammar, admitted capability selection and registered UI components. Exit: operators navigate evidence and incident workflows without gaining privileges from layout or model output. Compare against a fixed UI with matched tasks.
+The CLI already has closed explicit template selection. Add a natural-language intent grammar, further admitted capabilities and registered UI components. Exit: operators navigate evidence and incident workflows without gaining privileges from layout or model output. Compare against a fixed UI with matched tasks.
 
 ## Phase 4 — optional AI-assisted investigation
 

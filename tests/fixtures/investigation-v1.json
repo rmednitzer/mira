@@ -1,0 +1,732 @@
+{
+  "valid": [
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "reloading",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "refreshing",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "inactive",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "failed",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "maintenance",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "transition_in_progress",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "activating",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "transition_in_progress",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "deactivating",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "unrecognized_active_state",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "future-state",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "masked",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "future-load",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "alias.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "alias.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "canonical.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "PermissionDenied"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "investigation_version": 2,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "restart/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "other.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "healthy",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "known",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "healthy",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "unknown",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/other"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed"
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "PermissionDenied"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "failed",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "literal-substate"
+        },
+        "error_kind": null,
+        "message": "private backend text"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 7,
+        "error_kind": null
+      }
+    }
+  ]
+}

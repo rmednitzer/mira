@@ -9,6 +9,7 @@ Use GitHub's **private vulnerability reporting** for this repository when enable
 Provide a minimal reproducible case, affected revision, expected versus observed behavior, impact and safe reproduction steps. Do not attack third-party services or systems while testing. There is no promised response-time SLA.
 
 ## Security and safety boundaries
+- Read-only template selection admits only registered operations under caller permissions; it is not authentication, model authority or an OS sandbox. Investigation outcomes concern the explicit expectation only; unavailable/transitional/unrecognized evidence remains indeterminate.
 - Linux evidence is untrusted observation, not authenticated provenance, a health verdict or a vulnerability finding. Run the CLI under ordinary caller permissions; no elevation or automatic remediation is implemented.
 - The fixed-argument systemctl adapter is read-only; arbitrary command adapters remain out of scope.
 - In the retained simulation, actor identifiers are caller-supplied enum values, **not identities**.
