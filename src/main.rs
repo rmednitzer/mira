@@ -34,6 +34,29 @@ fn inspect() {
             println!("{}: unknown ({e})", report.uptime.source);
         }
     }
+    let additional = mira::host_extra::inspect(std::path::Path::new("/proc"));
+    match additional.kernel_release.result {
+        Ok(release) => println!("{}: {}", additional.kernel_release.source, release),
+        Err(e) => {
+            incomplete = true;
+            println!("{}: unknown ({e})", additional.kernel_release.source);
+        }
+    }
+    match additional.cpu_pressure.result {
+        Ok(pressure) => println!(
+            "{}: some.avg10={}.{:02}%{}",
+            additional.cpu_pressure.source,
+            pressure.some_avg10_basis_points / 100,
+            pressure.some_avg10_basis_points % 100,
+            pressure.full_avg10_basis_points.map_or(String::new(), |v| format!(
+                " full.avg10={}.{:02}%", v / 100, v % 100
+            ))
+        ),
+        Err(e) => {
+            incomplete = true;
+            println!("{}: unknown ({e})", additional.cpu_pressure.source);
+        }
+    }
     if incomplete {
         eprintln!("MIRA: incomplete host evidence");
         std::process::exit(1);
