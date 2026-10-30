@@ -137,3 +137,48 @@ mod tests {
         assert!(parse_uptime("").is_err());
     }
 }
+
+#[derive(Debug)]
+pub struct SourceResult<T> {
+    pub source: &'static str,
+    pub result: io::Result<T>,
+}
+
+#[derive(Debug)]
+pub struct HostReport {
+    pub memory: SourceResult<MemoryEvidence>,
+    pub uptime: SourceResult<u64>,
+}
+
+/// Collect each source independently. An unavailable or malformed source is
+/// reported as unknown instead of suppressing otherwise usable evidence.
+pub fn report(proc_root: &Path) -> HostReport {
+    HostReport {
+        memory: SourceResult {
+            source: "/proc/meminfo",
+            result: read_bounded(&proc_root.join("meminfo")).and_then(|s| parse_meminfo(&s)),
+        },
+        uptime: SourceResult {
+            source: "/proc/uptime",
+            result: read_bounded(&proc_root.join("uptime")).and_then(|s| parse_uptime(&s)),
+        },
+    }
+}
+
+#[cfg(test)]
+mod report_tests {
+    use super::*;
+
+    #[test]
+    fn missing_sources_are_independent_errors() {
+        let r = report(Path::new("/nonexistent-mira-proc-test-fixtures"));
+        assert!(r.memory.result.is_err());
+        assert!(r.uptime.result.is_err());
+    }
+
+    #[test]
+    fn invalid_memory_does_not_hide_valid_uptime() {
+        assert!(parse_meminfo("MemTotal: 100 kB\\nMemAvailable: 200 kB\\n").is_err());
+        assert_eq!(parse_uptime("42.50 0.00\\n").unwrap(), 42);
+    }
+}
