@@ -2,7 +2,8 @@ use mira::linux;
 use mira::{Actor, Engine, Mode, Move, Outcome, Proposal, demo_scenario};
 
 fn main() {
-    match std::env::args().as_slice() {
+    let args: Vec<String> = std::env::args().collect();
+    match args.as_slice() {
         [_, command] if command == "inspect" => inspect(),
         [_, command] if command == "demo" => demo(),
         _ => {
