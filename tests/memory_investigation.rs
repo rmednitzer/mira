@@ -49,6 +49,25 @@ fn memory_criteria_bind_to_bounded_evidence_and_preserve_unknowns() {
             .outcome(),
         Outcome::Indeterminate
     );
+    // Malformed source text cannot satisfy an otherwise valid minimum.
+    for invalid in ["+50", "-50", "50.0", "5e1", "５０", "50\u{00a0}"] {
+        for field in ["MemTotal", "MemAvailable"] {
+            let text = if field == "MemTotal" {
+                format!("MemTotal: {invalid} kB\nMemAvailable: 50 kB\n")
+            } else {
+                format!("MemTotal: 100 kB\nMemAvailable: {invalid} kB\n")
+            };
+            fs::write(fixture.0.join("meminfo"), text).unwrap();
+            let report = memory_investigation::collect(1, &fixture.0).unwrap();
+            assert_eq!(
+                report.outcome(),
+                Outcome::Indeterminate,
+                "{field}: {invalid}"
+            );
+            assert_eq!(report.reason(), "evidence_unavailable");
+            assert!(report.to_json().contains("\"error_kind\":\"InvalidData\""));
+        }
+    }
     fs::remove_file(fixture.0.join("meminfo")).unwrap();
     let report = memory_investigation::collect(1, &fixture.0).unwrap();
     assert_eq!(report.outcome(), Outcome::Indeterminate);

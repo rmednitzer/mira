@@ -9,8 +9,9 @@ use std::{
 struct Fixture(PathBuf);
 
 impl Fixture {
-    fn new() -> Self {
-        let root = std::env::temp_dir().join(format!("mira-source-bounds-{}", std::process::id()));
+    fn new(name: &str) -> Self {
+        let root =
+            std::env::temp_dir().join(format!("mira-source-bounds-{}-{name}", std::process::id()));
         // Own only a newly created directory; never reuse another run's files.
         fs::create_dir(&root).unwrap();
         let fixture = Self(root);
@@ -77,7 +78,7 @@ fn assert_failure(capture: &capture::Capture, path: &str, reason: &str) {
 
 #[test]
 fn exact_limits_overflow_and_invalid_utf8_preserve_independent_evidence() {
-    let fixture = Fixture::new();
+    let fixture = Fixture::new("byte-budgets");
     assert!(fixture.capture().all_available());
     for (path, limit, content) in SOURCES {
         let file = fixture.0.join(path);
@@ -105,4 +106,17 @@ fn exact_limits_overflow_and_invalid_utf8_preserve_independent_evidence() {
         fs::write(file, content).unwrap();
     }
     assert!(fixture.capture().all_available());
+}
+
+#[test]
+fn malformed_memory_tokens_preserve_other_capture_sources() {
+    let fixture = Fixture::new("memory-tokens");
+    for invalid in ["+50", "50\u{00a0}", "\u{00a0}50"] {
+        fs::write(
+            fixture.0.join("meminfo"),
+            format!("MemTotal: 100 kB\nMemAvailable: {invalid} kB\n"),
+        )
+        .unwrap();
+        assert_failure(&fixture.capture(), "meminfo", "malformed_data");
+    }
 }
