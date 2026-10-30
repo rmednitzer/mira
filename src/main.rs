@@ -1,7 +1,16 @@
 use mira::{Actor, Engine, Mode, Move, Outcome, Proposal, demo_scenario};
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let args: Vec<String> = match std::env::args_os()
+        .map(|argument| argument.into_string())
+        .collect::<Result<_, _>>()
+    {
+        Ok(args) => args,
+        Err(_) => {
+            eprintln!("MIRA: arguments must be valid UTF-8");
+            std::process::exit(2);
+        }
+    };
     match args.as_slice() {
         [_, command, label] if command == "capture" => capture(label, false),
         [_, command, label, option] if command == "capture" && option == "--pressure" => {

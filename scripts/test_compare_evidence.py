@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 import json
 import os
+import copy
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 from pathlib import Path
 from jsonschema import Draft202012Validator
 from compare_evidence import compare, load, strict_json, MAX_BYTES, MAX_DEPTH
+from capture_contract import check_capture
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ROOT / "schemas/evidence-v1.schema.json").read_text())
@@ -90,6 +94,63 @@ class ComparisonTests(unittest.TestCase):
 
 
 class AdmissionTests(unittest.TestCase):
+    def test_decimal_and_exponent_tokens_cannot_be_rounded_into_integers(self):
+        for token in ('1.0', '0.0', '-0.0', '1e0', '1E0', '1e999',
+                      '9007199254740993.0', '10.0000000000000001'):
+            with self.subTest(token=token):
+                with self.assertRaisesRegex(ValueError, 'integer JSON tokens'):
+                    strict_json(('{"value":' + token + '}').encode())
+        for value in (0, 9007199254740993, 2 ** 64 - 1, 2 ** 128 - 1):
+            self.assertEqual(strict_json(json.dumps({'value': value}).encode()),
+                             {'value': value})
+        self.assertEqual(strict_json(b'{"value":"1.0"}'), {'value': '1.0'})
+
+    def test_legacy_and_complete_import_refuse_lossy_numeric_tokens(self):
+        capture = json.loads((ROOT / 'tests/fixtures/capture-v1.json').read_text())['valid'][0]
+        capture = copy.deepcopy(capture)
+        uptime = next(row for row in capture['records'] if row['source'] == '/proc/uptime')
+        uptime.update(status='observed', value=0, error_kind=None, failure_reason=None)
+        capture['all_available'] = all(row['status'] == 'observed' for row in capture['records'])
+        with tempfile.TemporaryDirectory() as temp:
+            before = Path(temp) / 'before'
+            after = Path(temp) / 'after'
+            for document in (record(value=0), capture):
+                encoded = json.dumps(document)
+                before.write_text(encoded.replace('"value": 0', '"value": 9007199254740992', 1))
+                after.write_text(encoded.replace('"value": 0', '"value": 9007199254740993', 1))
+                report = compare(load(before, VALIDATOR), load(after, VALIDATOR))
+                change = next(row for row in report['changes'] if row['source'] == '/proc/uptime')
+                self.assertEqual(change['outcome'], 'changed')
+                for token in ('9007199254740993.0', '10.0000000000000001', '1e0'):
+                    after.write_text(encoded.replace('"value": 0', '"value": ' + token, 1))
+                    with self.subTest(complete='capture_version' in document, token=token):
+                        with self.assertRaisesRegex(ValueError, 'integer JSON tokens'):
+                            load(after, VALIDATOR)
+                        result = subprocess.run(
+                            [sys.executable, str(ROOT / 'scripts/compare_evidence.py'),
+                             str(before), str(after)], capture_output=True, check=False, timeout=5)
+                        self.assertEqual(result.returncode, 2)
+                        self.assertEqual(result.stdout, b'')
+                        self.assertEqual(result.stderr, b'evidence comparison failed: ValueError\n')
+
+    def test_io_failure_cannot_hide_specifically_mapped_error_kinds(self):
+        capture = json.loads((ROOT / 'tests/fixtures/capture-v1.json').read_text())['valid'][0]
+        capture = copy.deepcopy(capture)
+        capture['all_available'] = False
+        row = capture['records'][0]
+        row.update(status='unavailable', value=None, failure_reason='io_failure')
+        for kind in ('TimedOut', 'InvalidData', 'InvalidInput', 'PermissionDenied', 'NotFound'):
+            row['error_kind'] = kind
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(ValueError, 'failure reason contradicts error kind'):
+                    check_capture(capture)
+        # Other can be either a typed backend failure or a generic I/O failure.
+        for kind in ('Other', 'Interrupted', 'UnexpectedEof', 'FutureErrorKind'):
+            row['error_kind'] = kind
+            self.assertIs(check_capture(capture), capture)
+        row.update(error_kind='TimedOut', failure_reason='timeout')
+        self.assertIs(check_capture(capture), capture)
+
     def test_duplicate_keys_at_every_level_are_rejected_before_schema(self):
         for data in [b'{"schema_version":999,"schema_version":1}',
                      b'{"value":{"x":1,"x":2}}']:

@@ -47,3 +47,5 @@ Rollback: revert the new CLI/profile/schema and comparison support together. Exi
 - https://docs.docker.com/reference/cli/docker/image/inspect/
 
 Follow-up: [ADR 0003](0003-locked-tooling-and-fresh-builds.md) adds hash-locked tooling and fresh source/target comparisons within one native runner environment; independent-host reproduction and signing remain open.
+
+Audit follow-up: numeric fields in current producer formats use integer JSON tokens. Offline admission rejects decimal/exponent tokens before conversion, including mathematically integral forms, to prevent rounded comparison values. Exact integer tokens and existing producer/schema versions are unchanged. Failure-reason consistency also constrains the io_failure fallback while permitting generic Other errors. Regression evidence belongs to the fixing PR.

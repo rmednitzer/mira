@@ -13,6 +13,12 @@ Draft202012Validator.check_schema(EVIDENCE)
 Draft202012Validator.check_schema(SCHEMA)
 REGISTRY = Registry().with_resource(EVIDENCE['$id'], Resource.from_contents(EVIDENCE))
 VALIDATOR = Draft202012Validator(SCHEMA, registry=REGISTRY)
+REASON_KINDS = {'timeout': {'TimedOut'}, 'limit_exceeded': {'InvalidData'},
+                'malformed_data': {'InvalidData', 'InvalidInput'},
+                'permission_denied': {'PermissionDenied'}, 'not_found': {'NotFound'},
+                'backend_failed': {'Other'}}
+# Other also represents generic I/O errors, not only typed backend failures.
+SPECIFIC_KINDS = {kind for kinds in REASON_KINDS.values() for kind in kinds} - {'Other'}
 
 
 def check_capture(capture):
@@ -28,11 +34,9 @@ def check_capture(capture):
         raise ValueError('availability contradicts records')
     for record in records:
         reason = record['failure_reason']
-        kinds = {'timeout': {'TimedOut'}, 'limit_exceeded': {'InvalidData'},
-                 'malformed_data': {'InvalidData', 'InvalidInput'},
-                 'permission_denied': {'PermissionDenied'}, 'not_found': {'NotFound'},
-                 'backend_failed': {'Other'}}
-        if reason in kinds and record['error_kind'] not in kinds[reason]:
+        kind = record['error_kind']
+        if ((reason in REASON_KINDS and kind not in REASON_KINDS[reason])
+                or (reason == 'io_failure' and kind in SPECIFIC_KINDS)):
             raise ValueError('failure reason contradicts error kind')
         if record['source'] == '/proc/meminfo' and record['status'] == 'observed':
             if record['value']['available_kib'] > record['value']['total_kib']:
