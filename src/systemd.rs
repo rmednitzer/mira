@@ -26,7 +26,9 @@ pub fn validate_unit(unit: &str) -> io::Result<()> {
         || unit.len() > 200
         || !unit.ends_with(".service")
         || unit.starts_with('-')
-        || !unit.bytes().all(|c| c.is_ascii_alphanumeric() || b"._@:-".contains(&c))
+        || !unit
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || b"._@:-".contains(&c))
     {
         return Err(invalid("invalid systemd service name"));
     }
@@ -45,7 +47,9 @@ pub fn parse_show(output: &str, requested: &str) -> io::Result<ServiceState> {
     let mut active = None;
     let mut sub = None;
     for line in output.lines() {
-        let (key, value) = line.split_once('=').ok_or_else(|| invalid("malformed property"))?;
+        let (key, value) = line
+            .split_once('=')
+            .ok_or_else(|| invalid("malformed property"))?;
         if value.is_empty() || value.len() > 256 || !value.is_ascii() {
             return Err(invalid("invalid property value"));
         }
@@ -78,8 +82,13 @@ pub fn inspect(unit: &str) -> io::Result<ServiceState> {
     validate_unit(unit)?;
     let mut child = Command::new("systemctl")
         .args([
-            "--system", "--no-pager", "--no-ask-password",
-            "show", "--property=Id,LoadState,ActiveState,SubState", "--", unit,
+            "--system",
+            "--no-pager",
+            "--no-ask-password",
+            "show",
+            "--property=Id,LoadState,ActiveState,SubState",
+            "--",
+            unit,
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -92,7 +101,10 @@ pub fn inspect(unit: &str) -> io::Result<ServiceState> {
         if start.elapsed() >= Duration::from_secs(3) {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(io::Error::new(io::ErrorKind::TimedOut, "systemd query timeout"));
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "systemd query timeout",
+            ));
         }
         thread::sleep(Duration::from_millis(10));
     };
@@ -100,8 +112,12 @@ pub fn inspect(unit: &str) -> io::Result<ServiceState> {
         return Err(io::Error::other("systemd query unavailable or failed"));
     }
     let mut bytes = Vec::new();
-    child.stdout.take().ok_or_else(|| io::Error::other("missing stdout"))?
-        .take(8193).read_to_end(&mut bytes)?;
+    child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("missing stdout"))?
+        .take(8193)
+        .read_to_end(&mut bytes)?;
     if bytes.len() > 8192 {
         return Err(invalid("systemd response exceeds limit"));
     }
@@ -130,7 +146,13 @@ mod tests {
 
     #[test]
     fn rejects_unit_argument_injection() {
-        for name in ["--user.service", "../ssh.service", "ssh.service;id", "ssh.socket", ""] {
+        for name in [
+            "--user.service",
+            "../ssh.service",
+            "ssh.service;id",
+            "ssh.socket",
+            "",
+        ] {
             assert!(validate_unit(name).is_err(), "{name}");
         }
     }
