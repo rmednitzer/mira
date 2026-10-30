@@ -105,21 +105,21 @@ impl OperationalSnapshot {
     }
 }
 
+/// Capture package database provenance without requiring a service query.
+pub fn collect_packages(status_path: &Path) -> Evidence<Vec<packages::Package>> {
+    Evidence::from_result("/var/lib/dpkg/status", packages::collect(status_path), timestamp())
+}
+
+/// Capture one selected system service without requiring package database access.
+pub fn collect_service(unit: &str) -> Evidence<systemd::ServiceState> {
+    Evidence::from_result("systemd/system", systemd::inspect(unit), timestamp())
+}
+
 /// The status path is injectable for offline tests. Service queries are optional,
 /// explicit and bounded by the systemd collector; no automatic unit discovery.
 pub fn collect_operations(status_path: &Path, unit: Option<&str>) -> OperationalSnapshot {
-    let packages = Evidence::from_result(
-        "/var/lib/dpkg/status",
-        packages::collect(status_path),
-        timestamp(),
-    );
-    let service = unit.map(|name| {
-        Evidence::from_result(
-            "systemd/system",
-            systemd::inspect(name),
-            timestamp(),
-        )
-    });
+    let packages = collect_packages(status_path);
+    let service = unit.map(collect_service);
     OperationalSnapshot { packages, service }
 }
 
