@@ -22,7 +22,7 @@ jobs:
           python3 -m venv .schema-venv
           .schema-venv/bin/python -m pip install --disable-pip-version-check jsonschema==4.25.1
           cargo build --locked
-          .schema-venv/bin/python scripts/validate_evidence_schema.py
+          .schema-venv/bin/python scripts/validate_evidence_schema.py --live-systemd
           .schema-venv/bin/python scripts/test_compare_evidence.py
       - name: Install native packaging tools
         run: |

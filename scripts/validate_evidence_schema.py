@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Validate MIRA evidence JSONL using JSON Schema draft 2020-12."""
+import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -43,7 +45,36 @@ def check_output(args, expected_count, allowed_sources, exit_codes):
     return records
 
 
+def check_live_systemd():
+    if os.geteuid() == 0:
+        raise AssertionError("live systemd check must run without root")
+    unit = "systemd-journald.service"
+    argv = ["systemctl", "--system", "--no-pager", "--no-ask-password",
+            "show", "--property=Id,Names,LoadState,ActiveState,SubState", "--", unit]
+
+    def direct():
+        result = subprocess.run(argv, check=True, capture_output=True,
+                                text=True, timeout=5)
+        return dict(line.split("=", 1) for line in result.stdout.splitlines())
+
+    before = direct()
+    records = check_output(["service", unit, "--json"], 1, ["systemd/system"], {0})
+    after = direct()
+    if before != after:
+        raise AssertionError("live fixture changed during collection; comparison inconclusive")
+    expected = {"id": before["Id"], "load_state": before["LoadState"],
+                "active_state": before["ActiveState"], "sub_state": before["SubState"]}
+    if before["LoadState"] != "loaded" or unit not in before["Names"].split():
+        raise AssertionError("expected an installed journald fixture")
+    if records[0]["scope"] != unit or records[0]["value"] != expected:
+        raise AssertionError("MIRA service evidence disagrees with stable live systemd state")
+    print("unprivileged live systemd evidence validated")
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--live-systemd", action="store_true")
+    args = parser.parse_args()
     fixture = json.loads((ROOT / "tests/fixtures/evidence-v1.json").read_text())
     for record in fixture["valid"]:
         check_record(record)
@@ -73,6 +104,8 @@ def main():
         )
         if rejected[0]["scope"] != invalid_name or rejected[0]["status"] != "unavailable":
             raise AssertionError("rejected service scope must remain explicit")
+    if args.live_systemd:
+        check_live_systemd()
     print("evidence-v1 schema and CLI contract validated")
 
 
