@@ -33,8 +33,7 @@
       "type": [
         "string",
         "null"
-      ],
-      "maxLength": 200
+      ]
     },
     "recorded_unix_ms": {
       "type": [
@@ -111,8 +110,7 @@
       "then": {
         "properties": {
           "scope": {
-            "type": "string",
-            "minLength": 9
+            "type": "string"
           }
         }
       },
@@ -325,6 +323,31 @@
                 "type": "string"
               }
             }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "systemd/system"
+          },
+          "status": {
+            "const": "observed"
+          }
+        },
+        "required": [
+          "source",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "minLength": 9,
+            "maxLength": 200
           }
         }
       }
