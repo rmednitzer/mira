@@ -1,4 +1,3 @@
-use mira::linux;
 use mira::{Actor, Engine, Mode, Move, Outcome, Proposal, demo_scenario};
 
 fn main() {
