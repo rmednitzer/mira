@@ -4,10 +4,12 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.as_slice() {
         [_, command] if command == "inspect" => inspect(),
+        [_, command, format] if command == "inspect" && format == "--json" => inspect_json(),
         [_, command] if command == "demo" => demo(),
         [_, command, unit] if command == "service" => service(unit),
+        [_, command, unit, format] if command == "service" && format == "--json" => service_json(unit),
         _ => {
-            eprintln!("Usage: mira inspect | mira demo | mira service UNIT.service");
+            eprintln!("Usage: mira inspect [--json] | mira demo | mira service UNIT.service [--json]");
             std::process::exit(2);
         }
     }
@@ -95,5 +97,24 @@ fn service(unit: &str) {
             eprintln!("{}: unknown ({kind:?}: {message})", observation.source);
             std::process::exit(1);
         }
+    }
+}
+
+fn inspect_json() {
+    let snapshot = mira::evidence::collect(std::path::Path::new("/proc"));
+    let packages = mira::evidence::collect_packages(std::path::Path::new("/var/lib/dpkg/status"));
+    for record in mira::evidence_json::host_records(&snapshot, &packages) {
+        println!("{record}");
+    }
+    if !snapshot.complete() || !packages.is_available() {
+        std::process::exit(1);
+    }
+}
+
+fn service_json(unit: &str) {
+    let observation = mira::evidence::collect_service(unit);
+    println!("{}", mira::evidence_json::service_record(unit, &observation));
+    if !observation.is_available() {
+        std::process::exit(1);
     }
 }
