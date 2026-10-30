@@ -1,16 +1,20 @@
 # MIRA — Mixed-Initiative Reasoning and Autonomy
 
-An open-source, local-first project for human–autonomy coordination, shared control and inspectable decisions.
+**Security-first, intent-driven Linux and infrastructure operations.**
 
-**Status:** Early Rust bootstrap. Not a safety-certified controller or a production authorization system.
+MIRA is a local-first Rust project for evidence-backed Linux diagnostics, security exposure analysis, and controlled human–AI cooperation. The goal is to help operators understand system state, choose proportionate actions and verify outcomes without granting AI implicit operational authority.
 
-## First use case
+**Status:** Early development. Current source includes a deterministic coordination fixture, in-memory replay verification and an initial bounded, read-only Linux procfs evidence collector. It is not yet a functioning AIOps application, vulnerability scanner, adaptive UI or secure remote-operations controller.
 
-A deterministic, offline grid rover with human and agent movement proposals. Four illustrative authority modes are available: manual, advisory, assisted, and delegated. The kernel records each decision and transition.
+## Primary use case
+
+A Linux/platform engineer investigates host instability or potential security exposure. MIRA collects bounded evidence, distinguishes facts from uncertain findings, and provides contextual investigative views. The MVP must be useful entirely offline and without a model.
+
+See [vision](docs/vision.md), [architecture](docs/architecture.md), [requirements](docs/requirements.md), [roadmap](docs/roadmap.md), and [threat model](docs/threat-model.md).
 
 ## Ubuntu 26.04 LTS
 
-Install Rust 1.93.1 with rustup and run:
+Rust 2024; pinned toolchain is specified in `rust-toolchain.toml`.
 
 ```sh
 cargo fmt --all -- --check
@@ -19,16 +23,12 @@ cargo test --all-targets --locked
 cargo run --locked
 ```
 
-The core has no external crate dependencies or hosted-service requirement.
+The current CLI still demonstrates the original grid control fixture. There is no privileged collector daemon, network service, external model call, or automated remediation.
 
-## Architecture and limitations
+## Security and sovereignty
 
-See [project scope](docs/PROJECT.md) and [security guidance](SECURITY.md). Actor labels are unverified caller inputs, and delegation is illustrative. No physical actuator integration is supported.
-
-## Planned integration
-
-GitHub Models and locally hosted inference will be optional external participant adapters. Model responses must pass the same arbitration checks as scripted responses.
+Read-only by default. Hosted inference is optional and never a source of authority. No unapproved mutation, silent fallback to cloud inference, or unsupported vulnerability applicability claims. This is not a safety-certified or production authorization system.
 
 ## License
 
-Apache-2.0 (license file pending on this bootstrap branch).
+Apache-2.0; see [LICENSE](LICENSE).
