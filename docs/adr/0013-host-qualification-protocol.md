@@ -45,18 +45,20 @@ They were written for CI, though, and have three limits:
 `scripts/qualify_host.py --host-class CLASS --receipt NEW_FILE [--binary PATH]` runs from a clean source checkout with the hash-locked schema environment (`requirements-schema.txt`, as for every validator). It:
 
 1. **Refuses root**, refuses an existing receipt path, and refuses a dirty checkout, so that the receipt binds a known source.
-2. Uses `--binary` (default `target/debug/mira` after a locked build) for every check. The validators gain a two-part contract and change in no other way:
+2. Uses `--binary` (default `target/debug/mira` after a locked build) for every check. The validators gain a four-part contract and change in no other way:
    - **Binary input:** a `MIRA_BINARY` environment input replaces the hard-coded `target/debug/mira` path.
    - **Inconclusive status:** today a comparison spoiled by a changing live value raises the same `ValueError` as wrong evidence and exits 1. A shared `Inconclusive` exception (in `scripts/validation_status.py`) is raised instead wherever a validator detects that a live sample changed mid-comparison, and the top-level handlers map it to **exit 4**. The exit codes become 0 passed, 1 failed, 4 inconclusive. The message stays the fixed exception type, so no sampled value is printed.
-3. **Probes preconditions** with read-only checks before each validator:
+   - **Check groups:** each validator declares fixed group names (`--list-groups`) and runs only the selected ones with `--only GROUP[,GROUP]`. For example, the capture validator splits into `schema`, `cli`, `compare`, `live-boot` and `signed-compare`. A missing `ssh-keygen` then makes only `signed-compare` not applicable, and a missing boot ID only `live-boot`; the other capture groups still run. Without `--only`, every group runs, as today.
+   - **Observation gaps:** a validator can pass while MIRA correctly reported a source as unavailable. For example, the pressure validator accepts an unavailable PSI file with exit 3. When `MIRA_QUALIFICATION_STATUS` names a new file, each validator writes the unavailable observations it saw there: only fixed source identifiers (such as `/proc/pressure/io` or `journal/system`) with their fixed `failure_reason`, and never values. A passing group can therefore still carry gaps.
+3. **Probes preconditions** with read-only checks before each check group:
    - systemd as PID 1, and `systemctl` present
    - `journalctl` present, and a visible PID 1 sentinel
    - `/proc/pressure` present
    - `dpkg` status readable
    - `ssh-keygen` present
    - the `/proc/sys/kernel/random/boot_id` file present
-4. Runs every applicable validator once, with a bounded timeout. Exit 0 is **passed** and exit 1 is **failed**. Exit 4 (**inconclusive**) is retried at most twice, then recorded as failed with reason `inconclusive`. Any other exit status, a timeout, or a validator that cannot start is failed with reason `runner_error`.
-5. Records each check whose precondition is absent as **not applicable** with a fixed reason (`no_systemd`, `no_journal_access`, `no_psi`, `no_dpkg`, `no_ssh_keygen`, `no_boot_id`), and never runs it.
+4. Runs each applicable check group once (`--only GROUP`), with a bounded timeout. Exit 0 is **passed** and exit 1 is **failed**. Exit 4 (**inconclusive**) is retried at most twice, then recorded as failed with reason `inconclusive`. Any other exit status, a timeout, or a validator that cannot start is failed with reason `runner_error`.
+5. Records each check group whose precondition is absent as **not applicable** with a fixed reason (`no_systemd`, `no_journal_access`, `no_psi`, `no_dpkg`, `no_ssh_keygen`, `no_boot_id`), and never runs it.
 
 ### Receipt
 
@@ -72,7 +74,7 @@ The runner writes one JSON receipt (`qualification-receipt-v1`), created exclusi
 | `architecture` | `dpkg --print-architecture` |
 | `systemd_version` | the major version number, or null |
 | `capabilities` | the probe results: booleans only |
-| `checks` | for each validator: name, result (`passed`, `failed` or `not_applicable`), a fixed reason, and duration |
+| `checks` | for each validator check group: validator, group, result (`passed`, `failed` or `not_applicable`), a fixed reason, duration, and `observation_gaps`, the unavailable source identifiers with their fixed failure reasons as reported through `MIRA_QUALIFICATION_STATUS` |
 | `started_unix_ms`, `duration_ms` | unverified wall-clock start and monotonic duration |
 
 The receipt never contains a host name, machine ID, boot ID, user name, IP or MAC address, kernel release string, package list, unit names or any sampled value. Validator output is not copied in; only the exit status and fixed reason are kept. The validators already print only fixed lines and error types.
@@ -92,7 +94,7 @@ The proposal is that Phase 1 exits when each required class has one receipt with
 
 ### Expected gaps per class
 
-The protocol documents, per class, which checks are expected to be `not_applicable`. For example, a container is expected to show `no_systemd` and, typically, `no_journal_access`. An unexpected `not_applicable` result, such as `no_psi` on a physical host, is reported as a finding rather than silently accepted.
+The protocol documents, per class, which check groups are expected to be `not_applicable` and which observation gaps are expected. For example, a container is expected to show `no_systemd` and, typically, `no_journal_access`; a kernel without PSI is expected to show `/proc/pressure/*` gaps. Review applies equally to both: an unexpected `not_applicable` group, or an unexpected observation gap inside a **passed** group, such as `/proc/pressure/io` unavailable on a physical host, is a finding. The Phase 1 exit requires both kinds to match the class's expected list, not just the absence of failed groups.
 
 ## Trust, privacy and failure analysis
 
@@ -106,13 +108,14 @@ The protocol documents, per class, which checks are expected to be `not_applicab
 
 - **Validator contract tests:** for each validator with a live comparison, a forced mid-comparison change exits 4 and wrong evidence still exits 1. These cover procfs, systemd, dpkg, uptime/kernel, journal and boot binding.
 - **Runner tests:** a fake binary and fake probes cover passed, failed, inconclusive-then-retried, and every `not_applicable` reason. They also cover refusal as root, refusal of an existing receipt path, and refusal of a dirty checkout.
+- **Group and gap tests:** each validator lists its groups, and `--only` runs exactly the selected ones. A capture run without `ssh-keygen` still passes its other groups. A pressure run with one unreadable PSI file passes and reports that source in `observation_gaps`, and the runner flags it as unexpected for a physical-host class.
 - **Receipt checks:** a receipt schema, plus a test that the receipt contains no forbidden data. The test runs the runner on a host-like fixture and scans the receipt for the host name, machine ID, boot ID and user name.
 - **`MIRA_BINARY` in every validator,** with CI running the runner against both the checkout build and the extracted package binary. CI publishes its receipt as `ci-runner` evidence.
 - **Docs:** a qualification guide covering how to run it, the classes and expected gaps, how to submit a receipt, and what a receipt does not prove.
 
 ## Consequences and rollback
 
-Blast radius: one script, one environment input and the inconclusive exit status in each validator, a receipt schema, a guide and CI wiring. The runtime package and CLI are unchanged. Reverting removes only tooling. Receipts already published remain historical evidence.
+Blast radius: one script and a four-part contract in each validator (binary input, inconclusive exit, selectable groups, observation-gap report), a receipt schema, a guide and CI wiring. The runtime package and CLI are unchanged. Reverting removes only tooling. Receipts already published remain historical evidence.
 
 ## Open questions for review
 
