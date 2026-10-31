@@ -1,6 +1,6 @@
 # ADR 0010: capture timeline, boot binding and freshness vocabulary
 
-Status: **Proposed**, 2026-10-31. Design only; no code, schema or CLI change is made by this record. Implementation follows in separate, staged PRs after review.
+Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day). Design only; no code, schema or CLI change is made by this record. Implementation follows in separate, staged PRs, each with its own review.
 
 ## Context
 
@@ -36,7 +36,7 @@ Q1 can be answered within one process from its own monotonic clock. Q2 can be an
 | F. Bind to `/etc/machine-id` instead of boot ID | A stable host identifier is far more linkable, does not detect reboots, and is really host identity, which is a separate roadmap item |
 | G. Always collect the boot ID in capture-v2 | Contradicts the existing privacy promise; rejected in favour of an explicit flag |
 
-## Proposed decision (option D)
+## Decision (option D)
 
 ### 1. capture-v2 with a collection timeline (answers Q1)
 
@@ -63,7 +63,7 @@ Q1 can be answered within one process from its own monotonic clock. Q2 can be an
 
 ### 2. Opt-in boot binding (enables same-boot Q2)
 
-`--bind-boot`, valid only with `--timeline`, additionally reads two existing-class procfs sources at both window edges:
+`--bind-boot` implies `--timeline` (giving both is equivalent) and additionally reads two existing-class procfs sources at both window edges:
 
 - `/proc/sys/kernel/random/boot_id`: a kernel-generated random UUID that changes on every boot. Bounded to 64 bytes; it must be a lowercase 8-4-4-4-12 hex UUID with a trailing newline. Readable without privilege.
 - `/proc/uptime`, retained at centisecond resolution (the kernel prints exactly two decimals). The existing whole-second uptime record is unchanged.
@@ -112,7 +112,7 @@ Staged PRs, each with its own exact-head review:
    - Independent validator for the capture-v2 structure and the timeline/record source agreement.
 2. **Boot binding:** boot ID and centisecond uptime parsers.
    - Bounds, UUID syntax and case, trailing data and changed-ID cases.
-   - The `--bind-boot` refusal without `--timeline`.
+   - `--bind-boot` alone producing the same capture-v2 shape as `--timeline --bind-boot`.
    - A live check that the boot ID equals a direct read and that the uptime window brackets direct samples.
 3. **Comparator:** comparison-v3.
    - Every row of the table above, overlapping windows, forged inconsistent windows refused, the `--max-window-ms` policy, mixed-version fallback, and unchanged comparison-v1/v2 outputs.
@@ -123,12 +123,14 @@ Packaging, docs and threat model are updated in each stage. CI runs on both nati
 
 Blast radius: one opt-in capture version, one opt-in flag, one comparator output version. Existing defaults are unchanged. Each stage can be reverted independently, and exported capture-v2 documents keep their version. No operational state requires rollback.
 
-## Open questions for review
+## Review decisions
 
-1. Flag names: `--timeline` and `--bind-boot`, or a single `--format capture-v2`?
-2. Is the wall-clock tolerance of max(50 ms, 1%) right, or should it be configurable?
-3. Should `--bind-boot` imply `--timeline` instead of requiring it explicitly?
-4. Should investigation reports later gain the same timeline? This ADR proposes not, because they read one source each.
+The four questions raised in review were settled as follows:
+
+1. **Flag names:** `--timeline` and `--bind-boot`, not a single format flag. Each flag names what it collects. The boot ID is a privacy decision and deserves its own visible flag rather than being implied by a format name.
+2. **Wall-clock tolerance:** fixed at max(50 ms, 1% of the window), not configurable. A tunable tolerance would let two captures disagree about the same clock behaviour. Consumers can apply a stricter rule to the exported window and edge times themselves.
+3. **`--bind-boot` implies `--timeline`.** Boot binding is meaningless without the timeline, so requiring both would add a usage error without any safety benefit.
+4. **No timeline for investigation reports.** Each reads a single source, so there is no intra-report skew to bound. Revisit only if a multi-source template is added.
 
 ## Primary references
 
