@@ -26,6 +26,8 @@ The default native CLI suite also supplies non-UTF-8 command, scope, option and 
 
 Host parser regressions validate both uptime fields, malformed/overflow inputs and legitimate aggregate idle time above uptime. The source-to-JSON regression preserves independent memory evidence when uptime is malformed.
 
+The retained coordination simulation has an exhaustive arbitration matrix in `tests/arbitration.rs`. It covers all 720 combinations of the four modes, six human inputs, six agent inputs and five grants. The inputs are absent, current safe, current unsafe, past, future and mislabeled; the grants are absent, expiring now, valid, unbounded and human-labelled. Each case is checked against an authored policy table and against invariants that are stated independently of the implementation: human precedence, the conditions under which state may move, the paths by which an agent may act, mislabeled-equals-absent, grants mattering only in Delegated mode, and determinism. A further test fixes goal-over-timeout precedence and terminal immutability. These tests pin arbitration behavior for caller-supplied data; they do not authenticate actors or grants.
+
 ## Independent evidence checks
 
 ```sh

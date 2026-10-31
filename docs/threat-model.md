@@ -154,6 +154,7 @@ TB0: repository/CI dependency and workflow supply chain (outside runtime DFD). T
 - H3: collision, timeout and goal completion reported inconsistently. Constraint: terminal outcome precedence must be explicit and exclusive.
 - H4: authority expires or transport fails mid-task and unsafe behavior persists. Constraint: fail closed / safe no-op until a new authorized decision.
 - H5: assistance changes operator intent unexpectedly. Constraint: assistance policy and every accepted/rejected intervention must be inspectable.
+  Current retained policy: Assisted mode substitutes a current, safe agent proposal only when the human's current proposal is unsafe, and it consults no grant. Selecting Assisted mode is therefore the operator's standing consent to that substitution, and every substitution is recorded as `SafeAssistance`. Absent or stale human proposals never trigger substitution. In Delegated mode, by contrast, an agent acts only under an unexpired agent grant and only when there is no current human proposal; a stale human proposal does not block delegation. `tests/arbitration.rs` pins both behaviors. Changing either requires a design decision, not a test update.
 
 These constraints are requirements for future assurance tests, **not verified guarantees** across all failure modes.
 
