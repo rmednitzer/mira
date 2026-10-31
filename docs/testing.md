@@ -156,6 +156,6 @@ PSI, kernel-release and dpkg Status regressions apply the same rule: Unicode sep
 
 `scripts/validate_journal_investigation.py` checks the fixtures with its own outcome-precedence implementation. Its live check derives visibility, file access, per-class producer-valid counts and the crash handler with its own `journalctl` queries and parser, before and after MIRA. It requires agreement and fails as inconclusive if the journal changed in between.
 
-## Representative host qualification (proposed)
+## Representative host qualification (design accepted)
 
-The live checks above run on two GitHub-hosted runners and the development host. [ADR 0013](adr/0013-host-qualification-protocol.md) proposes a runner that executes the same independent validators on real hosts against the checkout build or an installed binary. It would record passed, failed or not applicable per check (with fixed reasons such as `no_systemd`), and write a receipt free of host identifiers. That is the qualification the Phase 1 exit criterion requires and CI alone does not provide. It is not implemented.
+The live checks above run on two GitHub-hosted runners and the development host. [ADR 0013](adr/0013-host-qualification-protocol.md) specifies a runner that executes the same independent validators on real hosts against the checkout build or an installed binary. It would record passed, failed or not applicable per check (with fixed reasons such as `no_systemd`), and write a receipt free of host identifiers. That is the qualification the Phase 1 exit criterion requires and CI alone does not provide. It is not implemented.

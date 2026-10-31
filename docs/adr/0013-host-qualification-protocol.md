@@ -1,6 +1,6 @@
 # ADR 0013: representative host qualification protocol
 
-Status: **Proposed**, 2026-10-31. Design only; no code, script or CLI change is made by this record. Implementation would follow in a separate PR after review.
+Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day, through three review rounds). Design only; no code, script or CLI change is made by this record. Implementation follows in a separate PR with its own review.
 
 ## Context
 
@@ -38,7 +38,7 @@ They were written for CI, though, and have three limits:
 | D. **A qualification runner in the source checkout that runs the existing validators against a chosen binary, classifies each as passed / failed / not applicable, and writes a privacy-reviewed receipt** | Reuses existing, reviewed checks; explicit gaps; a comparable, publishable record |
 | E. Remote collection from enrolled hosts | A network, credential and fleet boundary; out of Phase 1 scope (ADR 0004) |
 
-## Proposed decision (option D)
+## Decision (option D)
 
 ### Runner
 
@@ -73,11 +73,12 @@ The runner writes one JSON receipt (`qualification-receipt-v1`), created exclusi
 | `os` | only `ID` and `VERSION_ID` from `/etc/os-release` |
 | `architecture` | `dpkg --print-architecture` |
 | `systemd_version` | the major version number, or null |
+| `kernel_series` | only the kernel `major.minor` (for example `6.17`), from `/proc/sys/kernel/osrelease`; never the full release string |
 | `capabilities` | the probe results: booleans only |
 | `checks` | for each validator check group: validator, group, result (`passed`, `failed` or `not_applicable`), a fixed reason, duration, and `observation_gaps`, the unavailable source identifiers with their fixed failure reasons as reported through `MIRA_QUALIFICATION_STATUS` |
 | `started_unix_ms`, `duration_ms` | unverified wall-clock start and monotonic duration |
 
-The receipt never contains a host name, machine ID, boot ID, user name, IP or MAC address, kernel release string, package list, unit names or any sampled value. Validator output is not copied in; only the exit status and fixed reason are kept. The validators already print only fixed lines and error types.
+The receipt never contains a host name, machine ID, boot ID, user name, IP or MAC address, full kernel release string, package list, unit names or any sampled value. Validator output is not copied in; only the exit status and fixed reason are kept. The validators already print only fixed lines and error types.
 
 ### Host classes and the Phase 1 exit
 
@@ -87,10 +88,11 @@ The receipt never contains a host name, machine ID, boot ID, user name, IP or MA
 | `physical-arm64` | bare-metal Ubuntu 26.04, arm64 | yes |
 | `vm` | a full virtual machine with systemd | yes |
 | `container` | a container without systemd as PID 1 | yes; most checks expected `not_applicable` |
+| `restricted-user` | not a host type but a second run, on any required host, as a user outside `adm` and `systemd-journal` | yes; exercises `journal_not_visible` / `journal_access_incomplete` on a real host |
 | `wsl` | WSL2 with systemd enabled | no; recorded when available |
 | `ci-runner` | GitHub-hosted runner (already covered by CI) | no |
 
-The proposal is that Phase 1 exits when each required class has one receipt with no **failed** check, every `not_applicable` result matches the class's expected gaps, and the receipts are reviewed. A receipt is evidence about one host at one time, not a fleet guarantee; this is the qualification the existing docs say is missing, not production readiness.
+Phase 1 exits when each required class (including the `restricted-user` run) has one receipt with no **failed** check group, every `not_applicable` result matches the class's expected gaps, and the receipts are reviewed. A receipt is evidence about one host at one time, not a fleet guarantee; this is the qualification the existing docs say is missing, not production readiness.
 
 ### Expected gaps per class
 
@@ -99,7 +101,7 @@ The protocol documents, per class, which check groups are expected to be `not_ap
 ## Trust, privacy and failure analysis
 
 - **No new runtime boundary.** The runner executes only the existing validators and read-only probes, as the invoking unprivileged user. Nothing is installed, enabled or written outside the new receipt file.
-- **Disclosure.** The field list above is closed and reviewed. The OS identity is limited to distribution and version, and the architecture is coarse. The kernel release is deliberately excluded because it can identify patch levels; the systemd major version is kept because preconditions depend on it.
+- **Disclosure.** The field list above is closed and reviewed. The OS identity is limited to distribution and version, and the architecture is coarse. Only the kernel series (`major.minor`) is kept, because PSI and other preconditions depend on it; the full release string is excluded because it can identify patch levels. The systemd major version is kept for the same reason as the kernel series.
 - **Operator assertion.** `host_class` is the operator's claim. The receipt does not prove the host is physical, and reviewers should treat it as declared.
 - **Receipt integrity.** A receipt is unsigned unless signed separately. Signing receipts would need a third MIRA signature namespace (ADR 0011) and is an open question.
 - **Not applicable versus failed.** A probe that wrongly reports a capability as absent could hide a failure. Probes are read-only and simple, the expected gaps per class are documented, and any unexpected `not_applicable` result is flagged in review.
@@ -117,12 +119,12 @@ The protocol documents, per class, which check groups are expected to be `not_ap
 
 Blast radius: one script and a four-part contract in each validator (binary input, inconclusive exit, selectable groups, observation-gap report), a receipt schema, a guide and CI wiring. The runtime package and CLI are unchanged. Reverting removes only tooling. Receipts already published remain historical evidence.
 
-## Open questions for review
+## Review decisions
 
-1. **Where qualification runs:** from a source checkout with the hash-locked Python environment, as proposed, or as something packaged?
-2. **Required classes:** are physical amd64, physical arm64, VM and container the right set for the Phase 1 exit?
-3. **Receipt contents:** is the closed field list right? In particular, should the kernel release be excluded, as proposed, or included for compatibility analysis?
-4. **Publication and signing:** should receipts be committed to the repository as qualification evidence, and should they be signable under a third namespace?
+1. **Where qualification runs:** from a clean source checkout with the hash-locked Python environment. This keeps the validators independent of the `mira` binary and keeps the runtime package Python-free. Qualification is an occasional engineering task, not part of every installation.
+2. **Required classes:** `physical-amd64`, `physical-arm64`, `vm` and `container`, plus a `restricted-user` run on one of them as a user outside `adm` and `systemd-journal`. That run exercises the journal visibility and access gaps on a real host, not only through the fixture.
+3. **Receipt fields:** the closed list, with the kernel limited to `kernel_series` (`major.minor`). The full release string stays excluded.
+4. **Publication and signing:** reviewed receipts are committed under `docs/qualification/receipts/`, each in its own PR, so review and git history provide custody. Receipts are not signed for now. Signing would need a third ADR 0011 namespace and a standalone `mira sign` command, which is deferred until receipts come from contributors other than the maintainers.
 
 ## Primary references
 
