@@ -6,6 +6,11 @@ cd "$(dirname "$0")/.."
 export LC_ALL=C
 version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
 test -n "$version"
+# One reproducible timestamp drives file mtimes and the dated package metadata.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}"
+case "$SOURCE_DATE_EPOCH" in ""|*[!0-9]*) echo "invalid SOURCE_DATE_EPOCH" >&2; exit 2;; esac
+changelog_date="$(date -u -R -d "@${SOURCE_DATE_EPOCH}")"
+manual_date="$(date -u -d "@${SOURCE_DATE_EPOCH}" +%F)"
 arch="$(dpkg --print-architecture)"
 case "$arch" in amd64|arm64) ;; *) echo "unsupported architecture: $arch" >&2; exit 2;; esac
 test -x target/release/mira || { echo "build target/release/mira first" >&2; exit 2; }
@@ -36,11 +41,12 @@ mira (${version}-1) unstable; urgency=medium
 
   * Experimental CLI-only package.
 
- -- MIRA Project <noreply@github.com>  Fri, 30 Oct 2026 12:00:00 +0000
+ -- MIRA Project <noreply@github.com>  ${changelog_date}
 EOF
 mkdir -p "$stage/usr/share/man/man1"
-cat <<'EOF' | gzip -n -9 > "$stage/usr/share/man/man1/mira.1.gz"
-.TH MIRA 1 "2026-10-30" "MIRA" "User Commands"
+{
+printf '.TH MIRA 1 "%s" "MIRA" "User Commands"\n' "$manual_date"
+cat <<'EOF'
 .SH NAME
 mira \- read-only Linux evidence CLI
 .SH SYNOPSIS
@@ -63,6 +69,7 @@ Inspect/service: 0 for available evidence, 1 for unavailable evidence, 2 for usa
 Capture: 0 all sources available, 1 complete with unavailable sources, 2 usage.
 Investigations (service-active and memory-headroom): 0 satisfied, 1 not satisfied, 3 indeterminate, 2 rejected invocation.
 EOF
+} | gzip -n -9 > "$stage/usr/share/man/man1/mira.1.gz"
 install -Dm644 docs/evidence-json.md "$stage/usr/share/doc/mira/evidence-json.md"
 install -Dm644 schemas/evidence-v1.schema.json "$stage/usr/share/mira/schemas/evidence-v1.schema.json"
 install -Dm644 schemas/investigation-v1.schema.json "$stage/usr/share/mira/schemas/investigation-v1.schema.json"
@@ -90,7 +97,6 @@ Description: Read-only Linux infrastructure evidence CLI
  Local-first experimental Linux inspection and structured evidence reporting.
  No background service or automatic remediation is installed.
 EOF
-export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}"
 find "$stage" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
 dpkg-deb --root-owner-group --build "$stage" "$out/mira_${version}-1_${arch}.deb"
 (cd "$out" && sha256sum "mira_${version}-1_${arch}.deb" > "mira_${version}-1_${arch}.deb.sha256")

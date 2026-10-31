@@ -53,6 +53,12 @@ fn main() {
     }
 }
 
+/// Human-readable recording time: Unix milliseconds, or `unknown` without a clock reading.
+/// JSON output keeps its own `null` encoding.
+fn recorded(time: Option<u128>) -> String {
+    time.map_or_else(|| "unknown".to_owned(), |value| value.to_string())
+}
+
 fn memory_headroom(minimum: &str, json: bool) {
     let report = mira::memory_investigation::parse_minimum(minimum).and_then(|minimum| {
         mira::memory_investigation::collect(minimum, std::path::Path::new("/proc"))
@@ -77,8 +83,8 @@ fn memory_headroom(minimum: &str, json: bool) {
             report.reason()
         );
         println!(
-            "source=/proc/meminfo recorded_unix_ms={:?} clock_trust=unverified freshness=unknown",
-            report.evidence().collected_unix_ms
+            "source=/proc/meminfo recorded_unix_ms={} clock_trust=unverified freshness=unknown",
+            recorded(report.evidence().collected_unix_ms)
         );
         match &report.evidence().status {
             mira::evidence::EvidenceStatus::Observed(memory) => {
@@ -103,9 +109,7 @@ fn inspect() {
     let snapshot = mira::evidence::collect(std::path::Path::new("/proc"));
     println!("MIRA read-only host evidence (observations only)");
     fn show<T: std::fmt::Debug>(entry: &Evidence<T>) {
-        let timestamp = entry
-            .collected_unix_ms
-            .map_or_else(|| "unknown".to_string(), |v| v.to_string());
+        let timestamp = recorded(entry.collected_unix_ms);
         match &entry.status {
             EvidenceStatus::Observed(value) => {
                 println!(
@@ -128,14 +132,15 @@ fn inspect() {
     let packages = mira::evidence::collect_packages(std::path::Path::new("/var/lib/dpkg/status"));
     match &packages.status {
         EvidenceStatus::Observed(installed) => println!(
-            "{}: observed {} installed packages (not vulnerability findings) recorded_unix_ms={:?}",
+            "{}: observed {} installed packages (not vulnerability findings) recorded_unix_ms={}",
             packages.source,
             installed.len(),
-            packages.collected_unix_ms
+            recorded(packages.collected_unix_ms)
         ),
         EvidenceStatus::Unavailable { kind, message, .. } => println!(
-            "{}: unknown ({kind:?}: {message:?}) recorded_unix_ms={:?}",
-            packages.source, packages.collected_unix_ms
+            "{}: unknown ({kind:?}: {message:?}) recorded_unix_ms={}",
+            packages.source,
+            recorded(packages.collected_unix_ms)
         ),
     }
     let incomplete = !snapshot.complete() || !packages.is_available();
@@ -168,13 +173,13 @@ fn service(unit: &str) {
     let observation = mira::evidence::collect_service(unit);
     match observation.status {
         EvidenceStatus::Observed(state) => println!(
-            "{}: Id={:?} LoadState={:?} ActiveState={:?} SubState={:?} recorded_unix_ms={:?} (observation only)",
+            "{}: Id={:?} LoadState={:?} ActiveState={:?} SubState={:?} recorded_unix_ms={} (observation only)",
             observation.source,
             state.id,
             state.load_state,
             state.active_state,
             state.sub_state,
-            observation.collected_unix_ms
+            recorded(observation.collected_unix_ms)
         ),
         EvidenceStatus::Unavailable { kind, message, .. } => {
             eprintln!("{}: unknown ({kind:?}: {message:?})", observation.source);
@@ -229,9 +234,9 @@ fn investigate(name: &str, unit: &str, json: bool) {
             report.assessment().reason()
         );
         println!(
-            "source={} recorded_unix_ms={:?} clock_trust=unverified freshness=unknown",
+            "source={} recorded_unix_ms={} clock_trust=unverified freshness=unknown",
             report.evidence().source,
-            report.evidence().collected_unix_ms
+            recorded(report.evidence().collected_unix_ms)
         );
         if let EvidenceStatus::Observed(state) = &report.evidence().status {
             // Debug formatting escapes control characters in untrusted state strings.
