@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/kernel-release-v1.schema.json",
+  "title": "MIRA explicit kernel-release investigation v1",
+  "$comment": "Structure, source binding and reason/outcome/availability agreement only. Exact equality between the expected and observed release is a semantic check outside JSON Schema. The pattern starts with (?!.*\\n) because Python re lets $ match before a final newline.",
+  "type": "object",
+  "required": [
+    "investigation_version",
+    "template",
+    "scope",
+    "expectation",
+    "assessment",
+    "application_health",
+    "root_cause",
+    "evidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "investigation_version": {
+      "const": 1
+    },
+    "template": {
+      "const": "kernel-release/v1"
+    },
+    "scope": {
+      "const": "local/procfs"
+    },
+    "expectation": {
+      "type": "object",
+      "required": [
+        "release"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "release": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._+-]{0,255}$"
+        }
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "required": [
+        "outcome",
+        "reason",
+        "evidence_ref"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "enum": [
+            "satisfied",
+            "not_satisfied",
+            "indeterminate"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "release_matches",
+            "release_differs",
+            "evidence_unavailable"
+          ]
+        },
+        "evidence_ref": {
+          "const": "#/evidence"
+        }
+      }
+    },
+    "application_health": {
+      "const": "not_assessed"
+    },
+    "root_cause": {
+      "const": "not_assessed"
+    },
+    "evidence": {
+      "allOf": [
+        {
+          "$ref": "https://github.com/rmednitzer/mira/blob/main/schemas/evidence-v2.schema.json"
+        },
+        {
+          "properties": {
+            "source": {
+              "const": "/proc/sys/kernel/osrelease"
+            },
+            "scope": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "release_matches"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "satisfied"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "release_differs"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "not_satisfied"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "evidence_unavailable"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "indeterminate"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "status": {
+                "const": "unavailable"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "evidence_unavailable"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "enum": [
+                  "release_matches",
+                  "release_differs"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

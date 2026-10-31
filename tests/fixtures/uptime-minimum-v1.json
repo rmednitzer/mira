@@ -1,0 +1,621 @@
+{
+  "valid": [
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 60,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 1
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 0,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 18446744073709551615
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 18446744073709551615,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 1
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "InvalidData",
+        "elapsed_ms": 0,
+        "failure_reason": "malformed_data"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 18446744073709551615
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "NotFound",
+        "elapsed_ms": 0,
+        "failure_reason": "not_found"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v2",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "host/example",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 0
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 18446744073709551616
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 1.5
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": "host",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": -1,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 1
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "InvalidData",
+        "elapsed_ms": 0,
+        "failure_reason": "malformed_data"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "reboot",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "minimum_met",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 59,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "uptime-minimum/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "minimum_uptime_seconds": 60
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "below_minimum",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/uptime",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": 60,
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    }
+  ],
+  "semantic_only": 2
+}
