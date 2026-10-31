@@ -18,13 +18,13 @@ Observed on the development host (systemd 259):
 - **Field limits:** `--output-fields` suppresses `MESSAGE` and other user fields. The cursor, timestamps and boot ID are always included.
 - **Export format:** `-o export` prints `KEY=value` lines with a blank line between entries, which can be parsed without a JSON library.
 - **Exit codes:** no matches gives exit 0, and an invalid boot gives exit 1.
-- **Sentinel:** a PID 1 entry (`-b B -n 1 _PID=1`) was visible for both the current and the previous boot. `-n` returns the latest N matching entries in chronological order.
-- **Boots:** the current boot had no such events, while earlier boots held 19 unit failures. That is why the previous boot matters when the question is "why did it restart".
+- **Sentinel:** a PID 1 entry (`-b B -n 1 -o export --output-fields=_PID _PID=1`) was visible for both the current and the previous retained boot. `-n` returns the latest N matching entries in chronological order.
+- **Boots:** the current boot had no such events, while earlier boots held 19 unit failures. That is why an earlier boot matters when the question is "why did it restart". `-b -1` means the previous boot *retained in the journal*, counted back from the end of the journal, not necessarily the machine's immediately preceding boot.
 
 ## Criteria
 
 - **No message text, ever.** Classify events by structured catalog IDs, never by reading or matching free text.
-- **Closed scope.** Fixed event classes, the current or the immediately previous boot only, and no caller-supplied match expressions.
+- **Closed scope.** Fixed event classes, the current boot or the previous boot retained in the journal only, and no caller-supplied match expressions.
 - **Absence only when visible.** Report "no events recorded" only when the query demonstrably saw the system journal for that boot; otherwise the result is indeterminate.
 - **Bounded.** Bounded in time, entries per class and bytes, reusing the shared subprocess runner (ADR 0011). Use a fixed argv with no shell.
 - **Unchanged surface.** No elevation, network, persistence or new crate. Existing outputs stay unchanged.
@@ -55,15 +55,22 @@ The kernel OOM class covers only kills that systemd attributes to a unit; an OOM
 ### Command
 
 ```sh
-mira investigate journal-events --absent CLASS[,CLASS...] [--boot current|previous] [--json]
+mira investigate journal-events --absent CLASS[,CLASS...] [--boot current|previous-retained] [--json]
 ```
 
 The question is an expectation, like the other templates: **were none of these event classes recorded in this boot?**
 
-- CLASS is from the closed set above, given without repetition. `--boot` defaults to `current` (`-b 0`); `previous` is `-b -1`.
-- **Visibility sentinel.** First query `-b B -n 1 _PID=1`. systemd as PID 1 always logs during boot, so at least one entry must be visible. If none is, MIRA cannot see the system journal for that boot: the caller lacks journal access, the boot was not persisted, the journal was rotated away, or PID 1 is not systemd. The outcome is then indeterminate (`journal_not_visible`), never satisfied.
-- **Per-class query.** Then query, per class, `/usr/bin/journalctl --system --no-pager --quiet -b B -o export --output-fields=MESSAGE_ID,UNIT,USER_UNIT -n 1001` with that class's `MESSAGE_ID=` matches. All argument values are constants except the closed boot selector.
-- **Parsing.** MIRA reads only `MESSAGE_ID`, `UNIT`/`USER_UNIT` and `__MONOTONIC_TIMESTAMP`. Binary-encoded export fields, unknown message IDs among the results, and malformed lines make the evidence unavailable.
+- CLASS is from the closed set above, given without repetition. `--boot` defaults to `current` (`-b 0`). `previous-retained` is `-b -1`: the most recent earlier boot that the journal still holds. If the immediately preceding boot was never persisted, for example on volatile storage or after a journal loss, `-b -1` selects an older retained boot instead. MIRA cannot detect that gap from the journal alone, because a boot that left no entries is indistinguishable from a powered-off interval. So the option and the report name the scope exactly, `previous-retained`, never "previous boot", and the guide states the limitation. Binding to the immediately preceding boot would need independent predecessor evidence, which is out of scope.
+- **Visibility sentinel.** First run `/usr/bin/journalctl --system --no-pager --quiet -b B -n 1 -o export --output-fields=_PID _PID=1`, with the same export format and field allowlist discipline as the class queries, so no message text is read even for the sentinel. MIRA only counts the entries returned. systemd as PID 1 always logs during boot, so at least one entry must be visible. If none is, MIRA cannot see the system journal for that boot: the caller lacks journal access, the boot was not persisted, the journal was rotated away, or PID 1 is not systemd. The outcome is then indeterminate (`journal_not_visible`), never satisfied.
+- **Per-class query.** Then query, per class, `/usr/bin/journalctl --system --no-pager --quiet -b B -o export --output-fields=MESSAGE_ID,UNIT,USER_UNIT,COREDUMP_UNIT,COREDUMP_USER_UNIT -n 1001` with that class's `MESSAGE_ID=` matches. All argument values are constants except the closed boot selector.
+- **Parsing.** MIRA reads only `MESSAGE_ID`, `__MONOTONIC_TIMESTAMP` and the class's unit fields, mapped per class:
+
+  | Class | Unit fields, in order of preference |
+  |---|---|
+  | `oom-kill`, `unit-failure` | `UNIT`, then `USER_UNIT` (manager-generated messages about a unit) |
+  | `coredump` | `COREDUMP_UNIT`, then `COREDUMP_USER_UNIT` (the crashed process's unit, per systemd-coredump) |
+
+  A unit field from the other class's mapping is ignored. Each unit value must pass the existing unit-name syntax check, or the evidence is unavailable. The exact field each catalog message carries, including systemd-oomd's, is confirmed against real entries during implementation. Binary-encoded export fields, unknown message IDs among the results, and malformed lines make the evidence unavailable.
 
 | Observation | Outcome | Reason | Exit |
 |---|---|---|---|
@@ -81,7 +88,7 @@ Per selected class:
 - `first_monotonic_us` / `last_monotonic_us`: boot-relative times of the first and last entry. `-n` returns the *latest* entries, so when a class is truncated the true first entry was not seen, and `first_monotonic_us` is null rather than misleading
 
 Plus:
-- `boot`: `current` or `previous`
+- `boot`: `current` or `previous_retained`
 - `journal_visible`: whether the sentinel was seen
 - the evidence-v2 envelope: source `journal/system`, an unverified recording time, unknown freshness, elapsed time and a fixed failure reason
 
@@ -109,14 +116,14 @@ The following are deliberately **not** exported:
 
 ## Trust, privacy and failure analysis
 
-- **Disclosure** is the main risk. Bounded field selection (`--output-fields`) and a parser that ignores every field but four keep text out even if `journalctl` returned more. Unit names can reveal what runs on a host; they are bounded, validated and part of a report the operator explicitly requested.
+- **Disclosure** is the main risk. Bounded field selection (`--output-fields`) and a parser that ignores every field but the timestamp, message ID and class unit fields keep text out even if `journalctl` returned more. Unit names can reveal what runs on a host; they are bounded, validated and part of a report the operator explicitly requested.
 - **Partial access** is handled by the sentinel. This is more reliable than inspecting group membership, which ACLs, containers and future journald policies can change.
 - **Execution boundary.** A third fixed-argv tool (after `systemctl` and `ssh-keygen`) runs under the same runner and test-only override pattern, with the override compiled out of release builds.
 - **Resource use.** Each class query returns at most 1001 entries of four short fields. With three classes plus the sentinel, a report costs at most four bounded queries.
 
 ## Acceptance for implementation
 
-- **Native fixture tests:** every outcome row, each class alone and combined, current and previous boot, the 1000/1001 cap, unit cap and syntax, and binary-field, unknown-ID, malformed, oversized, timeout, missing-tool and argv-mismatch cases.
+- **Native fixture tests:** every outcome row, each class alone and combined, current and previous-retained boot, a retention gap (the fixture serves an older boot for `-b -1`, and the report must still say `previous_retained`), the 1000/1001 cap, unit cap and syntax, and binary-field, unknown-ID, malformed, oversized, timeout, missing-tool and argv-mismatch cases. The exact argv is checked for the sentinel query as well as the class queries.
 - **Parser unit tests** on export framing.
 - **Frozen JSON** for one report.
 - **Schema fixtures** with semantic-only cases.
@@ -132,7 +139,7 @@ Blast radius: one opt-in investigation template, its schema, guide, tests and va
 1. **Shape:** an expectation template (`journal-events --absent ...`, proposed), or an observation-only command that just reports counts?
 2. **Classes:** are `oom-kill`, `unit-failure` and `coredump` the right first set? Watchdog failures (`375ac151…`, `8739789e…`) are a candidate fourth.
 3. **Detail:** export unit names (proposed, bounded and validated) or counts only? Should `coredump` include the crashing executable's short name (`COREDUMP_COMM`), which is useful but more revealing?
-4. **Boot scope:** current and previous boot (proposed), or current only?
+4. **Boot scope:** current and previous-retained boot (proposed), or current only? `-b -1` cannot guarantee the immediately preceding boot, so the scope is named for what it is.
 
 ## Primary references
 
