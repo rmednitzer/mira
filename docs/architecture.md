@@ -10,7 +10,7 @@ Use a local-first Rust core with typed, allowlisted Linux evidence collectors an
 |---|---|---|
 | Operator selection | Explicit CLI command, service scope and closed service-active, memory-headroom, pressure-ceiling, package-installed, uptime-minimum and kernel-release templates | Natural-language intent and additional reviewed templates |
 | Evidence acquisition | Bounded procfs/dpkg reads and selected systemd query | Additional reviewed collectors; conditional platform observation adapters |
-| Evidence contract | Typed observations, unavailable states, JSON Lines v1, complete capture-v1/evidence-v2, opt-in capture-v2 timeline and boot binding, and schemas | Signer identity and document integrity (design accepted, [ADR 0011](adr/0011-host-identity-and-capture-integrity.md)); trusted time for evidence age |
+| Evidence contract | Typed observations, unavailable states, JSON Lines v1, complete capture-v1/evidence-v2, opt-in capture-v2 timeline and boot binding, OpenSSH-signed JSON documents and schemas | trusted time for evidence age |
 | Comparison and analysis | Offline comparison, same-boot capture ordering and versioned expectation templates with cited evidence | Broader diagnostic/advisory correlation |
 | Presentation | Human-readable CLI and JSON Lines | Registered adaptive views |
 | Authority | Caller OS permissions; no operational writes | Authenticated scoped executor and verified recovery |

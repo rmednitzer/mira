@@ -11,6 +11,22 @@ fn main() {
             std::process::exit(2);
         }
     };
+    // Signing options come last and only on JSON-producing commands (ADR 0011).
+    let (args, signing) = split_signing(args);
+    if let Some(signing) = signing {
+        let json = match args.get(1).map(String::as_str) {
+            Some("capture") => true,
+            Some("investigate") => args.last().is_some_and(|last| last == "--json"),
+            _ => false,
+        };
+        if !json {
+            eprintln!(
+                "MIRA: --signature and --sign-with apply only to capture or investigate --json"
+            );
+            std::process::exit(2);
+        }
+        let _ = SIGNING.set(signing);
+    }
     match args.as_slice() {
         [_, command, template, option, minimum]
             if command == "investigate"
@@ -139,6 +155,47 @@ fn main() {
         [_, command, template, unit, format] if command == "investigate" && format == "--json" => {
             investigate(template, unit, true)
         }
+        [
+            _,
+            command,
+            file,
+            signature,
+            sig,
+            signers,
+            allowed,
+            principal,
+            name,
+        ] if command == "verify"
+            && signature == "--signature"
+            && signers == "--allowed-signers"
+            && principal == "--principal" =>
+        {
+            verify(file, sig, allowed, name, None)
+        }
+        [
+            _,
+            command,
+            file,
+            signature,
+            sig,
+            signers,
+            allowed,
+            principal,
+            name,
+            revocations,
+            krl,
+        ] if command == "verify"
+            && signature == "--signature"
+            && signers == "--allowed-signers"
+            && principal == "--principal"
+            && revocations == "--revocations" =>
+        {
+            verify(file, sig, allowed, name, Some(krl))
+        }
+        [_, command, ..] if command == "verify" => {
+            eprintln!("Usage: {VERIFY_USAGE}");
+            std::process::exit(2);
+        }
         [_, command] if command == "demo" => demo(),
         [_, command, unit] if command == "service" => service(unit),
         [_, command, unit, format] if command == "service" && format == "--json" => {
@@ -148,9 +205,95 @@ fn main() {
     }
 }
 
+struct Signing {
+    path: std::path::PathBuf,
+    key: std::path::PathBuf,
+}
+
+static SIGNING: std::sync::OnceLock<Signing> = std::sync::OnceLock::new();
+
+const VERIFY_USAGE: &str = "mira verify FILE --signature SIG --allowed-signers SIGNERS --principal NAME [--revocations KRL]";
+
+/// Remove a trailing `--signature PATH --sign-with KEY` pair, if present.
+fn split_signing(mut args: Vec<String>) -> (Vec<String>, Option<Signing>) {
+    match args.as_slice() {
+        [.., signature, path, sign_with, key]
+            if signature == "--signature" && sign_with == "--sign-with" =>
+        {
+            let signing = Signing {
+                path: path.into(),
+                key: key.into(),
+            };
+            args.truncate(args.len() - 4);
+            (args, Some(signing))
+        }
+        _ => (args, None),
+    }
+}
+
+/// Print one JSON document. When signing was requested, sign the exact bytes
+/// first; on any failure print nothing and exit 4 (ADR 0011).
+fn emit_json(json: &str) {
+    let document = format!("{json}\n");
+    if let Some(signing) = SIGNING.get()
+        && let Err(failure) =
+            mira::signature::sign(document.as_bytes(), &signing.key, &signing.path)
+    {
+        use mira::signature::Failure;
+        let reason = match failure {
+            Failure::Tool => "ssh-keygen unavailable or produced an unusable signature",
+            Failure::Refused => "ssh-keygen refused to sign with this key",
+            Failure::Output => "signature path exists or cannot be created",
+            Failure::Document => "document kind cannot be signed",
+        };
+        eprintln!("MIRA: signing failed: {reason}; no document emitted");
+        std::process::exit(4);
+    }
+    print!("{document}");
+}
+
+fn verify(file: &str, signature: &str, allowed: &str, principal: &str, revocations: Option<&str>) {
+    use mira::signature::{self, Failure, Trust};
+    if signature::validate_principal(principal).is_err() {
+        eprintln!(
+            "MIRA: principal must be 1-128 characters from A-Za-z0-9._@+- starting alphanumeric"
+        );
+        std::process::exit(2);
+    }
+    let Ok(document) = signature::read_document(std::path::Path::new(file)) else {
+        println!("MIRA verify: not verified (document unreadable or larger than 1 MiB)");
+        std::process::exit(1);
+    };
+    let trust = Trust {
+        allowed_signers: std::path::Path::new(allowed),
+        principal,
+        revocations: revocations.map(std::path::Path::new),
+    };
+    match signature::verify(&document, std::path::Path::new(signature), &trust) {
+        Ok(kind) => {
+            println!(
+                "MIRA verify: verified namespace={} principal={principal}",
+                kind.namespace()
+            );
+        }
+        Err(Failure::Tool) => {
+            eprintln!("MIRA: ssh-keygen unavailable; nothing verified");
+            std::process::exit(4);
+        }
+        Err(Failure::Document) => {
+            println!("MIRA verify: not verified (not a MIRA capture or investigation report)");
+            std::process::exit(1);
+        }
+        Err(Failure::Refused | Failure::Output) => {
+            println!("MIRA verify: not verified");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn usage() -> ! {
     eprintln!(
-        "Usage: mira capture LABEL [--pressure] [--timeline] [--bind-boot] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE}"
+        "Usage: mira capture LABEL [--pressure] [--timeline] [--bind-boot] [--signature PATH --sign-with KEY] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE} | {VERIFY_USAGE} (investigate --json also accepts --signature PATH --sign-with KEY)"
     );
     std::process::exit(2);
 }
@@ -167,7 +310,7 @@ fn uptime_minimum(minimum: &str, json: bool) {
         std::process::exit(2);
     };
     if json {
-        println!("{}", report.to_json());
+        emit_json(&report.to_json());
     } else {
         println!(
             "MIRA uptime-minimum/v1 scope=local/procfs minimum_uptime_seconds={}",
@@ -197,7 +340,7 @@ fn kernel_release(expected: &str, json: bool) {
         std::process::exit(2);
     };
     if json {
-        println!("{}", report.to_json());
+        emit_json(&report.to_json());
     } else {
         println!(
             "MIRA kernel-release/v1 scope=local/procfs expected={}",
@@ -246,7 +389,7 @@ fn package_installed(selector: &str, json: bool) {
     let report = package::collect(selector, std::path::Path::new("/var/lib/dpkg/status"));
     let assessment = report.assessment();
     if json {
-        println!("{}", report.to_json());
+        emit_json(&report.to_json());
     } else {
         let selector = report.selector();
         println!(
@@ -310,7 +453,7 @@ fn pressure_ceiling(resource: &str, maximum: &str, json: bool) {
         std::process::exit(2);
     };
     if json {
-        println!("{}", report.to_json());
+        emit_json(&report.to_json());
     } else {
         println!(
             "MIRA pressure-ceiling/v1 scope=local/procfs resource={} max_some_avg10_basis_points={}",
@@ -365,7 +508,7 @@ fn memory_headroom(minimum: &str, json: bool) {
         }
     };
     if json {
-        println!("{}", report.to_json());
+        emit_json(&report.to_json());
     } else {
         println!(
             "MIRA memory-headroom/v1 scope=local/procfs minimum_available_kib={}",
@@ -519,7 +662,7 @@ fn investigate(name: &str, unit: &str, json: bool) {
         }
     };
     if json {
-        println!("{}", report.to_json());
+        emit_json(&report.to_json());
     } else {
         println!("MIRA {} scope={:?}", report.template().id(), report.scope());
         println!(
@@ -599,9 +742,9 @@ fn capture(label: &str, options: CaptureOptions) {
     };
     // capture-v1 stays the default; --timeline opts into capture-v2 (ADR 0010).
     if options.timeline {
-        println!("{}", report.to_timeline_json());
+        emit_json(&report.to_timeline_json());
     } else {
-        println!("{}", report.to_json());
+        emit_json(&report.to_json());
     }
     if !report.all_available() {
         std::process::exit(1);

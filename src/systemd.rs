@@ -1,12 +1,7 @@
 //! Read-only systemd unit observations via a fixed systemctl invocation.
 //! No shell, privilege escalation, unit discovery or state-changing verb.
-use std::{
-    io::{self, Read},
-    os::{fd::OwnedFd, unix::net::UnixStream},
-    process::{Command, Stdio},
-    thread,
-    time::{Duration, Instant},
-};
+use crate::process::{Stderr, run_bounded};
+use std::{io, process::Command, time::Duration};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceState {
@@ -114,66 +109,15 @@ pub fn inspect(unit: &str) -> io::Result<ServiceState> {
     query(&mut command, unit, Duration::from_secs(3))
 }
 
-// Drain output while monitoring exit against one deadline, even if an
-// inherited writer remains open after the direct child exits.
+// One deadline covers execution and EOF, even if an inherited writer keeps
+// stdout open after the direct child exits (see crate::process).
 fn query(command: &mut Command, unit: &str, timeout: Duration) -> io::Result<ServiceState> {
-    let (mut reader, writer) = UnixStream::pair()?;
-    reader.set_nonblocking(true)?;
-    let start = Instant::now();
-    let mut child = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(OwnedFd::from(writer)))
-        .stderr(Stdio::null())
-        .spawn()?;
-    // Release Command's retained writer so it cannot prevent EOF.
-    command.stdout(Stdio::null());
-    let result = (|| {
-        let mut bytes = Vec::new();
-        let mut eof = false;
-        let mut status = None;
-        loop {
-            if start.elapsed() >= timeout {
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "systemd query timeout",
-                ));
-            }
-            if !eof {
-                let mut buffer = [0_u8; 1024];
-                match reader.read(&mut buffer) {
-                    Ok(0) => eof = true,
-                    Ok(count) => {
-                        if bytes.len() + count > 8192 {
-                            return Err(crate::collector::limit_exceeded());
-                        }
-                        bytes.extend_from_slice(&buffer[..count]);
-                        continue;
-                    }
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                    Err(error) => return Err(error),
-                }
-            }
-            if status.is_none() {
-                status = child.try_wait()?;
-            }
-            if let Some(status) = status {
-                if !status.success() {
-                    return Err(crate::collector::backend_failed());
-                }
-                if eof {
-                    let text = String::from_utf8(bytes)
-                        .map_err(|_| invalid("non-UTF8 systemd response"))?;
-                    return parse_show(&text, unit);
-                }
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-    })();
-    // Reap the direct child on every post-spawn return path.
-    let _ = child.kill();
-    let _ = child.wait();
-    result
+    let (status, bytes) = run_bounded(command, None, Stderr::Discard, timeout, 8192)?;
+    if !status.success() {
+        return Err(crate::collector::backend_failed());
+    }
+    let text = String::from_utf8(bytes).map_err(|_| invalid("non-UTF8 systemd response"))?;
+    parse_show(&text, unit)
 }
 
 #[cfg(test)]
