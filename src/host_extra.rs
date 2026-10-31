@@ -119,13 +119,29 @@ pub fn parse_kernel_release(input: &str) -> io::Result<String> {
 }
 
 /// Closed resource selection; no caller-supplied path or trigger writes.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PressureResource {
     Cpu,
     Memory,
     Io,
 }
 impl PressureResource {
+    /// Closed operator selection by exact lowercase name.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "cpu" => Some(Self::Cpu),
+            "memory" => Some(Self::Memory),
+            "io" => Some(Self::Io),
+            _ => None,
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Cpu => "cpu",
+            Self::Memory => "memory",
+            Self::Io => "io",
+        }
+    }
     pub fn source(self) -> &'static str {
         match self {
             Self::Cpu => "/proc/pressure/cpu",
