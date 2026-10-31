@@ -52,8 +52,15 @@ pub fn parse_cpu_pressure(input: &str) -> io::Result<CpuPressure> {
     let mut some = None;
     let mut full = None;
     for line in input.lines() {
-        // The kernel separates PSI fields with ASCII spaces; Unicode separators
-        // would otherwise split into tokens the producer never emits.
+        // The kernel emits ASCII-only PSI lines. Rejecting any other byte before
+        // tokenization keeps a Unicode separator from hiding a field, such as a
+        // duplicate avg10, inside a token that would otherwise be ignored.
+        if !line.is_ascii() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "non-ASCII PSI line",
+            ));
+        }
         let mut tokens = line.split_ascii_whitespace();
         let kind = tokens
             .next()
@@ -175,6 +182,18 @@ mod tests {
         }
         // A Unicode separator before avg10 must not hide a malformed value.
         assert!(parse_cpu_pressure("some avg60=1.00\u{2003}avg10=0.25\n").is_err());
+        // Nor may an ignored field hide a duplicate after a valid avg10.
+        for hidden in [
+            "some avg10=0.25 avg60=1.00\u{2003}avg10=99.00\n",
+            "some avg10=0.25\nfull avg10=0.00 avg60=0.00\u{00a0}avg10=50.00\n",
+            "some avg10=0.25 total=1\u{00e9}\n",
+        ] {
+            assert_eq!(
+                parse_cpu_pressure(hidden).unwrap_err().kind(),
+                io::ErrorKind::InvalidData,
+                "{hidden:?}"
+            );
+        }
     }
     #[test]
     fn validates_kernel_identity() {
