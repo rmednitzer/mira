@@ -2789,6 +2789,276 @@
           "failure_reason": "timeout"
         }
       ]
+    },
+    {
+      "capture_version": 1,
+      "capture_scope": "synthetic",
+      "scope_trust": "operator_asserted",
+      "profile": "host/v1",
+      "expected_sources": [
+        "/proc/meminfo",
+        "/proc/uptime",
+        "/proc/sys/kernel/osrelease",
+        "/proc/pressure/cpu",
+        "/var/lib/dpkg/status"
+      ],
+      "collection_complete": true,
+      "all_available": true,
+      "records": [
+        {
+          "schema_version": 2,
+          "source": "/proc/meminfo",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": {
+            "total_kib": 100,
+            "available_kib": 50
+          },
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/proc/uptime",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": 42,
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/proc/sys/kernel/osrelease",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": "6.17.0\n",
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/proc/pressure/cpu",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": {
+            "some_avg10_basis_points": 25,
+            "full_avg10_basis_points": 0
+          },
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/var/lib/dpkg/status",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": {
+            "installed_count": 2
+          },
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        }
+      ]
+    },
+    {
+      "capture_version": 1,
+      "capture_scope": "synthetic",
+      "scope_trust": "operator_asserted",
+      "profile": "host/v1",
+      "expected_sources": [
+        "/proc/meminfo",
+        "/proc/uptime",
+        "/proc/sys/kernel/osrelease",
+        "/proc/pressure/cpu",
+        "/var/lib/dpkg/status"
+      ],
+      "collection_complete": true,
+      "all_available": true,
+      "records": [
+        {
+          "schema_version": 2,
+          "source": "/proc/meminfo",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": {
+            "total_kib": 100,
+            "available_kib": 50
+          },
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/proc/uptime",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": 42,
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/proc/sys/kernel/osrelease",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": "6.17.0\u00a0",
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/proc/pressure/cpu",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": {
+            "some_avg10_basis_points": 25,
+            "full_avg10_basis_points": 0
+          },
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/var/lib/dpkg/status",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": {
+            "installed_count": 2
+          },
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        }
+      ]
+    },
+    {
+      "capture_version": 1,
+      "capture_scope": "incident-a\n",
+      "scope_trust": "operator_asserted",
+      "profile": "host/v1",
+      "expected_sources": [
+        "/proc/meminfo",
+        "/proc/uptime",
+        "/proc/sys/kernel/osrelease",
+        "/proc/pressure/cpu",
+        "/var/lib/dpkg/status"
+      ],
+      "collection_complete": true,
+      "all_available": true,
+      "records": [
+        {
+          "schema_version": 2,
+          "source": "/proc/meminfo",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": {
+            "total_kib": 100,
+            "available_kib": 50
+          },
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/proc/uptime",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": 42,
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/proc/sys/kernel/osrelease",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": "6.17.0-fixture",
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/proc/pressure/cpu",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": {
+            "some_avg10_basis_points": 25,
+            "full_avg10_basis_points": 0
+          },
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        },
+        {
+          "schema_version": 2,
+          "source": "/var/lib/dpkg/status",
+          "scope": null,
+          "recorded_unix_ms": 1,
+          "clock_trust": "unverified",
+          "freshness": "unknown",
+          "status": "observed",
+          "value": {
+            "installed_count": 2
+          },
+          "error_kind": null,
+          "elapsed_ms": 0,
+          "failure_reason": null
+        }
+      ]
     }
   ]
 }

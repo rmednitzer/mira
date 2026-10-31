@@ -202,7 +202,8 @@
       "then": {
         "properties": {
           "value": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^(?!.*\\n)[A-Za-z0-9._+-]{1,256}$"
           }
         }
       }
@@ -311,16 +312,22 @@
             "additionalProperties": false,
             "properties": {
               "id": {
-                "type": "string"
+                "type": "string",
+                "minLength": 9,
+                "maxLength": 200,
+                "pattern": "^(?!.*\\n)(?!-)(?:[A-Za-z0-9._@:-]|\\\\x[0-9A-Fa-f]{2})+\\.service$"
               },
               "load_state": {
-                "type": "string"
+                "type": "string",
+                "pattern": "^(?!.*\\n)[\\x00-\\x7f]{1,256}$"
               },
               "active_state": {
-                "type": "string"
+                "type": "string",
+                "pattern": "^(?!.*\\n)[\\x00-\\x7f]{1,256}$"
               },
               "sub_state": {
-                "type": "string"
+                "type": "string",
+                "pattern": "^(?!.*\\n)[\\x00-\\x7f]{1,256}$"
               }
             }
           }
@@ -347,10 +354,12 @@
           "scope": {
             "type": "string",
             "minLength": 9,
-            "maxLength": 200
+            "maxLength": 200,
+            "pattern": "^(?!.*\\n)(?!-)(?:[A-Za-z0-9._@:-]|\\\\x[0-9A-Fa-f]{2})+\\.service$"
           }
         }
       }
     }
-  ]
+  ],
+  "$comment": "Observed kernel release and systemd strings mirror the producer's lexical contract. States stay literal ASCII, including control characters that human output escapes. Patterns start with (?!.*\\n) because Python re lets $ match before a final newline."
 }
