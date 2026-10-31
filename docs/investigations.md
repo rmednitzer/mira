@@ -1,9 +1,12 @@
-# Read-only service investigation v1
+# Read-only service investigation (v1 and v2)
 
 ```sh
 cargo run --locked -- investigate service-active ssh.service
 cargo run --locked -- investigate service-active ssh.service --json
+cargo run --locked -- investigate service-active/v2 ssh.service --json
 ```
+
+`service-active` and `service-active/v1` select the unchanged v1 report. `service-active/v2` is an explicit opt-in that additionally tells a unit with no loadable definition apart from a stopped service; see [service-active/v2](#service-activev2-unit-not-found). The unversioned name stays pinned to v1.
 
 Selecting `service-active` explicitly asks whether one named system service reports an active activation state. It is an expectation, not a general health check. It never starts, stops, restarts, unmasks or discovers services. No model, network adapter, credentials or privilege escalation is introduced. The same existing fixed-argument systemctl collector supplies the evidence.
 
@@ -35,5 +38,19 @@ The Debian package includes both schemas under `/usr/share/mira/schemas/` and th
 ## Design and validation
 
 See [ADR 0001](adr/0001-read-only-service-investigation.md) for alternatives, semantics, bounds, authority, rollback and deferred mechanisms. Pure Rust cases cover the state table, masked-active semantics, source/identity rejection, alias-scope preservation and error redaction. Native fixture tests exercise the public CLI, rejected invocations, subprocess failures and terminal controls. Independent schema/semantic fixtures and a stable live unprivileged systemd comparison run on both native CI architectures.
+
+## service-active/v2: unit not found
+
+`systemctl show` succeeds for a name that has no unit definition and reports `LoadState=not-found` with `ActiveState=inactive`. v1 keeps LoadState orthogonal, so such a mistyped or uninstalled unit yields `reported_not_active`, exactly like a stopped service. v2 applies the v1 table unchanged plus one rule:
+
+| Reported LoadState / ActiveState | v2 outcome | v2 reason | Exit |
+|---|---|---|---|
+| not-found / inactive | not_satisfied | unit_not_found | 1 |
+| not-found / any other state | as v1 | as v1 | as v1 |
+| Any other LoadState | as v1 | as v1 | as v1 |
+
+A running unit whose unit file was removed is reported as `not-found` while still `active`, so it remains satisfied. A failed unit without a definition keeps `reported_not_active`. `unit_not_found` means "no loadable definition and not active"; it does not prove that a package is absent or that the unit never existed. The outcome and exit code equal v1, so exit-status consumers see no difference.
+
+The v2 report has `investigation_version: 2` and `template: "service-active/v2"`, and embeds the same unchanged evidence-v1 record. The [v2 schema](../schemas/investigation-v2.schema.json) enforces both directions: `unit_not_found` requires observed `not-found`/`inactive` evidence, and `reported_not_active` is invalid for that pair. Consumers dispatch on `investigation_version` and `template`; v1 documents stay valid against the unchanged v1 schema. Unregistered names such as `service-active/v3` are usage errors (exit 2) before collection. See [ADR 0006](adr/0006-service-active-v2-unit-not-found.md).
 
 This is one narrow Phase 1 template. The separate [memory-headroom template](memory-investigation.md) uses only memory evidence and an explicit operator minimum; it has its own schema and preserves this service report unchanged. Host identity/freshness policies, broader diagnostic workflows, advisory applicability, persistent evidence custody and representative fleet qualification remain separate work.

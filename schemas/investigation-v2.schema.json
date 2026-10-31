@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/investigation-v2.schema.json",
+  "title": "MIRA read-only investigation report v2 (service-active/v2)",
+  "type": "object",
+  "required": [
+    "investigation_version",
+    "template",
+    "scope",
+    "assessment",
+    "application_health",
+    "root_cause",
+    "evidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "investigation_version": {
+      "const": 2
+    },
+    "template": {
+      "const": "service-active/v2"
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 200
+    },
+    "assessment": {
+      "type": "object",
+      "required": [
+        "outcome",
+        "reason",
+        "evidence_ref"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "enum": [
+            "satisfied",
+            "not_satisfied",
+            "indeterminate"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "reported_active",
+            "reported_not_active",
+            "unit_not_found",
+            "transition_in_progress",
+            "unrecognized_active_state",
+            "evidence_unavailable"
+          ]
+        },
+        "evidence_ref": {
+          "const": "#/evidence"
+        }
+      }
+    },
+    "application_health": {
+      "const": "not_assessed"
+    },
+    "root_cause": {
+      "const": "not_assessed"
+    },
+    "evidence": {
+      "allOf": [
+        {
+          "$ref": "https://github.com/rmednitzer/mira/blob/main/schemas/evidence-v1.schema.json"
+        },
+        {
+          "properties": {
+            "source": {
+              "const": "systemd/system"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "reported_active"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "satisfied"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "reported_not_active"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "not_satisfied"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "transition_in_progress"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "indeterminate"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "unrecognized_active_state"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "indeterminate"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "evidence_unavailable"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "indeterminate"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "unit_not_found"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "not_satisfied"
+              }
+            }
+          },
+          "evidence": {
+            "required": [
+              "status",
+              "value"
+            ],
+            "properties": {
+              "status": {
+                "const": "observed"
+              },
+              "value": {
+                "type": "object",
+                "required": [
+                  "load_state",
+                  "active_state"
+                ],
+                "properties": {
+                  "load_state": {
+                    "const": "not-found"
+                  },
+                  "active_state": {
+                    "const": "inactive"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "In v2 an observed not-found/inactive unit must use unit_not_found, never reported_not_active.",
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "reported_not_active"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "not": {
+              "properties": {
+                "value": {
+                  "type": "object",
+                  "required": [
+                    "load_state",
+                    "active_state"
+                  ],
+                  "properties": {
+                    "load_state": {
+                      "const": "not-found"
+                    },
+                    "active_state": {
+                      "const": "inactive"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "value"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

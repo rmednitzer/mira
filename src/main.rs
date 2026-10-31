@@ -52,7 +52,7 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json]"
+                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json]"
             );
             std::process::exit(2);
         }

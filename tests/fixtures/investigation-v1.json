@@ -358,6 +358,34 @@
         "value": null,
         "error_kind": "PermissionDenied"
       }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "missing-unit.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "missing-unit.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
     }
   ],
   "invalid": [
@@ -725,6 +753,34 @@
         "freshness": "unknown",
         "status": "observed",
         "value": 7,
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v1",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "missing-unit.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "missing-unit.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
         "error_kind": null
       }
     }

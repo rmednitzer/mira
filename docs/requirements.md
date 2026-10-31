@@ -16,7 +16,7 @@ Implemented status means code and stated checks exist; it does not imply product
 | SEC-03 | Vulnerability applicability is evidence-bound | Distribution advisory/backport and installed revision evidence required; unknown remains explicit | Planned; package metadata alone is not an exposure finding |
 | SEC-04 | UI cannot add capabilities | Only registered components/actions can render and execute | Planned; no adaptive UI exists |
 | INT-01 | Intent selects declared workflows | Unknown templates/invalid scopes cannot dispatch collection | Closed explicit service-active and memory-headroom selection implemented; natural-language intent remains planned |
-| OPS-07 | Assessment does not become unsupported health or authority | Source-bound observation, fixed reason, unknown states preserved, application health/root cause unassessed | service-active/v1 and memory-headroom/v1 criteria, native failure and independent schema/semantic tests |
+| OPS-07 | Assessment does not become unsupported health or authority | Source-bound observation, fixed reason, unknown states preserved, application health/root cause unassessed | service-active/v1, service-active/v2 and memory-headroom/v1 criteria, native failure and independent schema/semantic tests |
 | UI-01 | Task-oriented views improve evidence access | Matched task evaluation against a fixed interface | Research hypothesis |
 | EVA-01 | Synthetic experiments are reproducible | Typed inputs and deterministic in-process replay | Retained fixture implemented; no authenticated authorization guarantee |
 | TST-01 | Rust subprocess regressions are native | Cargo-built opt-in fixture tests the public CLI without Python or shell | Implemented under test-support; default core suite remains independent |

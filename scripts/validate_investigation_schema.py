@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent investigation-v1 shape, scope and reported-state contract checks."""
+"""Independent service-active v1/v2 shape, scope and reported-state contract checks."""
 import argparse
 import json
 import os
@@ -13,16 +13,22 @@ from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = json.loads((ROOT / 'schemas/evidence-v1.schema.json').read_text())
-SCHEMA = json.loads((ROOT / 'schemas/investigation-v1.schema.json').read_text())
 Draft202012Validator.check_schema(EVIDENCE)
-Draft202012Validator.check_schema(SCHEMA)
 # Register the exact local evidence schema; no remote reference retrieval.
 REGISTRY = Registry().with_resource(EVIDENCE['$id'], Resource.from_contents(EVIDENCE))
-VALIDATOR = Draft202012Validator(SCHEMA, registry=REGISTRY)
+VALIDATORS = {}
+for _version in (1, 2):
+    _schema = json.loads((ROOT / f'schemas/investigation-v{_version}.schema.json').read_text())
+    Draft202012Validator.check_schema(_schema)
+    VALIDATORS[_version] = Draft202012Validator(_schema, registry=REGISTRY)
+TEMPLATES = {'service-active': 1, 'service-active/v1': 1, 'service-active/v2': 2}
 UNIT = re.compile(r'(?!-)(?:[A-Za-z0-9._@:-]|\\x[0-9A-Fa-f]{2})+\.service')
 
 
-def expected(active):
+def expected(active, load='loaded', version=1):
+    # v2 adds exactly one rule: the not-found/inactive stub of an undefined name.
+    if version == 2 and load == 'not-found' and active == 'inactive':
+        return 'not_satisfied', 'unit_not_found', 1
     if active in ('active', 'reloading', 'refreshing'):
         return 'satisfied', 'reported_active', 0
     if active in ('inactive', 'failed', 'maintenance'):
@@ -33,7 +39,10 @@ def expected(active):
 
 
 def check_report(report):
-    VALIDATOR.validate(report)
+    version = report.get('investigation_version') if isinstance(report, dict) else None
+    if type(version) is not int or version not in VALIDATORS:
+        raise ValueError('unsupported investigation version')
+    VALIDATORS[version].validate(report)
     evidence = report['evidence']
     if UNIT.fullmatch(report['scope']) is None or evidence['scope'] != report['scope']:
         raise ValueError('invalid or mismatched scope')
@@ -41,7 +50,8 @@ def check_report(report):
         unit = evidence['value']['id']
         if not 9 <= len(unit) <= 200 or UNIT.fullmatch(unit) is None:
             raise ValueError('invalid service identity')
-        outcome, reason, code = expected(evidence['value']['active_state'])
+        value = evidence['value']
+        outcome, reason, code = expected(value['active_state'], value['load_state'], version)
     else:
         outcome, reason, code = 'indeterminate', 'evidence_unavailable', 3
     if report['assessment']['outcome'] != outcome or report['assessment']['reason'] != reason:
@@ -49,13 +59,15 @@ def check_report(report):
     return code
 
 
-def cli(unit):
+def cli(unit, template='service-active'):
     result = subprocess.run([str(ROOT / 'target/debug/mira'), 'investigate',
-                             'service-active', unit, '--json'],
+                             template, unit, '--json'],
                             capture_output=True, text=True, timeout=15, check=False)
     report = json.loads(result.stdout)
     if result.returncode != check_report(report):
         raise ValueError('exit status disagrees with assessment')
+    if report['investigation_version'] != TEMPLATES[template]:
+        raise ValueError('template selected the wrong report version')
     return report
 
 
@@ -70,17 +82,34 @@ def live():
         result = subprocess.run(argv, capture_output=True, text=True, timeout=5, check=True)
         return dict(line.split('=', 1) for line in result.stdout.splitlines())
 
-    before = direct()
-    report = cli(unit)
-    after = direct()
-    if before != after:
-        raise ValueError('live fixture changed; comparison inconclusive')
-    value = {'id': before['Id'], 'load_state': before['LoadState'],
-             'active_state': before['ActiveState'], 'sub_state': before['SubState']}
-    if unit not in before['Names'].split() or report['scope'] != unit:
-        raise ValueError('live scope mismatch')
-    if report['evidence']['status'] != 'observed' or report['evidence']['value'] != value:
-        raise ValueError('live evidence mismatch')
+    def compare(unit, templates):
+        argv[-1] = unit
+        before = direct()
+        reports = [cli(unit, template) for template in templates]
+        after = direct()
+        if before != after:
+            raise ValueError('live fixture changed; comparison inconclusive')
+        value = {'id': before['Id'], 'load_state': before['LoadState'],
+                 'active_state': before['ActiveState'], 'sub_state': before['SubState']}
+        if unit not in before['Names'].split():
+            raise ValueError('live scope mismatch')
+        for report in reports:
+            if report['scope'] != unit:
+                raise ValueError('live scope mismatch')
+            if report['evidence']['status'] != 'observed' or report['evidence']['value'] != value:
+                raise ValueError('live evidence mismatch')
+        return before, reports
+
+    compare(unit, ('service-active', 'service-active/v2'))
+    # Querying an undefined name is read-only; systemd collects its transient stub.
+    before, (v1, v2) = compare('mira-undefined-validation-unit.service',
+                               ('service-active', 'service-active/v2'))
+    if (before['LoadState'], before['ActiveState']) != ('not-found', 'inactive'):
+        raise ValueError('expected an undefined live unit')
+    if v1['assessment']['reason'] != 'reported_not_active':
+        raise ValueError('v1 semantics changed for an undefined unit')
+    if v2['assessment']['reason'] != 'unit_not_found':
+        raise ValueError('v2 did not identify an undefined unit')
     print('unprivileged live investigation contract validated')
 
 
@@ -88,20 +117,24 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live-systemd', action='store_true')
     args = parser.parse_args()
-    cases = json.loads((ROOT / 'tests/fixtures/investigation-v1.json').read_text())
-    for record in cases['valid']:
-        check_report(record)
-    for record in cases['invalid']:
-        try:
+    for version in (1, 2):
+        cases = json.loads((ROOT / f'tests/fixtures/investigation-v{version}.json').read_text())
+        for record in cases['valid']:
             check_report(record)
-        except Exception as error:
-            from jsonschema import ValidationError
-            if not isinstance(error, (ValueError, ValidationError)):
-                raise
-        else:
-            raise ValueError('invalid fixture accepted')
+        for record in cases['invalid']:
+            try:
+                check_report(record)
+            except Exception as error:
+                from jsonschema import ValidationError
+                if not isinstance(error, (ValueError, ValidationError)):
+                    raise
+            else:
+                raise ValueError('invalid fixture accepted')
     for template, unit in [('restart', 'ssh.service'), ('service-active', '--user.service'),
-                           ('service-active', 'x'), ('service-active', 'x' * 300 + '.service')]:
+                           ('service-active', 'x'), ('service-active', 'x' * 300 + '.service'),
+                           ('service-active/v3', 'ssh.service'), ('service-active/', 'ssh.service'),
+                           ('service-active/V2', 'ssh.service'),
+                           ('service-active/v2', '--user.service')]:
         result = subprocess.run([str(ROOT / 'target/debug/mira'), 'investigate',
                                  template, unit, '--json'],
                                 capture_output=True, text=True, timeout=5, check=False)
@@ -109,7 +142,7 @@ def main():
             raise ValueError('invalid invocation dispatched or emitted a report')
     if args.live_systemd:
         live()
-    print('investigation-v1 schema, semantic fixtures and CLI admission validated')
+    print('investigation-v1/v2 schemas, semantic fixtures and CLI admission validated')
 
 
 if __name__ == '__main__':

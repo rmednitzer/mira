@@ -69,6 +69,7 @@ jobs:
           test "$(stat -c '%a' package-extract/usr/share/doc/mira/copyright)" = 644
           test -f package-extract/usr/share/mira/schemas/evidence-v1.schema.json
           test -f package-extract/usr/share/mira/schemas/investigation-v1.schema.json
+          test -f package-extract/usr/share/mira/schemas/investigation-v2.schema.json
           test -f package-extract/usr/share/mira/schemas/evidence-v2.schema.json
           test -f package-extract/usr/share/mira/schemas/capture-v1.schema.json
           test -f package-extract/usr/share/mira/schemas/memory-headroom-v1.schema.json
