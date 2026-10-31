@@ -205,7 +205,12 @@ fn invalid_data(message: &'static str) -> io::Error {
 
 /// Journal-wide unit names: every unit type, escapes allowed. Separate from
 /// `systemd::validate_unit`, which stays service-only for service selection.
+/// systemd names the root mount `-.mount` and the root slice `-.slice`; those
+/// two exact names are the only ones that may start with `-`.
 pub fn validate_unit(unit: &str) -> io::Result<()> {
+    if unit == "-.mount" || unit == "-.slice" {
+        return Ok(());
+    }
     const SUFFIXES: [&str; 11] = [
         ".service",
         ".socket",
@@ -571,10 +576,15 @@ pub fn access_complete(journal_dirs: &[PathBuf]) -> io::Result<bool> {
     Ok(found > 0)
 }
 
-/// The running kernel's crash handler, from a bounded procfs read.
+/// The running kernel's crash handler, from a bounded procfs read. Only a
+/// pipe whose executable token is exactly systemd-coredump counts; a path that
+/// merely shares the prefix (for example a wrapper) is another handler.
 pub fn crash_handler(proc_root: &Path) -> io::Result<CrashHandler> {
     let pattern = crate::collector::read_bounded(&proc_root.join("sys/kernel/core_pattern"), 4096)?;
-    Ok(if pattern.starts_with(&format!("|{COREDUMP}")) {
+    let executable = pattern
+        .strip_prefix('|')
+        .and_then(|command| command.split_ascii_whitespace().next());
+    Ok(if executable == Some(COREDUMP) {
         CrashHandler::SystemdCoredump
     } else {
         CrashHandler::Other
@@ -952,6 +962,8 @@ mod tests {
             "user-1000.slice",
             "apt-daily.timer",
             "a.target",
+            "-.mount",
+            "-.slice",
         ] {
             assert!(validate_unit(valid).is_ok(), "{valid}");
         }
@@ -959,6 +971,9 @@ mod tests {
             "",
             ".service",
             "-x.service",
+            "-.service",
+            "-.scope",
+            "--.mount",
             "ssh",
             "ssh.serv",
             "a b.service",
@@ -1074,6 +1089,19 @@ mod tests {
         assert!(matches!(
             evaluate_class(Class::UnitFailure, &units),
             ClassEvidence::Recorded { units_truncated: true, ref units, .. } if units.len() == MAX_UNITS
+        ));
+    }
+
+    #[test]
+    fn a_root_mount_failure_is_reported_not_unavailable() {
+        let failed = Class::UnitFailure.message_ids()[0];
+        assert!(matches!(
+            evaluate_class(
+                Class::UnitFailure,
+                &[manager(failed, Some("-.mount"), 1), manager(failed, Some("a.service"), 2)],
+            ),
+            ClassEvidence::Recorded { count: 2, ref units, .. }
+                if units == &["-.mount".to_owned(), "a.service".to_owned()]
         ));
     }
 
@@ -1248,6 +1276,27 @@ mod tests {
             ),
             ("core\n", CrashHandler::Other),
             ("/usr/lib/systemd/systemd-coredump\n", CrashHandler::Other),
+            (
+                "|/usr/lib/systemd/systemd-coredump\n",
+                CrashHandler::SystemdCoredump,
+            ),
+            (
+                "|/usr/lib/systemd/systemd-coredump-wrapper %P\n",
+                CrashHandler::Other,
+            ),
+            (
+                "|/usr/lib/systemd/systemd-coredumpx %P\n",
+                CrashHandler::Other,
+            ),
+            (
+                // The kernel splits the pipe command into argv, skipping leading spaces.
+                "| /usr/lib/systemd/systemd-coredump %P\n",
+                CrashHandler::SystemdCoredump,
+            ),
+            (
+                "|/usr/lib/systemd/../systemd/systemd-coredump %P\n",
+                CrashHandler::Other,
+            ),
         ] {
             fs::write(root.join("sys/kernel/core_pattern"), pattern).unwrap();
             assert_eq!(crash_handler(&root).unwrap(), expected, "{pattern}");

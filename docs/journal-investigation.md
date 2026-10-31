@@ -36,7 +36,7 @@ An entry carrying the right ID from another process is a decoy and is not counte
 | events_recorded | not_satisfied | 1 | at least one producer-valid event; this is conclusive even if other checks failed |
 | journal_not_visible | indeterminate | 3 | no PID 1 entry visible for the boot: no journal access, the boot was not persisted, rotation, or PID 1 is not systemd |
 | journal_access_incomplete | indeterminate | 3 | some system journal file cannot be opened, so events could be hidden |
-| crash_handler_not_systemd_coredump | indeterminate | 3 | `coredump` selected and empty, but the running crash handler is not systemd-coredump (Ubuntu uses apport by default) |
+| crash_handler_not_systemd_coredump | indeterminate | 3 | `coredump` selected and empty, but the running crash handler is not systemd-coredump. The pipe's executable must be exactly `/usr/lib/systemd/systemd-coredump`; a wrapper sharing that prefix does not count. Ubuntu uses apport by default |
 | crash_handler_unknown_for_boot | indeterminate | 3 | `coredump` selected and empty for `previous-retained`; that boot's handler cannot be established |
 | evidence_unavailable | indeterminate | 3 | `journalctl` missing, failing, timing out, oversized or malformed, or a full window of 1001 entries with no producer-valid one |
 
@@ -46,7 +46,7 @@ An entry carrying the right ID from another process is a decoy and is not counte
 
 `--json` emits one `journal-events/v1` report. Per class it holds:
 - `count`, capped at 1000, plus `truncated`
-- up to 16 validated unit names, which may be of any unit type
+- up to 16 validated unit names, which may be of any unit type, including the root mount `-.mount` and root slice `-.slice`
 - the first and last event times in microseconds since boot; the first is null when the window was full, because `journalctl -n` returns the latest entries
 
 The evidence also records whether the journal was visible, whether every system journal file was openable, and the crash handler when `coredump` was selected.

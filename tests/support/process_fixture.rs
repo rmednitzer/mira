@@ -204,9 +204,9 @@ fn journalctl(mode: &str) -> io::Result<()> {
     } else {
         process::exit(64)
     };
-    let manager_entry = |id: &str, unit: &str, uid: &str, time: u32| {
+    let manager_entry = |id: &str, unit: &str, account: &str, time: u32| {
         format!(
-            "__CURSOR=s=1\n__MONOTONIC_TIMESTAMP={time}\nMESSAGE_ID={id}\nUNIT={unit}\n_UID={uid}\n_EXE=/usr/lib/systemd/systemd\n_SYSTEMD_UNIT=init.scope\n\n"
+            "__CURSOR=s=1\n__MONOTONIC_TIMESTAMP={time}\nMESSAGE_ID={id}\nUNIT={unit}\n_UID={account}\n_EXE=/usr/lib/systemd/systemd\n_SYSTEMD_UNIT=init.scope\n\n"
         )
     };
     let core_entry = |unit: &str, cgroup: &str, time: u32| {

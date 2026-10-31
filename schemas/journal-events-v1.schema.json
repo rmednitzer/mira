@@ -208,7 +208,7 @@
                 "items": {
                   "type": "string",
                   "maxLength": 255,
-                  "pattern": "^(?!.*\\n)(?!-)(?:[A-Za-z0-9:_.@-]|\\\\x[0-9A-Fa-f]{2})+\\.(?:service|socket|device|mount|automount|swap|target|path|timer|slice|scope)$"
+                  "pattern": "^(?!.*\\n)(?:-\\.mount|-\\.slice|(?!-)(?:[A-Za-z0-9:_.@-]|\\\\x[0-9A-Fa-f]{2})+\\.(?:service|socket|device|mount|automount|swap|target|path|timer|slice|scope))$"
                 }
               },
               "units_truncated": {
