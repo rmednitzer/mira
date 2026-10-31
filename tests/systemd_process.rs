@@ -48,7 +48,13 @@ impl Fixture {
 
 impl Drop for Fixture {
     fn drop(&mut self) {
-        fs::remove_dir_all(&self.0).unwrap();
+        // Cleanup failure still fails a passing test, but a second panic while
+        // unwinding would abort the binary and hide the original assertion.
+        if let Err(error) = fs::remove_dir_all(&self.0)
+            && !std::thread::panicking()
+        {
+            panic!("fixture cleanup failed: {error}");
+        }
     }
 }
 
