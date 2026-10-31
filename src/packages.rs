@@ -12,19 +12,50 @@ pub struct Package {
     pub architecture: String,
 }
 
+/// One validated status stanza. Sparse non-installed stanzas may omit version
+/// and architecture. Status words are drawn from dpkg's closed vocabulary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Record {
+    pub name: String,
+    pub version: Option<String>,
+    pub architecture: Option<String>,
+    pub selection: &'static str,
+    pub flag: &'static str,
+    pub state: &'static str,
+}
+
+const SELECTIONS: [&str; 5] = ["unknown", "install", "hold", "deinstall", "purge"];
+const FLAGS: [&str; 2] = ["ok", "reinstreq"];
+const STATES: [&str; 8] = [
+    "not-installed",
+    "config-files",
+    "half-installed",
+    "unpacked",
+    "half-configured",
+    "triggers-awaited",
+    "triggers-pending",
+    "installed",
+];
+
 fn invalid(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
+fn word(words: &[&'static str], value: &str) -> Option<&'static str> {
+    words.iter().copied().find(|candidate| *candidate == value)
+}
+
+type Fields = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
 fn finish_entry(
-    fields: &mut (
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    ),
-    output: &mut Vec<Package>,
+    fields: &mut Fields,
     identities: &mut BTreeSet<(String, String)>,
+    visit: &mut impl FnMut(Record) -> io::Result<()>,
 ) -> io::Result<()> {
     let (name, version, architecture, status) = std::mem::take(fields);
     if name.is_none() && version.is_none() && architecture.is_none() && status.is_none() {
@@ -34,45 +65,46 @@ fn finish_entry(
     let status = status.ok_or_else(|| invalid("missing package status"))?;
     // dpkg writes ASCII-space-separated words; Unicode separators are invalid data.
     let status_fields: Vec<_> = status.split_ascii_whitespace().collect();
-    if status_fields.len() != 3
-        || !["unknown", "install", "hold", "deinstall", "purge"].contains(&status_fields[0])
-        || !["ok", "reinstreq"].contains(&status_fields[1])
-        || ![
-            "not-installed",
-            "config-files",
-            "half-installed",
-            "unpacked",
-            "half-configured",
-            "triggers-awaited",
-            "triggers-pending",
-            "installed",
-        ]
-        .contains(&status_fields[2])
-    {
+    let [selection, flag, state] = status_fields[..] else {
         return Err(invalid("invalid package status"));
-    }
+    };
+    let (Some(selection), Some(flag), Some(state)) = (
+        word(&SELECTIONS, selection),
+        word(&FLAGS, flag),
+        word(&STATES, state),
+    ) else {
+        return Err(invalid("invalid package status"));
+    };
     // Selection and error flags must not hide installed package provenance.
-    if status_fields[2] == "installed" {
-        let architecture = architecture.ok_or_else(|| invalid("missing installed architecture"))?;
+    if state == "installed" {
+        let architecture = architecture
+            .as_ref()
+            .ok_or_else(|| invalid("missing installed architecture"))?;
+        if version.is_none() {
+            return Err(invalid("missing installed version"));
+        }
         if !identities.insert((name.clone(), architecture.clone())) {
             return Err(invalid("duplicate installed package identity"));
         }
-        output.push(Package {
-            name,
-            version: version.ok_or_else(|| invalid("missing installed version"))?,
-            architecture,
-        });
     }
-    Ok(())
+    visit(Record {
+        name,
+        version,
+        architecture,
+        selection,
+        flag,
+        state,
+    })
 }
 
-pub fn parse_status(input: &str) -> io::Result<Vec<Package>> {
-    let mut entries = Vec::new();
+/// Validate the whole database and visit every stanza in order. Any malformed
+/// stanza fails the whole source, so a partial database cannot become evidence.
+fn parse_records(input: &str, mut visit: impl FnMut(Record) -> io::Result<()>) -> io::Result<()> {
     let mut identities = BTreeSet::new();
-    let mut fields = (None, None, None, None);
+    let mut fields: Fields = (None, None, None, None);
     for line in input.lines().chain(std::iter::once("")) {
         if line.is_empty() {
-            finish_entry(&mut fields, &mut entries, &mut identities)?;
+            finish_entry(&mut fields, &mut identities, &mut visit)?;
             continue;
         }
         if line.starts_with(' ') || line.starts_with('\t') {
@@ -98,12 +130,67 @@ pub fn parse_status(input: &str) -> io::Result<Vec<Package>> {
             }
         }
     }
+    Ok(())
+}
+
+pub fn parse_status(input: &str) -> io::Result<Vec<Package>> {
+    let mut entries = Vec::new();
+    parse_records(input, |record| {
+        if record.state == "installed"
+            && let (Some(version), Some(architecture)) = (record.version, record.architecture)
+        {
+            entries.push(Package {
+                name: record.name,
+                version,
+                architecture,
+            });
+        }
+        Ok(())
+    })?;
     Ok(entries)
+}
+
+/// Upper bound on records returned for one selector; more is a limit failure.
+pub const MAX_SELECTED_RECORDS: usize = 16;
+
+/// Validate the whole database, then keep only stanzas whose Package equals
+/// `name` exactly and, when given, whose Architecture equals `architecture`.
+pub fn parse_selected(
+    input: &str,
+    name: &str,
+    architecture: Option<&str>,
+) -> io::Result<Vec<Record>> {
+    let mut selected = Vec::new();
+    parse_records(input, |record| {
+        if record.name == name
+            && architecture.is_none_or(|wanted| record.architecture.as_deref() == Some(wanted))
+        {
+            if selected.len() == MAX_SELECTED_RECORDS {
+                return Err(crate::collector::limit_exceeded());
+            }
+            selected.push(record);
+        }
+        Ok(())
+    })?;
+    Ok(selected)
 }
 
 /// Read a bounded status database. The root is injectable for fixtures, not a sandbox.
 pub fn collect(status_path: &Path) -> io::Result<Vec<Package>> {
     parse_status(&read_bounded(status_path, MAX_STATUS_BYTES)?)
+}
+
+/// Read a bounded status database and select one package's records.
+pub fn select(
+    status_path: &Path,
+    name: &str,
+    architecture: Option<&str>,
+) -> io::Result<Vec<Record>> {
+    parse_selected(
+        &read_bounded(status_path, MAX_STATUS_BYTES)?,
+        name,
+        architecture,
+    )
 }
 
 #[cfg(test)]

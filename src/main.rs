@@ -71,6 +71,24 @@ fn main() {
             eprintln!("Usage: {PRESSURE_USAGE}");
             std::process::exit(2);
         }
+        [_, command, template, selector]
+            if command == "investigate" && template == "package-installed" =>
+        {
+            package_installed(selector, false)
+        }
+        [_, command, template, selector, format]
+            if command == "investigate"
+                && template == "package-installed"
+                && format == "--json" =>
+        {
+            package_installed(selector, true)
+        }
+        [_, command, template, ..]
+            if command == "investigate" && template == "package-installed" =>
+        {
+            eprintln!("Usage: {PACKAGE_USAGE}");
+            std::process::exit(2);
+        }
         [_, command, label] if command == "capture" => capture(label, false),
         [_, command, label, option] if command == "capture" && option == "--pressure" => {
             capture(label, true)
@@ -90,11 +108,71 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE}"
+                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE}"
             );
             std::process::exit(2);
         }
     }
+}
+
+const PACKAGE_USAGE: &str = "mira investigate package-installed PACKAGE[:ARCH] [--json]";
+
+fn package_installed(selector: &str, json: bool) {
+    use mira::package_investigation::{self as package, Selector};
+    // The selector is refused before the status database is opened.
+    let Ok(selector) = Selector::parse(selector) else {
+        eprintln!("MIRA: package must be a Debian package name, optionally :ARCH");
+        std::process::exit(2);
+    };
+    let report = package::collect(selector, std::path::Path::new("/var/lib/dpkg/status"));
+    let assessment = report.assessment();
+    if json {
+        println!("{}", report.to_json());
+    } else {
+        let selector = report.selector();
+        println!(
+            "MIRA package-installed/v1 scope=local/dpkg package={} architecture={}",
+            selector.package(),
+            selector.architecture().unwrap_or("any")
+        );
+        println!(
+            "outcome={} reason={}",
+            assessment.outcome().as_str(),
+            assessment.reason()
+        );
+        let evidence = report.evidence();
+        println!(
+            "source={} recorded_unix_ms={} clock_trust=unverified freshness=unknown",
+            evidence.source,
+            recorded(evidence.collected_unix_ms)
+        );
+        match &evidence.status {
+            mira::evidence::EvidenceStatus::Observed(records) => {
+                println!("matching_records={}", records.len());
+                for record in records {
+                    // Debug formatting escapes control characters in untrusted database text.
+                    let literal = |value: Option<&str>| {
+                        value.map_or_else(|| "absent".to_owned(), |value| format!("{value:?}"))
+                    };
+                    println!(
+                        "Architecture={} Version={} Status=\"{} {} {}\"",
+                        literal(record.architecture.as_deref()),
+                        literal(record.version.as_deref()),
+                        record.selection,
+                        record.flag,
+                        record.state
+                    );
+                }
+            }
+            mira::evidence::EvidenceStatus::Unavailable { reason, .. } => {
+                println!("failure_reason={reason}");
+            }
+        }
+        println!(
+            "dpkg bookkeeping only; vulnerability exposure, file integrity, service health and root cause are not assessed."
+        );
+    }
+    std::process::exit(assessment.outcome().exit_code());
 }
 
 const PRESSURE_USAGE: &str = "mira investigate pressure-ceiling --resource cpu|memory|io --max-some-avg10-basis-points N [--json]";

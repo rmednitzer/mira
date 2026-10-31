@@ -1,6 +1,6 @@
 # Threat model — MIRA
 
-> Scope (2026-10-30): implemented local Linux evidence collection, closed activation, explicit memory-expectation and explicit pressure-ceiling templates, serialization/comparison, native tests and experimental CLI packaging. The retained simulation has separate authority/control limitations below. Future natural-language intent, AI, UI, remote and write adapters require a new review; this document does not certify the proposed full operations product.
+> Scope (2026-10-30): implemented local Linux evidence collection, closed activation, explicit memory-expectation, pressure-ceiling and package-presence templates, serialization/comparison, native tests and experimental CLI packaging. The retained simulation has separate authority/control limitations below. Future natural-language intent, AI, UI, remote and write adapters require a new review; this document does not certify the proposed full operations product.
 
 ## Linux operations boundaries
 
@@ -61,6 +61,10 @@ memory-headroom/v1 admits only a positive ASCII integer KiB criterion of at most
 ### Explicit pressure ceiling
 
 pressure-ceiling/v1 admits only a closed resource name (`cpu`, `memory`, `io`) and an ASCII integer ceiling of at most five digits in 0..=10000 basis points; both are refused before acquisition. The resource selects one fixed PSI file through the existing closed `PressureResource` enum, so the operator cannot supply a path. It reads only that file through the existing 16 KiB bounded reader and ASCII-only parser, and adds no model, network, command or authority. A private report binds resource, criterion, observation and derived outcome. Missing PSI (a kernel without it, or `psi=0`), permission errors and malformed text stay indeterminate; they cannot satisfy even a 10000 ceiling. `some avg10` is a smoothed, lagging kernel ratio, usually system-wide inside containers. It is not workload health, a latency guarantee, root cause or a remediation trigger. The local/procfs scope is not authenticated identity. A separate schema embeds evidence-v2 and leaves existing contracts unchanged. See [ADR 0007](adr/0007-explicit-pressure-ceiling.md).
+
+### Explicit package presence
+
+package-installed/v1 admits only a Debian-policy package name and an optional exact architecture, refused before the database is opened. It reads only the existing bounded dpkg status source and validates the whole database, so a malformed stanza elsewhere cannot leave a partially trusted answer. Disclosure is limited to the selected name's records (at most 16), not the inventory. Version, architecture and status text are attacker-influenceable literals: JSON escapes them and human output prints them escaped. Only `installed` with flag `ok` satisfies; transitional and reinstall-required states stay indeterminate, and selection words cannot decide. The report carries `vulnerability_exposure: "not_assessed"`, because installed versions alone cannot establish exposure on Ubuntu (SEC-03). No dpkg/apt command, network, model or authority is added. See [ADR 0008](adr/0008-explicit-package-installed.md).
 
 ### Planned platform observation boundary
 
