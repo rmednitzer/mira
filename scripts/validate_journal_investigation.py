@@ -127,6 +127,28 @@ def producer_valid(kind, entry):
             and unit.startswith('systemd-coredump@') and unit.endswith('.service'))
 
 
+def crash_handler(pattern):
+    """The pipe's executable token, split as the kernel splits it, must match exactly."""
+    if not pattern.startswith('|'):
+        return 'other'
+    tokens = pattern[1:].split()
+    return 'systemd-coredump' if tokens and tokens[0] == COREDUMP else 'other'
+
+
+def check_crash_handler():
+    for pattern, expected in (
+            ('|/usr/lib/systemd/systemd-coredump %P %u\n', 'systemd-coredump'),
+            ('| /usr/lib/systemd/systemd-coredump %P\n', 'systemd-coredump'),
+            ('|/usr/lib/systemd/systemd-coredump\n', 'systemd-coredump'),
+            ('|/usr/lib/systemd/systemd-coredump-wrapper %P\n', 'other'),
+            ('|/usr/lib/systemd/../systemd/systemd-coredump %P\n', 'other'),
+            ('|/usr/share/apport/apport -p%p\n', 'other'),
+            ('/usr/lib/systemd/systemd-coredump\n', 'other'),
+            ('core\n', 'other')):
+        if crash_handler(pattern) != expected:
+            raise ValueError('independent crash-handler rule is wrong')
+
+
 def independent(absent, boot):
     """Derive the expected visibility, access, per-class counts and handler directly."""
     code, out = journalctl(['--boot', '-n', '1', '-o', 'export', '--output-fields=_PID', '_PID=1'])
@@ -174,9 +196,8 @@ def independent(absent, boot):
                                if producer_valid(kinds.get(e.get('MESSAGE_ID')), e)), 1000)
     handler = None
     if 'coredump' in absent:
-        pattern = Path('/proc/sys/kernel/core_pattern').read_text()
         handler = ('unknown_for_boot' if boot == 'previous_retained'
-                   else 'systemd-coredump' if pattern.startswith(f'|{COREDUMP}') else 'other')
+                   else crash_handler(Path('/proc/sys/kernel/core_pattern').read_text()))
     return {'visible': True, 'counts': counts, 'access': access and found > 0, 'handler': handler}
 
 
@@ -214,6 +235,7 @@ def check_live():
 
 
 def main():
+    check_crash_handler()
     check_fixtures()
     check_live()
     print('journal-events schema, semantic fixtures and live journal comparison validated')

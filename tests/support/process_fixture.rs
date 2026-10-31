@@ -204,9 +204,9 @@ fn journalctl(mode: &str) -> io::Result<()> {
     } else {
         process::exit(64)
     };
-    let manager_entry = |id: &str, unit: &str, account: &str, time: u32| {
+    let manager_entry = |id: &str, unit: &str, producer: &str, time: u32| {
         format!(
-            "__CURSOR=s=1\n__MONOTONIC_TIMESTAMP={time}\nMESSAGE_ID={id}\nUNIT={unit}\n_UID={account}\n_EXE=/usr/lib/systemd/systemd\n_SYSTEMD_UNIT=init.scope\n\n"
+            "__CURSOR=s=1\n__MONOTONIC_TIMESTAMP={time}\nMESSAGE_ID={id}\nUNIT={unit}\n{producer}\n_EXE=/usr/lib/systemd/systemd\n_SYSTEMD_UNIT=init.scope\n\n"
         )
     };
     let core_entry = |unit: &str, cgroup: &str, time: u32| {
@@ -220,22 +220,22 @@ fn journalctl(mode: &str) -> io::Result<()> {
         "d9b373ed55a64feb8242e02dbe79a49c"
     };
     let body = match (mode, class) {
-        ("journal-events", "oom") => manager_entry(id, "db.service", "0", 20) + &manager_entry(id, "home.mount", "0", 10),
+        ("journal-events", "oom") => manager_entry(id, "db.service", "_UID=0", 20) + &manager_entry(id, "home.mount", "_UID=0", 10),
         ("journal-events", "failure") => {
-            manager_entry(id, "session-3.scope", "0", 30) + &manager_entry(id, r"systemd-fsck@dev-disk-by\x2duuid-1.service", "0", 31)
+            manager_entry(id, "session-3.scope", "_UID=0", 30) + &manager_entry(id, r"systemd-fsck@dev-disk-by\x2duuid-1.service", "_UID=0", 31)
         }
         ("journal-events", "core") => core_entry("nginx.service", "systemd-coredump@0-77-0.service", 40),
-        ("journal-decoys-full", "failure") => manager_entry(id, "forged.service", "33", 5).repeat(1001),
+        ("journal-decoys-full", "failure") => manager_entry(id, "forged.service", "_UID=33", 5).repeat(1001),
         ("journal-decoys-one-valid", "failure") => {
-            manager_entry(id, "forged.service", "33", 5).repeat(1000) + &manager_entry(id, "real.service", "0", 6)
+            manager_entry(id, "forged.service", "_UID=33", 5).repeat(1000) + &manager_entry(id, "real.service", "_UID=0", 6)
         }
-        ("journal-wrong-origin", "failure") => manager_entry(id, "forged.service", "1000", 5),
+        ("journal-wrong-origin", "failure") => manager_entry(id, "forged.service", "_UID=1000", 5),
         ("journal-backtrace", "core") => core_entry("victim.service", "attacker.service", 5),
         ("journal-missing-field", "failure") => {
             "__MONOTONIC_TIMESTAMP=5\nMESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c\n_UID=0\nUNIT=a.service\n\n".to_owned()
         }
         ("journal-binary", "failure") => "MESSAGE\n\u{5}\0\0\0\0\0\0\0hello\n\n".to_owned(),
-        ("journal-bad-unit", "failure") => manager_entry(id, "x.notaunit", "0", 5),
+        ("journal-bad-unit", "failure") => manager_entry(id, "x.notaunit", "_UID=0", 5),
         ("journal-oversized", "failure") => "X".repeat(3 * 1024 * 1024),
         ("journal-fail", "failure") => process::exit(1),
         _ => String::new(),
