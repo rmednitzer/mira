@@ -37,6 +37,49 @@
         "sub_state": "running"
       },
       "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "/proc/sys/kernel/osrelease",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": "6.17.0-5-generic+fixture",
+      "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "alias.service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "error_kind": null,
+      "value": {
+        "id": "systemd-fsck@dev-disk-by\\x2duuid-1234.service",
+        "load_state": "loaded",
+        "active_state": "inactive",
+        "sub_state": "dead"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "alias.service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "error_kind": null,
+      "value": {
+        "id": "systemd-fsck@dev-disk-by\\x2duuid-1234.service",
+        "load_state": "loaded",
+        "active_state": "future-\u001b[2J",
+        "sub_state": "dead"
+      }
     }
   ],
   "invalid": [
@@ -109,6 +152,205 @@
         "available_kib": 30
       },
       "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "/proc/sys/kernel/osrelease",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": "6.17.0 generic",
+      "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "/proc/sys/kernel/osrelease",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": "6.17.0\n",
+      "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "/proc/sys/kernel/osrelease",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": "6.17.0\u001b[2J",
+      "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "/proc/sys/kernel/osrelease",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": "",
+      "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "/proc/sys/kernel/osrelease",
+      "scope": null,
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "value": "66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666",
+      "error_kind": null
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "alias.service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "error_kind": null,
+      "value": {
+        "id": "ssh.socket",
+        "load_state": "loaded",
+        "active_state": "inactive",
+        "sub_state": "dead"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "alias.service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "error_kind": null,
+      "value": {
+        "id": "-x.service",
+        "load_state": "loaded",
+        "active_state": "inactive",
+        "sub_state": "dead"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "alias.service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "error_kind": null,
+      "value": {
+        "id": "bad\\x2.service",
+        "load_state": "loaded",
+        "active_state": "inactive",
+        "sub_state": "dead"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "alias.service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "error_kind": null,
+      "value": {
+        "id": "ssh.service\n",
+        "load_state": "loaded",
+        "active_state": "inactive",
+        "sub_state": "dead"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "alias.service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "error_kind": null,
+      "value": {
+        "id": "systemd-fsck@dev-disk-by\\x2duuid-1234.service",
+        "load_state": "loaded",
+        "active_state": "activ\u00e9",
+        "sub_state": "dead"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "alias.service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "error_kind": null,
+      "value": {
+        "id": "systemd-fsck@dev-disk-by\\x2duuid-1234.service",
+        "load_state": "loaded",
+        "active_state": "inactive",
+        "sub_state": "running\n"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "alias.service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "error_kind": null,
+      "value": {
+        "id": "systemd-fsck@dev-disk-by\\x2duuid-1234.service",
+        "load_state": "",
+        "active_state": "inactive",
+        "sub_state": "dead"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "alias service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "error_kind": null,
+      "value": {
+        "id": "systemd-fsck@dev-disk-by\\x2duuid-1234.service",
+        "load_state": "loaded",
+        "active_state": "inactive",
+        "sub_state": "dead"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "systemd/system",
+      "scope": "alias.service",
+      "recorded_unix_ms": 123,
+      "clock_trust": "unverified",
+      "freshness": "unknown",
+      "status": "observed",
+      "error_kind": null,
+      "value": {
+        "id": "systemd-fsck@dev-disk-by\\x2duuid-1234.service",
+        "load_state": "lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+        "active_state": "inactive",
+        "sub_state": "dead"
+      }
     }
   ]
 }
