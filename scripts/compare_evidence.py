@@ -20,10 +20,12 @@ MAX_DEPTH = 32
 
 class Capture(dict):
     """Legacy records have no completion or scope binding."""
-    def __init__(self, records=(), *, scope=None, profile=None):
+    def __init__(self, records=(), *, scope=None, profile=None, version=None, collection=None):
         super().__init__(records)
         self.scope = scope
         self.profile = profile
+        self.version = version
+        self.collection = collection
 
 
 def _unique_object(pairs):
@@ -108,7 +110,9 @@ def load(path, validator):
     if isinstance(document, dict) and "capture_version" in document:
         check_capture(document)
         return Capture((((r["source"], r["scope"]), r) for r in document["records"]),
-                       scope=document["capture_scope"], profile=document["profile"])
+                       scope=document["capture_scope"], profile=document["profile"],
+                       version=document["capture_version"],
+                       collection=document.get("collection"))
     result = Capture()
     for line in data.split(b"\n"):
         if not line.strip():
@@ -128,7 +132,39 @@ def load(path, validator):
     return result
 
 
-def compare(before, after):
+def _window(collection, max_window_ms):
+    window = collection["monotonic_window_ms"]
+    return {"monotonic_window_ms": window, "wall_clock": collection["wall_clock"],
+            "window_within_policy": None if max_window_ms is None else window <= max_window_ms}
+
+
+def timing(before, after, max_window_ms=None):
+    """ADR 0010 stage 3: order only two captures that report the same boot.
+
+    Uptime windows are centiseconds since boot. Touching or overlapping windows
+    cannot be ordered at that resolution, so they are reported as overlapping.
+    """
+    first, second = before["boot"], after["boot"]
+    relation, order, interval = "unknown", "unverified", None
+    if first["binding"] == "observed" and second["binding"] == "observed":
+        if first["boot_id"] != second["boot_id"]:
+            relation = "different_boot_or_host_reported"
+        else:
+            relation = "same_boot_reported"
+            if first["ended_uptime_cs"] < second["started_uptime_cs"]:
+                order = "before_precedes_after"
+                interval = second["started_uptime_cs"] - first["ended_uptime_cs"]
+            elif second["ended_uptime_cs"] < first["started_uptime_cs"]:
+                order = "after_precedes_before"
+                interval = first["started_uptime_cs"] - second["ended_uptime_cs"]
+            else:
+                order = "overlapping"
+    return {"boot_relation": relation, "order": order, "interval_cs": interval,
+            "max_window_ms": max_window_ms,
+            "before": _window(before, max_window_ms), "after": _window(after, max_window_ms)}
+
+
+def compare(before, after, max_window_ms=None):
     before_scope = getattr(before, "scope", None)
     after_scope = getattr(after, "scope", None)
     if before_scope != after_scope or getattr(before, "profile", None) != getattr(after, "profile", None):
@@ -158,6 +194,13 @@ def compare(before, after):
     if before_scope is not None:
         result.update(comparison_version=2, capture_scope=before_scope,
                       scope_trust="operator_asserted", collection_complete=True)
+    timelines = (getattr(before, "version", None) == 2 and getattr(after, "version", None) == 2)
+    if timelines:
+        # Value outcomes and per-row labels are unchanged; ordering is capture-level.
+        result.update(comparison_version=3,
+                      timing=timing(before.collection, after.collection, max_window_ms))
+    elif max_window_ms is not None:
+        raise ValueError("window policy requires two timeline captures")
     return result
 
 
@@ -165,12 +208,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("before", type=Path)
     parser.add_argument("after", type=Path)
+    parser.add_argument("--max-window-ms", type=int, default=None,
+                        help="report whether each capture-v2 window is within N ms")
     args = parser.parse_args(argv)
+    if args.max_window_ms is not None and args.max_window_ms < 0:
+        raise ValueError("window policy must be nonnegative")
     root = Path(__file__).resolve().parents[1]
     schema = json.loads((root / "schemas/evidence-v1.schema.json").read_text())
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema)
-    print(json.dumps(compare(load(args.before, validator), load(args.after, validator)),
+    print(json.dumps(compare(load(args.before, validator), load(args.after, validator),
+                             args.max_window_ms),
                      sort_keys=True, separators=(",", ":")))
 
 
