@@ -39,3 +39,22 @@ fn non_utf8_arguments_are_usage_errors_without_output_or_panic() {
     assert!(output.stdout.is_empty());
     assert_eq!(output.stderr, b"MIRA: arguments must be valid UTF-8\n");
 }
+
+#[test]
+fn option_shaped_capture_labels_are_rejected_before_collection() {
+    // A forgotten label must not turn an option into the scope of another profile.
+    for label in ["--pressure", "--json", "-", "-x", ".", ".hidden", "_x"] {
+        for arguments in [vec!["capture", label], vec!["capture", label, "--pressure"]] {
+            let output = Command::new(env!("CARGO_BIN_EXE_mira"))
+                .args(&arguments)
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(2), "{arguments:?}");
+            assert!(output.stdout.is_empty(), "{arguments:?}");
+            assert_eq!(
+                output.stderr, b"MIRA: invalid capture label\n",
+                "{arguments:?}"
+            );
+        }
+    }
+}
