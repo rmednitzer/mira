@@ -1,6 +1,6 @@
 # ADR 0010: capture timeline, boot binding and freshness vocabulary
 
-Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day). Design only; no code, schema or CLI change is made by this record. Implementation follows in separate, staged PRs, each with its own review.
+Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day). Implementation is staged, each stage with its own review. **Stage 1 (timeline) is implemented**; stage 2 (boot binding) and stage 3 (comparison-v3) are not. Until stage 3, the comparator accepts capture-v2 for value comparison only (comparison-v2, timing unknown).
 
 ## Context
 

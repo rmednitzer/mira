@@ -66,7 +66,7 @@ impl Snapshot {
     }
 }
 
-fn timestamp() -> Option<u128> {
+pub(crate) fn timestamp() -> Option<u128> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()

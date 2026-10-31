@@ -43,8 +43,22 @@ fn non_utf8_arguments_are_usage_errors_without_output_or_panic() {
 #[test]
 fn option_shaped_capture_labels_are_rejected_before_collection() {
     // A forgotten label must not turn an option into the scope of another profile.
-    for label in ["--pressure", "--json", "-", "-x", ".", ".hidden", "_x"] {
-        for arguments in [vec!["capture", label], vec!["capture", label, "--pressure"]] {
+    for label in [
+        "--pressure",
+        "--timeline",
+        "--json",
+        "-",
+        "-x",
+        ".",
+        ".hidden",
+        "_x",
+    ] {
+        for arguments in [
+            vec!["capture", label],
+            vec!["capture", label, "--pressure"],
+            vec!["capture", label, "--timeline"],
+            vec!["capture", label, "--pressure", "--timeline"],
+        ] {
             let output = Command::new(env!("CARGO_BIN_EXE_mira"))
                 .args(&arguments)
                 .output()
@@ -56,5 +70,47 @@ fn option_shaped_capture_labels_are_rejected_before_collection() {
                 "{arguments:?}"
             );
         }
+    }
+}
+
+#[test]
+fn timeline_is_opt_in_and_order_fixed() {
+    let run = |arguments: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_mira"))
+            .args(arguments)
+            .output()
+            .unwrap()
+    };
+    for (arguments, version) in [
+        (vec!["capture", "cli-fixture"], 1),
+        (vec!["capture", "cli-fixture", "--pressure"], 1),
+        (vec!["capture", "cli-fixture", "--timeline"], 2),
+        (
+            vec!["capture", "cli-fixture", "--pressure", "--timeline"],
+            2,
+        ),
+    ] {
+        let output = run(&arguments);
+        assert!(matches!(output.status.code(), Some(0 | 1)), "{arguments:?}");
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            stdout.starts_with(&format!("{{\"capture_version\":{version},")),
+            "{arguments:?}"
+        );
+        assert_eq!(
+            stdout.contains("\"timeline\":["),
+            version == 2,
+            "{arguments:?}"
+        );
+    }
+    for arguments in [
+        vec!["capture", "cli-fixture", "--timeline", "--pressure"],
+        vec!["capture", "cli-fixture", "--timeline", "--timeline"],
+        vec!["capture", "cli-fixture", "--pressure", "--pressure"],
+        vec!["capture", "cli-fixture", "--timeline", "--json"],
+    ] {
+        let output = run(&arguments);
+        assert_eq!(output.status.code(), Some(2), "{arguments:?}");
+        assert!(output.stdout.is_empty(), "{arguments:?}");
     }
 }

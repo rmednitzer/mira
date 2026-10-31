@@ -7,7 +7,7 @@ mira capture incident-a --pressure > pressure.json
 
 The command emits one capture-v1 JSON document. `host/v1` requests memory, uptime, kernel release, CPU PSI and installed package count. Explicit `--pressure` selects `host-pressure/v1`, adding memory and IO PSI. The question is whether the kernel reports resource stalls alongside resource availability, not whether an application is healthy or why it failed. Only avg10 is projected in basis points; unprojected PSI fields are not interpreted. CPU full is undefined at system scope and its compatibility value is not an operational CPU-full metric. There are no threshold writes, trigger registration, discovery, model calls or background monitoring.
 
-LABEL must contain 1–64 ASCII letters, digits, dots, underscores or hyphens and must begin with a letter or digit. The leading-character rule rejects option-shaped input such as `mira capture --pressure`, which would otherwise become the label of a `host/v1` capture without pressure sources; such invocations exit 2 without collection. Capture-v1 admission is unchanged, so documents produced earlier with other leading characters remain valid for comparison. It is an operator assertion for comparison scope, never authenticated host identity. Avoid secrets or identifying infrastructure names in public captures. No hostname, machine ID or boot ID is collected automatically. [ADR 0010](adr/0010-capture-timeline-and-freshness.md) accepts a design for an opt-in capture timeline (`--timeline`) and boot binding (`--bind-boot`); it is not implemented yet, and the boot ID will still never be collected by default.
+LABEL must contain 1–64 ASCII letters, digits, dots, underscores or hyphens and must begin with a letter or digit. The leading-character rule rejects option-shaped input such as `mira capture --pressure`, which would otherwise become the label of a `host/v1` capture without pressure sources; such invocations exit 2 without collection. Capture-v1 admission is unchanged, so documents produced earlier with other leading characters remain valid for comparison. It is an operator assertion for comparison scope, never authenticated host identity. Avoid secrets or identifying infrastructure names in public captures. No hostname, machine ID or boot ID is collected automatically. The opt-in [collection timeline](#collection-timeline-capture-v2) adds no identifier. A planned `--bind-boot` ([ADR 0010](adr/0010-capture-timeline-and-freshness.md), not implemented) will collect the boot ID only on explicit request.
 
 ## Contract
 
@@ -19,6 +19,23 @@ Wall-clock recording times are taken immediately after each acquisition. `elapse
 
 The [capture schema](../schemas/capture-v1.schema.json) references [evidence-v2](../schemas/evidence-v2.schema.json). Consumers must also check exact ordered source coverage, scope syntax, availability consistency and memory-value consistency. Repository validators resolve local schemas without retrieving remote references.
 
+## Collection timeline (capture-v2)
+
+```sh
+mira capture incident-a --timeline
+mira capture incident-a --pressure --timeline
+```
+
+Options follow the label in this fixed order; `--timeline --pressure` and repeated options exit 2. Without `--timeline` the output is capture-v1, byte-for-byte as before. With it, the document has `capture_version: 2`, the same ordered evidence-v2 records, and two more members:
+
+- `collection.monotonic_window_ms`: from one monotonic reference taken before the first acquisition to the end of the last one. Every source was read within this window, as measured by MIRA's own clock (CLOCK_MONOTONIC on Linux, which excludes suspend).
+- `collection.started_unix_ms` / `ended_unix_ms`: unverified wall-clock readings at the window edges, or null.
+- `collection.wall_clock`: `consistent` when both edges exist, the end is not before the start, and the wall delta is within max(50 ms, 1% of the window, rounded down) of the monotonic window. `stepped_or_suspended` otherwise, and `unknown` when an edge is missing. It describes only the capture window, not the clock's accuracy.
+- `collection.boot`: `{"binding": "not_requested"}`. The schema already defines the `observed` and `unavailable` shapes of the planned boot binding.
+- `timeline`: one entry per record, in record order, with the acquisition's `offset_ms` from the reference and its `elapsed_ms` (equal to the record's). Offsets never decrease, and offset plus elapsed never exceeds the window.
+
+Milliseconds are truncated, so a 0 ms window means everything was read within the same millisecond. Record-level `freshness: "unknown"` stays: the window bounds skew within one capture, not how old the capture is now. The [capture-v2 schema](../schemas/capture-v2.schema.json) checks structure; consumers must also check timeline/record agreement, offset bounds and the wall-clock rule, as `scripts/capture_contract.py` does.
+
 ## Compare
 
 Produce two captures with the same label and profile, then run:
@@ -27,7 +44,7 @@ Produce two captures with the same label and profile, then run:
 .schema-venv/bin/python scripts/compare_evidence.py before.json after.json
 ```
 
-Capture comparison emits comparison-v2 with explicit completion and operator-asserted scope. Different scopes/profiles and mixed capture/legacy input are refused. Equal labels do not prove that two captures came from the same host. Changes compare values, not timing, and unavailable evidence remains indeterminate. Freshness and clock order remain unknown/unverified. Legacy evidence-v1 JSONL remains supported as comparison-v1, without completion claims.
+Capture comparison emits comparison-v2 with explicit completion and operator-asserted scope. capture-v2 input, alone or mixed with capture-v1 of the same scope and profile, is compared by value only; its timeline is validated but not yet used for ordering. Different scopes/profiles and mixed capture/legacy input are refused. Equal labels do not prove that two captures came from the same host. Changes compare values, not timing, and unavailable evidence remains indeterminate. Freshness and clock order remain unknown/unverified. Legacy evidence-v1 JSONL remains supported as comparison-v1, without completion claims.
 
 Input is limited to 1 MiB, 128 legacy records and JSON nesting depth 32. Strict UTF-8 and unique object keys are required. Numeric values must use integer JSON tokens; decimal and exponent forms are refused before conversion, even when mathematically integral. This preserves exact integer comparisons and leaves numeric-looking strings unchanged. Nonfinite numbers, invalid Unicode, empty input and incomplete/contradictory capture sets are refused. Nonblocking open and descriptor validation reject FIFOs/devices, including path replacement before open. Symlinks remain supported; parent paths are caller-trusted and mutable regular files are not immutable snapshots. Use a trusted private directory for capture custody. There is no general application deadline for regular filesystem reads.
 
