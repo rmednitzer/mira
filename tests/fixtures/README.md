@@ -13,3 +13,5 @@ Native subprocess fixtures live in `tests/support/process_fixture.rs`, separate 
 `capture-v1.json` freezes independent authored complete and deliberately invalid capture documents, including unavailable reasons and source-coverage contradictions. Native source/availability cases live in `tests/capture.rs`; optional memory/IO PSI files are generated in isolated temporary roots. No real host data or model judge supplies expected verdicts.
 
 `memory-headroom-v1.json` freezes seven valid and fourteen invalid memory-expectation reports, including equality, u64 bounds, unavailable evidence and contradictory assessments. They are synthetic contract cases, not host-health labels.
+
+`pressure-ceiling-v1.json` freezes eight valid and twenty invalid pressure-expectation reports across all three resources, including the 0 and 10000 bounds, equality, unavailable evidence, source/resource mismatches, availability/reason contradictions and two schema-valid reports whose reason contradicts the value-versus-ceiling relation. They are synthetic contract cases, not host-health labels.

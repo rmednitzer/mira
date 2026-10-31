@@ -1,0 +1,892 @@
+{
+  "valid": [
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "cpu",
+        "max_some_avg10_basis_points": 0
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "within_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/cpu",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 0,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "cpu",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "within_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/cpu",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 25,
+          "full_avg10_basis_points": null
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 1250
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "within_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 1250,
+          "full_avg10_basis_points": 9000
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "io",
+        "max_some_avg10_basis_points": 10000
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "within_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/io",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 10000,
+          "full_avg10_basis_points": 10000
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "io",
+        "max_some_avg10_basis_points": 9999
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/io",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 10000,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "io",
+        "max_some_avg10_basis_points": 10000
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/io",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "NotFound",
+        "elapsed_ms": 0,
+        "failure_reason": "not_found"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "cpu",
+        "max_some_avg10_basis_points": 0
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/cpu",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "InvalidData",
+        "elapsed_ms": 0,
+        "failure_reason": "limit_exceeded"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v2",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "host/example",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "irq",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 10001
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": -1
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/cpu",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/meminfo",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": "memory",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/expectation"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "healthy",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "memory_leak",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      },
+      "recommendation": "restart"
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "io",
+        "max_some_avg10_basis_points": 10000
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "within_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/io",
+        "scope": null,
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "NotFound",
+        "elapsed_ms": 0,
+        "failure_reason": "not_found"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "cpu",
+        "max_some_avg10_basis_points": 0
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/cpu",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 0,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "within_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 26,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "cpu",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/cpu",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 25,
+          "full_avg10_basis_points": null
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "pressure-ceiling/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "resource": "memory",
+        "max_some_avg10_basis_points": 25
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "above_ceiling",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 2,
+        "source": "/proc/pressure/memory",
+        "scope": null,
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "some_avg10_basis_points": 10001,
+          "full_avg10_basis_points": 0
+        },
+        "error_kind": null,
+        "elapsed_ms": 0,
+        "failure_reason": null
+      }
+    }
+  ]
+}

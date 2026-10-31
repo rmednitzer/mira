@@ -46,6 +46,7 @@ jobs:
           .schema-venv/bin/python scripts/validate_investigation_schema.py --live-systemd
           .schema-venv/bin/python scripts/validate_capture_schema.py
           .schema-venv/bin/python scripts/validate_memory_investigation.py
+          .schema-venv/bin/python scripts/validate_pressure_investigation.py
       - name: Install native packaging tools
         run: |
           sudo apt-get update -qq
@@ -74,6 +75,8 @@ jobs:
           test -f package-extract/usr/share/mira/schemas/capture-v1.schema.json
           test -f package-extract/usr/share/mira/schemas/memory-headroom-v1.schema.json
           test -f package-extract/usr/share/doc/mira/memory-investigation.md
+          test -f package-extract/usr/share/mira/schemas/pressure-ceiling-v1.schema.json
+          test -f package-extract/usr/share/doc/mira/pressure-investigation.md
           test -f package-extract/usr/share/doc/mira/captures.md
           test -f package-extract/usr/share/doc/mira/investigations.md
           if dpkg-deb --contents "$deb" | grep -E '/(systemd/system|systemd/user)/'; then

@@ -33,6 +33,44 @@ fn main() {
             eprintln!("Usage: mira investigate memory-headroom --min-available-kib N [--json]");
             std::process::exit(2);
         }
+        [
+            _,
+            command,
+            template,
+            resource_option,
+            resource,
+            ceiling_option,
+            maximum,
+        ] if command == "investigate"
+            && template == "pressure-ceiling"
+            && resource_option == "--resource"
+            && ceiling_option == "--max-some-avg10-basis-points" =>
+        {
+            pressure_ceiling(resource, maximum, false)
+        }
+        [
+            _,
+            command,
+            template,
+            resource_option,
+            resource,
+            ceiling_option,
+            maximum,
+            format,
+        ] if command == "investigate"
+            && template == "pressure-ceiling"
+            && resource_option == "--resource"
+            && ceiling_option == "--max-some-avg10-basis-points"
+            && format == "--json" =>
+        {
+            pressure_ceiling(resource, maximum, true)
+        }
+        [_, command, template, ..]
+            if command == "investigate" && template == "pressure-ceiling" =>
+        {
+            eprintln!("Usage: {PRESSURE_USAGE}");
+            std::process::exit(2);
+        }
         [_, command, label] if command == "capture" => capture(label, false),
         [_, command, label, option] if command == "capture" && option == "--pressure" => {
             capture(label, true)
@@ -52,11 +90,64 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json]"
+                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE}"
             );
             std::process::exit(2);
         }
     }
+}
+
+const PRESSURE_USAGE: &str = "mira investigate pressure-ceiling --resource cpu|memory|io --max-some-avg10-basis-points N [--json]";
+
+fn pressure_ceiling(resource: &str, maximum: &str, json: bool) {
+    use mira::pressure_investigation as pressure;
+    // Both criteria are refused before any acquisition.
+    let Ok(resource) = pressure::parse_resource(resource) else {
+        eprintln!("MIRA: pressure resource must be cpu, memory or io");
+        std::process::exit(2);
+    };
+    let report = pressure::parse_maximum(maximum)
+        .and_then(|maximum| pressure::collect(resource, maximum, std::path::Path::new("/proc")));
+    let Ok(report) = report else {
+        eprintln!("MIRA: pressure ceiling must be an integer from 0 to 10000 basis points");
+        std::process::exit(2);
+    };
+    if json {
+        println!("{}", report.to_json());
+    } else {
+        println!(
+            "MIRA pressure-ceiling/v1 scope=local/procfs resource={} max_some_avg10_basis_points={}",
+            report.resource().name(),
+            report.maximum()
+        );
+        println!(
+            "outcome={} reason={}",
+            report.outcome().as_str(),
+            report.reason()
+        );
+        let evidence = report.evidence();
+        println!(
+            "source={} recorded_unix_ms={} clock_trust=unverified freshness=unknown",
+            evidence.source,
+            recorded(evidence.collected_unix_ms)
+        );
+        match &evidence.status {
+            mira::evidence::EvidenceStatus::Observed(pressure) => println!(
+                "some_avg10_basis_points={} full_avg10_basis_points={}",
+                pressure.some_avg10_basis_points,
+                pressure
+                    .full_avg10_basis_points
+                    .map_or_else(|| "absent".to_owned(), |value| value.to_string())
+            ),
+            mira::evidence::EvidenceStatus::Unavailable { reason, .. } => {
+                println!("failure_reason={reason}");
+            }
+        }
+        println!(
+            "Smoothed 10-second stall share only; workload health, latency and root cause are not assessed."
+        );
+    }
+    std::process::exit(report.outcome().exit_code());
 }
 
 /// Human-readable recording time: Unix milliseconds, or `unknown` without a clock reading.

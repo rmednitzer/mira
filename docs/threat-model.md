@@ -1,6 +1,6 @@
 # Threat model — MIRA
 
-> Scope (2026-10-30): implemented local Linux evidence collection, closed activation and explicit memory-expectation templates, serialization/comparison, native tests and experimental CLI packaging. The retained simulation has separate authority/control limitations below. Future natural-language intent, AI, UI, remote and write adapters require a new review; this document does not certify the proposed full operations product.
+> Scope (2026-10-30): implemented local Linux evidence collection, closed activation, explicit memory-expectation and explicit pressure-ceiling templates, serialization/comparison, native tests and experimental CLI packaging. The retained simulation has separate authority/control limitations below. Future natural-language intent, AI, UI, remote and write adapters require a new review; this document does not certify the proposed full operations product.
 
 ## Linux operations boundaries
 
@@ -57,6 +57,10 @@ New report/schema consumers must preserve that distinction and reject unsupporte
 ### Explicit memory expectation
 
 memory-headroom/v1 admits only a positive ASCII integer KiB criterion of at most 20 digits fitting u64. It reads only the existing bounded meminfo source. A private report binds criterion, observation and derived outcome; no model, network, new file source, command or authority is introduced. Missing/malformed evidence stays indeterminate. MemAvailable is a changing kernel estimate, not workload/cgroup capacity, application health, allocation assurance or a remediation trigger. The local/procfs scope is not authenticated identity. A separate schema preserves existing service/evidence/capture contracts. See [ADR 0005](adr/0005-explicit-memory-headroom.md).
+
+### Explicit pressure ceiling
+
+pressure-ceiling/v1 admits only a closed resource name (`cpu`, `memory`, `io`) and an ASCII integer ceiling of at most five digits in 0..=10000 basis points; both are refused before acquisition. The resource selects one fixed PSI file through the existing closed `PressureResource` enum, so the operator cannot supply a path. It reads only that file through the existing 16 KiB bounded reader and ASCII-only parser, and adds no model, network, command or authority. A private report binds resource, criterion, observation and derived outcome. Missing PSI (a kernel without it, or `psi=0`), permission errors and malformed text stay indeterminate; they cannot satisfy even a 10000 ceiling. `some avg10` is a smoothed, lagging kernel ratio, usually system-wide inside containers. It is not workload health, a latency guarantee, root cause or a remediation trigger. The local/procfs scope is not authenticated identity. A separate schema embeds evidence-v2 and leaves existing contracts unchanged. See [ADR 0007](adr/0007-explicit-pressure-ceiling.md).
 
 ### Planned platform observation boundary
 
