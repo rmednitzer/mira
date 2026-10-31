@@ -23,7 +23,12 @@ def main():
             pass
         else:
             raise ValueError('invalid capture admitted')
-    legacy = json.loads((ROOT / 'schemas/evidence-v1.schema.json').read_text())
+    # The producer now requires a leading letter or digit, but capture-v1
+    # admission is unchanged so previously produced documents stay comparable.
+    earlier = copy.deepcopy(fixtures['valid'][0])
+    earlier['capture_scope'] = '-earlier-producer-label'
+    check_capture(earlier)
+    legacy =json.loads((ROOT / 'schemas/evidence-v1.schema.json').read_text())
     validator = Draft202012Validator(legacy)
     with tempfile.TemporaryDirectory() as temp:
         path = Path(temp) / 'capture'
@@ -65,7 +70,7 @@ def main():
                 pass
             else:
                 raise ValueError('mixed capture formats admitted')
-        for label in ('', 'private path', 'x' * 65, 'x\x1b'):
+        for label in ('', 'private path', 'x' * 65, 'x\x1b', '--pressure', '-', '.hidden'):
             result = subprocess.run([str(ROOT / 'target/debug/mira'), 'capture', label],
                                     capture_output=True, timeout=5, check=False)
             if result.returncode != 2 or result.stdout:
