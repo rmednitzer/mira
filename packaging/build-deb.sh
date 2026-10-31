@@ -56,7 +56,7 @@ mira \- read-only Linux evidence CLI
 .br
 .B mira service UNIT.service [--json]
 .br
-.B mira investigate service-active UNIT.service [--json]
+.B mira investigate service-active[/v1|/v2] UNIT.service [--json]
 .br
 .B mira investigate memory-headroom --min-available-kib N [--json]
 .br
@@ -68,11 +68,16 @@ No remediation or background service.
 Inspect/service: 0 for available evidence, 1 for unavailable evidence, 2 for usage.
 Capture: 0 all sources available, 1 complete with unavailable sources, 2 usage.
 Investigations (service-active and memory-headroom): 0 satisfied, 1 not satisfied, 3 indeterminate, 2 rejected invocation.
+.PP
+service-active and service-active/v1 emit the unchanged v1 report.
+service-active/v2 additionally reports reason unit_not_found (exit 1) when systemd
+reports LoadState not-found and ActiveState inactive.
 EOF
 } | gzip -n -9 > "$stage/usr/share/man/man1/mira.1.gz"
 install -Dm644 docs/evidence-json.md "$stage/usr/share/doc/mira/evidence-json.md"
 install -Dm644 schemas/evidence-v1.schema.json "$stage/usr/share/mira/schemas/evidence-v1.schema.json"
 install -Dm644 schemas/investigation-v1.schema.json "$stage/usr/share/mira/schemas/investigation-v1.schema.json"
+install -Dm644 schemas/investigation-v2.schema.json "$stage/usr/share/mira/schemas/investigation-v2.schema.json"
 install -Dm644 docs/investigations.md "$stage/usr/share/doc/mira/investigations.md"
 install -Dm644 schemas/evidence-v2.schema.json "$stage/usr/share/mira/schemas/evidence-v2.schema.json"
 install -Dm644 schemas/capture-v1.schema.json "$stage/usr/share/mira/schemas/capture-v1.schema.json"

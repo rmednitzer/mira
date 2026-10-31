@@ -1,0 +1,669 @@
+{
+  "valid": [
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "active",
+          "sub_state": "running"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "missing-unit.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "missing-unit.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "removed-file.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "removed-file.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "removed-file.service",
+          "load_state": "not-found",
+          "active_state": "active",
+          "sub_state": "running"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "removed-file.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "removed-file.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "removed-file.service",
+          "load_state": "not-found",
+          "active_state": "failed",
+          "sub_state": "failed"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "removed-file.service",
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "transition_in_progress",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "removed-file.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "removed-file.service",
+          "load_state": "not-found",
+          "active_state": "deactivating",
+          "sub_state": "stop"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "masked",
+          "active_state": "active",
+          "sub_state": "running"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "masked",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "unrecognized_active_state",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "future-state",
+          "sub_state": "future-sub"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "alias.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "alias.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "canonical.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "TimedOut"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "missing-unit.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "missing-unit.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "ssh.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "ssh.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "ssh.service",
+          "load_state": "loaded",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "removed-file.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "removed-file.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "removed-file.service",
+          "load_state": "not-found",
+          "active_state": "failed",
+          "sub_state": "failed"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "removed-file.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "removed-file.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "removed-file.service",
+          "load_state": "not-found",
+          "active_state": "active",
+          "sub_state": "running"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "missing-unit.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "missing-unit.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "missing-unit.service",
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "TimedOut"
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "removed-file.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_active",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "removed-file.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "removed-file.service",
+          "load_state": "not-found",
+          "active_state": "active",
+          "sub_state": "running"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v1",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "missing-unit.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "missing-unit.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "service-active/v2",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "missing-unit.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "missing-unit.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 3,
+      "template": "service-active/v2",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "missing-unit.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "missing-unit.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_missing",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "missing-unit.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "missing-unit.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "other.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "missing-unit.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "service-active/v2",
+      "scope": "missing-unit.service",
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "unit_not_found",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "schema_version": 1,
+        "source": "systemd/system",
+        "scope": "missing-unit.service",
+        "recorded_unix_ms": 7,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "status": "observed",
+        "value": {
+          "id": "missing-unit.service",
+          "load_state": "not-found",
+          "active_state": "inactive",
+          "sub_state": "dead"
+        },
+        "error_kind": null
+      },
+      "package_installed": false
+    }
+  ]
+}
