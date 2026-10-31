@@ -4,7 +4,7 @@
 use crate::process::{Stderr, run_bounded};
 use std::{
     ffi::OsString,
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::{self, Read, Write},
     path::Path,
     process::Command,
@@ -166,12 +166,29 @@ fn check(document: &[u8], kind: Kind, signature_path: &Path) -> Result<(), Failu
     }
 }
 
-/// Read a document once, bounded, without requiring UTF-8.
+/// O_NONBLOCK on Linux x86_64 and aarch64, MIRA's only supported targets.
+/// std exposes no portable constant and `unsafe`/libc are not admitted.
+#[cfg(target_os = "linux")]
+const O_NONBLOCK: i32 = 0o4000;
+
+/// Read a document once, bounded, without requiring UTF-8. The open is
+/// nonblocking and the opened descriptor must be a regular file, so a FIFO or
+/// device substituted for the path is refused instead of blocking forever.
+/// Symlinks to regular files remain admitted, as in the offline comparator.
 pub fn read_document(path: &Path) -> io::Result<Vec<u8>> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(O_NONBLOCK)
+        .open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "document must be a regular file",
+        ));
+    }
     let mut bytes = Vec::new();
-    File::open(path)?
-        .take(MAX_DOCUMENT_BYTES + 1)
-        .read_to_end(&mut bytes)?;
+    file.take(MAX_DOCUMENT_BYTES + 1).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
         return Err(crate::collector::limit_exceeded());
     }

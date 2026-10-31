@@ -454,3 +454,45 @@ fn signing_is_opt_in_json_only_and_verify_usage_is_fixed() {
         assert_eq!(mira(&args).status.code(), Some(2), "{args:?}");
     }
 }
+
+#[test]
+fn verify_refuses_fifos_and_devices_without_blocking() {
+    let dir = Dir::new();
+    let fifo = dir.path("capture.fifo");
+    assert!(
+        Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let signers = dir.path("signers");
+    fs::write(&signers, "").unwrap();
+    for document in [fifo.as_path(), Path::new("/dev/zero")] {
+        // A blocking open of a FIFO with no writer would never return.
+        let mut child = Command::new(env!("CARGO_BIN_EXE_mira"))
+            .args(["verify"])
+            .arg(document)
+            .args(["--signature", "none.sig", "--allowed-signers"])
+            .arg(&signers)
+            .args(["--principal", "host-a"])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let start = std::time::Instant::now();
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            if start.elapsed() > std::time::Duration::from_secs(5) {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("verify blocked on {}", document.display());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        assert_eq!(status.code(), Some(1), "{}", document.display());
+    }
+    assert!(signature::read_document(&fifo).is_err());
+    assert!(signature::read_document(Path::new("/dev/zero")).is_err());
+}

@@ -41,7 +41,7 @@ mira verify incident-a.json --signature incident-a.json.sig --allowed-signers al
 mira verify report.json --signature report.json.sig --allowed-signers allowed_signers --principal host-a --revocations revoked.krl
 ```
 
-- MIRA reads the document once (at most 1 MiB) and picks the namespace from its leading bytes: `{"capture_version":` or `{"investigation_version":`. Anything else is not verified.
+- MIRA opens the document nonblocking and requires a regular file (a FIFO or device is not verified, rather than hanging), reads it once (at most 1 MiB) and picks the namespace from its leading bytes: `{"capture_version":` or `{"investigation_version":`. Anything else is not verified.
 - It runs `/usr/bin/ssh-keygen -Y verify` with a fixed argument list and no shell, trusting only the exit status.
 - The principal must be 1–128 characters from `A-Za-z0-9._@+-`, starting with a letter or digit.
 - Exit codes: **0** verified, with one line naming the namespace and principal; **1** not verified, with no tool output passed through; **2** usage; **4** `ssh-keygen` unavailable.
