@@ -19,6 +19,9 @@ Observed on the development host (systemd 259):
 - **Export format:** `-o export` prints `KEY=value` lines with a blank line between entries, which can be parsed without a JSON library.
 - **Exit codes:** no matches gives exit 0, and an invalid boot gives exit 1.
 - **Sentinel:** a PID 1 entry (`-b B -n 1 -o export --output-fields=_PID _PID=1`) was visible for both the current and the previous retained boot. `-n` returns the latest N matching entries in chronological order.
+- **Boot selection:** a bare `--boot` (no argument) selected the running boot; its `_BOOT_ID` equalled `/proc/sys/kernel/random/boot_id`. `-b 0`, by contrast, is the last boot *in the journal*, which is a different boot whenever the running boot has no retained entries.
+- **Origin:** all 19 genuine unit-failure entries carried trusted, journald-set fields `_EXE=/usr/lib/systemd/systemd` and `_UID=0`, from PID 1 (`_SYSTEMD_UNIT=init.scope`) or root's user manager (`user@0.service`). Match groups can be ORed with `+`, so each `MESSAGE_ID` can be required together with its producer's trusted fields.
+- **Forgery probe:** an unprivileged user (UID 1000) logged an entry carrying the unit-failure `MESSAGE_ID` and `UNIT=forged.service`. It appeared in the user's own journal view but **not** under `--system`, because per-UID split storage keeps it out of the system journal. A service running as a system user (UID below 1000) does write to the system journal, so without origin binding it could forge events.
 - **Boots:** the current boot had no such events, while earlier boots held 19 unit failures. That is why an earlier boot matters when the question is "why did it restart". `-b -1` means the previous boot *retained in the journal*, counted back from the end of the journal, not necessarily the machine's immediately preceding boot.
 
 ## Criteria
@@ -60,17 +63,28 @@ mira investigate journal-events --absent CLASS[,CLASS...] [--boot current|previo
 
 The question is an expectation, like the other templates: **were none of these event classes recorded in this boot?**
 
-- CLASS is from the closed set above, given without repetition. `--boot` defaults to `current` (`-b 0`). `previous-retained` is `-b -1`: the most recent earlier boot that the journal still holds. If the immediately preceding boot was never persisted, for example on volatile storage or after a journal loss, `-b -1` selects an older retained boot instead. MIRA cannot detect that gap from the journal alone, because a boot that left no entries is indistinguishable from a powered-off interval. So the option and the report name the scope exactly, `previous-retained`, never "previous boot", and the guide states the limitation. Binding to the immediately preceding boot would need independent predecessor evidence, which is out of scope.
-- **Visibility sentinel.** First run `/usr/bin/journalctl --system --no-pager --quiet -b B -n 1 -o export --output-fields=_PID _PID=1`, with the same export format and field allowlist discipline as the class queries, so no message text is read even for the sentinel. MIRA only counts the entries returned. systemd as PID 1 always logs during boot, so at least one entry must be visible. If none is, MIRA cannot see the system journal for that boot: the caller lacks journal access, the boot was not persisted, the journal was rotated away, or PID 1 is not systemd. The outcome is then indeterminate (`journal_not_visible`), never satisfied.
-- **Per-class query.** Then query, per class, `/usr/bin/journalctl --system --no-pager --quiet -b B -o export --output-fields=MESSAGE_ID,UNIT,USER_UNIT,COREDUMP_UNIT,COREDUMP_USER_UNIT -n 1001` with that class's `MESSAGE_ID=` matches. All argument values are constants except the closed boot selector.
-- **Parsing.** MIRA reads only `MESSAGE_ID`, `__MONOTONIC_TIMESTAMP` and the class's unit fields, mapped per class:
+- CLASS is from the closed set above, given without repetition. Boot selection never uses offset 0:
+  - `--boot current` (the default) passes a bare `--boot`, which journalctl resolves to the running boot itself. If the running boot has no retained entries, the sentinel finds nothing, and the result is indeterminate rather than an older boot labelled `current`.
+  - `--boot previous-retained` passes `-b -1`, the most recent earlier boot that the journal still holds. Offsets count back from the end of the journal, so `-1` is the boot before the running one only if the running boot is itself retained. MIRA therefore requires a visible **current-boot** sentinel (bare `--boot`) before it runs any `-b -1` query, and is indeterminate otherwise.
+  - If the boot immediately preceding the running one was never persisted, for example on volatile storage or after a journal loss, `-b -1` still selects an older retained boot. A boot that left no entries is indistinguishable from a powered-off interval, so the option and the report name the scope exactly, `previous-retained`, never "previous boot", and the guide states the limitation. Binding to the actual predecessor would need independent evidence and is out of scope.
+- **Visibility sentinel.** First run `/usr/bin/journalctl --system --no-pager --quiet BOOT -n 1 -o export --output-fields=_PID _PID=1`, where BOOT is a bare `--boot` or `-b -1` as above, with the same export format and field allowlist discipline as the class queries, so no message text is read even for the sentinel. MIRA only counts the entries returned. systemd as PID 1 always logs during boot, so at least one entry must be visible. If none is, MIRA cannot see the system journal for that boot: the caller lacks journal access, the boot was not persisted, the journal was rotated away, or PID 1 is not systemd. The outcome is then indeterminate (`journal_not_visible`), never satisfied.
+- **Per-class query.** Then query, per class, `/usr/bin/journalctl --system --no-pager --quiet BOOT -o export --output-fields=MESSAGE_ID,UNIT,USER_UNIT,COREDUMP_UNIT,COREDUMP_USER_UNIT,_UID,_EXE -n 1001`. The matches are that class's `MESSAGE_ID`s, each **bound to its producer's trusted fields** and ORed with `+`:
+
+  | `MESSAGE_ID` | Required trusted fields (set by journald, not by the client) |
+  |---|---|
+  | `fe6faa94…` (OOM in unit), `d9b373ed…` (unit failed), `be02cf68…` (start job failed) | `_UID=0`, `_EXE=/usr/lib/systemd/systemd` (PID 1 or root's user manager) |
+  | `d989611b…` (systemd-oomd kill) | `_EXE=/usr/lib/systemd/systemd-oomd` |
+  | `fc2e22bc…`, `1f4e0a44…` (core dump) | `_UID=0`, `_EXE=/usr/lib/systemd/systemd-coredump` |
+
+  For example, `unit-failure` is `MESSAGE_ID=d9b3… _UID=0 _EXE=/usr/lib/systemd/systemd + MESSAGE_ID=be02… _UID=0 _EXE=/usr/lib/systemd/systemd`. All argument values are constants except the closed boot selector. The executable paths are Ubuntu 26.04's merged-`/usr` locations and are confirmed against real entries during implementation; a distribution with other paths needs its own reviewed constants, not a pattern. The parser re-checks `_UID` and `_EXE` on every returned entry as defence in depth, and a mismatch makes the evidence unavailable. A process that is not one of these executables cannot set these fields. Root can still forge anything; that is outside this boundary.
+- **Parsing.** MIRA reads only `MESSAGE_ID`, `__MONOTONIC_TIMESTAMP`, the trusted `_UID`/`_EXE` it re-checks, and the class's unit fields, mapped per class:
 
   | Class | Unit fields, in order of preference |
   |---|---|
   | `oom-kill`, `unit-failure` | `UNIT`, then `USER_UNIT` (manager-generated messages about a unit) |
   | `coredump` | `COREDUMP_UNIT`, then `COREDUMP_USER_UNIT` (the crashed process's unit, per systemd-coredump) |
 
-  A unit field from the other class's mapping is ignored. Each unit value must pass the existing unit-name syntax check, or the evidence is unavailable. The exact field each catalog message carries, including systemd-oomd's, is confirmed against real entries during implementation. Binary-encoded export fields, unknown message IDs among the results, and malformed lines make the evidence unavailable.
+  A unit field from the other class's mapping is ignored. Unit values are checked by a **separate, journal-wide unit-name validator**: at most 255 bytes, characters `A-Za-z0-9:_.-@` and `\xHH` escapes, and a suffix from the closed set `.service`, `.socket`, `.device`, `.mount`, `.automount`, `.swap`, `.target`, `.path`, `.timer`, `.slice`, `.scope`. The existing `systemd::validate_unit` stays unchanged and service-only, because it guards the `service` and `service-active` scope. With origin binding, an entry with an invalid unit can only come from a trusted producer and should not occur; if it does, the evidence is unavailable rather than silently dropped. The exact field each catalog message carries, including systemd-oomd's, is confirmed against real entries during implementation. Binary-encoded export fields, unknown message IDs among the results, and malformed lines make the evidence unavailable.
 
 | Observation | Outcome | Reason | Exit |
 |---|---|---|---|
@@ -84,7 +98,7 @@ The question is an expectation, like the other templates: **were none of these e
 
 Per selected class:
 - `count`, capped at 1000, with `truncated: true` beyond that
-- `units`: up to 16 distinct, sorted unit names that pass the existing unit-name syntax check, with `units_truncated` when more exist
+- `units`: up to 16 distinct, sorted unit names that pass the journal-wide unit-name validator, with `units_truncated` when more exist
 - `first_monotonic_us` / `last_monotonic_us`: boot-relative times of the first and last entry. `-n` returns the *latest* entries, so when a class is truncated the true first entry was not seen, and `first_monotonic_us` is null rather than misleading
 
 Plus:
@@ -104,7 +118,7 @@ The following are deliberately **not** exported:
 - **No recorded events is not no events.** journald rate limits, storage limits, rotation, volatile storage and lost messages all hide events. The reason is `none_recorded`, never "healthy" or "no failures".
 - **Unit failures include intended ones.** A unit that is designed to fail, or was stopped by an administrator in a way that marks it failed, counts; the template does not judge intent.
 - **Previous boot depends on persistence.** It needs persistent journal storage and enough retention. Otherwise the sentinel fails and the result is indeterminate.
-- **Unauthenticated source.** The journal is TB2 input. A privileged party can write forged entries with these message IDs, or delete real ones. Counts are reported observations, not proof.
+- **Unauthenticated source.** The journal is TB2 input. Origin binding to journald-set `_UID`/`_EXE` stops unprivileged users (already excluded from `--system` by per-UID storage) and system services that are not the expected executables from forging these events. Root, or anyone who can replace the systemd binaries or journal files, can still forge or delete entries. Counts are reported observations, not proof.
 - **Boot-relative times are reported values.** The monotonic times come from the journal entries themselves.
 
 ## Contract, trust and validation
@@ -123,7 +137,7 @@ The following are deliberately **not** exported:
 
 ## Acceptance for implementation
 
-- **Native fixture tests:** every outcome row, each class alone and combined, current and previous-retained boot, a retention gap (the fixture serves an older boot for `-b -1`, and the report must still say `previous_retained`), the 1000/1001 cap, unit cap and syntax, and binary-field, unknown-ID, malformed, oversized, timeout, missing-tool and argv-mismatch cases. The exact argv is checked for the sentinel query as well as the class queries.
+- **Native fixture tests:** every outcome row, each class alone and combined, current and previous-retained boot, a retention gap (the fixture serves an older boot for `-b -1`, and the report must still say `previous_retained`), a running boot with no retained entries while an older boot exists (`current` must be indeterminate, never satisfied from the older boot, and `previous-retained` must not run), wrong-origin entries (a matching `MESSAGE_ID` with another `_UID` or `_EXE` must be excluded by the query and refused by the parser), non-service units (`.mount`, `.scope`, `.socket` and an escaped template instance) reported correctly, the 1000/1001 cap, unit cap and syntax, and binary-field, unknown-ID, malformed, oversized, timeout, missing-tool and argv-mismatch cases. The exact argv is checked for the sentinel query as well as the class queries.
 - **Parser unit tests** on export framing.
 - **Frozen JSON** for one report.
 - **Schema fixtures** with semantic-only cases.

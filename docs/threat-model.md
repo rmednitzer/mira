@@ -78,7 +78,7 @@ Stage 1 of [ADR 0011](adr/0011-host-identity-and-capture-integrity.md) is implem
 
 ### Proposed journal event boundary
 
-Proposed, not implemented: [ADR 0012](adr/0012-bounded-journal-events.md) would read journal entries for three closed event classes by catalog `MESSAGE_ID`, through a fixed `journalctl` argv under the shared bounded runner. It exports only counts, bounded validated unit names and boot-relative times, and never message text, PIDs, command lines, executable names or the boot ID. Partial journal access returns exit 0 with fewer entries, so a PID 1 sentinel must be visible before "none recorded" can be reported. journald rate limits and rotation mean that absence stays weak evidence, and the journal is attacker-influenceable TB2 input.
+Proposed, not implemented: [ADR 0012](adr/0012-bounded-journal-events.md) would read journal entries for three closed event classes by catalog `MESSAGE_ID`, through a fixed `journalctl` argv under the shared bounded runner. It exports only counts, bounded validated unit names and boot-relative times, and never message text, PIDs, command lines, executable names or the boot ID. Partial journal access returns exit 0 with fewer entries, so a PID 1 sentinel must be visible before "none recorded" can be reported. journald rate limits and rotation mean that absence stays weak evidence, and the journal is attacker-influenceable TB2 input. Each catalog `MESSAGE_ID` would be bound to its producer's journald-set `_UID`/`_EXE` fields, so neither unprivileged users (already excluded from `--system`) nor other system services can forge these events; root can.
 
 ### Planned platform observation boundary
 
