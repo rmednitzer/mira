@@ -32,6 +32,8 @@ jobs:
       - name: Verify production target boundaries
         run: |
           test ! -e target/release/mira-process-fixture
+          # The test-only ssh-keygen override must be compiled out of release builds.
+          ! grep -q MIRA_TEST_SSH_KEYGEN target/release/mira
           cargo run --locked -- demo
       - name: Validate versioned evidence JSON contract
         run: |
@@ -62,7 +64,7 @@ jobs:
           dpkg-deb --contents "$deb"
           test "$(dpkg-deb -f "$deb" Package)" = mira
           test "$(dpkg-deb -f "$deb" Architecture)" = "$(dpkg --print-architecture)"
-          test "$(dpkg-deb -f "$deb" Suggests)" = "systemd, default-dbus-system-bus | dbus-system-bus"
+          test "$(dpkg-deb -f "$deb" Suggests)" = "systemd, default-dbus-system-bus | dbus-system-bus, openssh-client"
           test -z "$(dpkg-deb -f "$deb" Recommends)"
           mkdir -p package-extract
           dpkg-deb -x "$deb" package-extract
@@ -85,6 +87,7 @@ jobs:
           test -f package-extract/usr/share/mira/schemas/uptime-minimum-v1.schema.json
           test -f package-extract/usr/share/mira/schemas/kernel-release-v1.schema.json
           test -f package-extract/usr/share/doc/mira/host-investigations.md
+          test -f package-extract/usr/share/doc/mira/signatures.md
           test -f package-extract/usr/share/doc/mira/captures.md
           test -f package-extract/usr/share/doc/mira/investigations.md
           if dpkg-deb --contents "$deb" | grep -E '/(systemd/system|systemd/user)/'; then

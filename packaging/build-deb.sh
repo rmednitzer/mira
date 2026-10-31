@@ -68,6 +68,8 @@ mira \- read-only Linux evidence CLI
 .br
 .B mira investigate kernel-release --expect RELEASE [--json]
 .br
+.B mira verify FILE --signature SIG --allowed-signers SIGNERS --principal NAME [--revocations KRL]
+.br
 .B mira demo
 .SH DESCRIPTION
 Experimental read-only host evidence inspection and explicit activation expectations.
@@ -79,6 +81,8 @@ Capture: 0 all sources available, 1 complete with unavailable sources, 2 usage.
 --bind-boot (implies --timeline) also records the boot ID and boot-relative
 window; the boot ID links captures from one boot and is never read otherwise.
 Investigations (service-active, memory-headroom, pressure-ceiling, package-installed, uptime-minimum and kernel-release): 0 satisfied, 1 not satisfied, 3 indeterminate, 2 rejected invocation.
+Signing (--signature PATH --sign-with KEY, last, on capture or investigate --json): 4 when signing fails; nothing is printed and no signature remains.
+Verify: 0 verified, 1 not verified, 2 usage, 4 ssh-keygen unavailable.
 .PP
 service-active and service-active/v1 emit the unchanged v1 report.
 service-active/v2 additionally reports reason unit_not_found (exit 1) when systemd
@@ -95,6 +99,10 @@ It does not assess vulnerability exposure or file integrity.
 uptime-minimum compares whole seconds since boot with an explicit minimum.
 kernel-release compares the running release name with an expected string
 exactly. Neither assesses reboot cause, build identity or patch compliance.
+.PP
+Signatures are detached OpenSSH SSHSIG files made by /usr/bin/ssh-keygen
+(openssh-client). A verified signature shows that a listed key signed the
+exact bytes; it does not show the evidence is true or fresh.
 EOF
 } | gzip -n -9 > "$stage/usr/share/man/man1/mira.1.gz"
 install -Dm644 docs/evidence-json.md "$stage/usr/share/doc/mira/evidence-json.md"
@@ -115,6 +123,7 @@ install -Dm644 docs/package-investigation.md "$stage/usr/share/doc/mira/package-
 install -Dm644 schemas/uptime-minimum-v1.schema.json "$stage/usr/share/mira/schemas/uptime-minimum-v1.schema.json"
 install -Dm644 schemas/kernel-release-v1.schema.json "$stage/usr/share/mira/schemas/kernel-release-v1.schema.json"
 install -Dm644 docs/host-investigations.md "$stage/usr/share/doc/mira/host-investigations.md"
+install -Dm644 docs/signatures.md "$stage/usr/share/doc/mira/signatures.md"
 # Derive versioned ABI dependencies from the native binary and distro metadata.
 printf 'Source: mira\nSection: admin\nPriority: optional\nMaintainer: MIRA Project <noreply@github.com>\n\nPackage: mira\nArchitecture: any\nDescription: Read-only Linux evidence CLI\n' > "$build_root/debian/control"
 depends="$(cd "$build_root" && dpkg-shlibdeps -O -edebian/mira/usr/bin/mira)"
@@ -127,7 +136,7 @@ Maintainer: MIRA Project <noreply@github.com>
 Section: admin
 Priority: optional
 Depends: $depends
-Suggests: systemd, default-dbus-system-bus | dbus-system-bus
+Suggests: systemd, default-dbus-system-bus | dbus-system-bus, openssh-client
 Homepage: https://github.com/rmednitzer/mira
 Description: Read-only Linux infrastructure evidence CLI
  Local-first experimental Linux inspection and structured evidence reporting.

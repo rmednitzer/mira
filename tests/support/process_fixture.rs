@@ -26,8 +26,81 @@ fn valid_output() -> io::Result<()> {
     state_output("ssh.service", "loaded", "active", "running")
 }
 
+/// Stand-in for `ssh-keygen -Y`. Each subcommand's exact argv shape is checked;
+/// any deviation exits 64, which MIRA must surface as a failure.
+fn ssh_keygen(mode: &str) -> io::Result<()> {
+    const CAPTURE: &str = "mira-capture-v1@rmednitzer.github.io";
+    const INVESTIGATION: &str = "mira-investigation-v1@rmednitzer.github.io";
+    let args: Vec<String> = env::args().skip(1).collect();
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    let namespace_ok = |namespace: &str| namespace == CAPTURE || namespace == INVESTIGATION;
+    match args.as_slice() {
+        ["-Y", "sign", "-f", key, "-n", namespace]
+            if !key.is_empty() && namespace_ok(namespace) =>
+        {
+            match mode {
+                "keygen-ok" | "keygen-check-fails" => io::stdout().write_all(
+                    b"-----BEGIN SSH SIGNATURE-----\nZml4dHVyZQ==\n-----END SSH SIGNATURE-----\n",
+                ),
+                "keygen-unarmored" => io::stdout().write_all(b"not a signature\n"),
+                "keygen-oversized" => io::stdout().write_all(&vec![b'x'; 100_000]),
+                "keygen-refuses" => process::exit(255),
+                _ => process::exit(64),
+            }
+        }
+        ["-Y", "check-novalidate", "-n", namespace, "-s", signature]
+            if namespace_ok(namespace) && !signature.is_empty() =>
+        {
+            if mode == "keygen-check-fails" {
+                process::exit(255);
+            }
+            Ok(())
+        }
+        [
+            "-Y",
+            "verify",
+            "-f",
+            signers,
+            "-I",
+            principal,
+            "-n",
+            namespace,
+            "-s",
+            signature,
+        ]
+        | [
+            "-Y",
+            "verify",
+            "-f",
+            signers,
+            "-I",
+            principal,
+            "-n",
+            namespace,
+            "-s",
+            signature,
+            "-r",
+            _,
+        ] if namespace_ok(namespace)
+            && !signers.is_empty()
+            && !principal.is_empty()
+            && !signature.is_empty() =>
+        {
+            if mode == "keygen-ok" {
+                Ok(())
+            } else {
+                process::exit(255)
+            }
+        }
+        _ => process::exit(64),
+    }
+}
+
 fn main() -> io::Result<()> {
     let mode = env::var("MIRA_PROCESS_FIXTURE_MODE").unwrap_or_default();
+    if mode.starts_with("keygen-") {
+        return ssh_keygen(&mode);
+    }
     if mode == "keep-stdout" {
         // The parent exits first. Keep the inherited stdout open for a finite
         // lifetime exceeding the production collector's three-second deadline.
