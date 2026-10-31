@@ -44,7 +44,7 @@ pub(crate) fn packages_value(installed: &[packages::Package]) -> String {
     format!("{{\"installed_count\":{}}}", installed.len())
 }
 
-fn timestamp(time: Option<u128>) -> String {
+pub(crate) fn timestamp(time: Option<u128>) -> String {
     time.map_or_else(|| "null".to_owned(), |t| t.to_string())
 }
 

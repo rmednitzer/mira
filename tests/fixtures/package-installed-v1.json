@@ -1,0 +1,1802 @@
+{
+  "valid": [
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            },
+            {
+              "package": "alpha",
+              "architecture": "i386",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": "i386"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": "i386"
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "i386",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": null,
+              "version": null,
+              "selection": "purge",
+              "flag": "ok",
+              "state": "not-installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "g++",
+        "architecture": "arm64"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "g++",
+          "architecture": "arm64"
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": []
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "incomplete_installation_state",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "half-installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": "amd64"
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "incomplete_installation_state",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": "amd64"
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "reinstreq",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "reinstreq",
+              "state": "installed"
+            },
+            {
+              "package": "alpha",
+              "architecture": "arm64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 0,
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "NotFound",
+        "failure_reason": "not_found"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": "all"
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": "all"
+        },
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 0,
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "InvalidData",
+        "failure_reason": "limit_exceeded"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v2",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 2,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/apt",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "Alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "Alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": "x86.64"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": "x86.64"
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_affected",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": null,
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": null,
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "removed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "keep",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0\n",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed",
+              "extra": true
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": "not_found"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "unavailable",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": null,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 0,
+        "status": "unavailable",
+        "value": null,
+        "error_kind": "NotFound",
+        "failure_reason": "not_found"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/available",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "beta",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": "amd64"
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "beta",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": "amd64"
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "incomplete_installation_state",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": "amd64"
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "i386",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "reinstreq",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "reported_not_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "half-installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "incomplete_installation_state",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            },
+            {
+              "package": "alpha",
+              "architecture": "i386",
+              "version": "1.0-1",
+              "selection": "deinstall",
+              "flag": "ok",
+              "state": "config-files"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": "amd64"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": "amd64"
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "reinstreq",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "package-installed/v1",
+      "scope": "local/dpkg",
+      "expectation": {
+        "package": "alpha",
+        "architecture": null
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "reported_installed",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "vulnerability_exposure": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "/var/lib/dpkg/status",
+        "selector": {
+          "package": "alpha",
+          "architecture": null
+        },
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "status": "observed",
+        "value": {
+          "records": [
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            },
+            {
+              "package": "alpha",
+              "architecture": "amd64",
+              "version": "1.0-1",
+              "selection": "install",
+              "flag": "ok",
+              "state": "installed"
+            }
+          ]
+        },
+        "error_kind": null,
+        "failure_reason": null
+      }
+    }
+  ],
+  "semantic_only": 9
+}

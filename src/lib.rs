@@ -10,6 +10,7 @@ pub mod host_extra;
 pub mod investigation;
 pub mod linux;
 pub mod memory_investigation;
+pub mod package_investigation;
 pub mod packages;
 pub mod pressure_investigation;
 pub mod systemd;

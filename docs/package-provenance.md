@@ -6,4 +6,6 @@
 
 **Limitations:** This is a snapshot of dpkg's local status database, not an authenticated SBOM, proof of running code, full dependency graph, or vulnerability finding. The database may be inaccessible, inconsistent, stale or attacker-influenced. The CLI currently reports only the installed-record count; the count is also exported through the versioned evidence JSONL protocol. Installed version strings alone cannot establish Ubuntu vulnerability exposure because vendor security backports and specific advisory applicability must be evaluated separately.
 
+The opt-in [package-installed investigation](package-investigation.md) exports the full dpkg status words, version and architecture for one explicitly named package only, and keeps incomplete states indeterminate. It reuses this reader and its whole-database validation.
+
 Systemd runtime-state observation is available independently through `mira service UNIT.service [--json]`; it does not establish application health.

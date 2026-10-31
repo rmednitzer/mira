@@ -14,4 +14,6 @@ Native subprocess fixtures live in `tests/support/process_fixture.rs`, separate 
 
 `memory-headroom-v1.json` freezes seven valid and fourteen invalid memory-expectation reports, including equality, u64 bounds, unavailable evidence and contradictory assessments. They are synthetic contract cases, not host-health labels.
 
+`package-installed-v1.json` freezes ten valid and twenty-nine invalid package-presence reports: every outcome, multiarch, sparse and arch-qualified selectors, unavailable evidence, vocabulary and limit violations, and nine schema-valid reports that fail selector, matching, identity or derived-reason checks. They are synthetic contract cases, not vulnerability labels.
+
 `pressure-ceiling-v1.json` freezes eight valid and twenty invalid pressure-expectation reports across all three resources, including the 0 and 10000 bounds, equality, unavailable evidence, source/resource mismatches, availability/reason contradictions and two schema-valid reports whose reason contradicts the value-versus-ceiling relation. They are synthetic contract cases, not host-health labels.

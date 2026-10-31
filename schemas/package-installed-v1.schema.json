@@ -1,0 +1,459 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/package-installed-v1.schema.json",
+  "title": "MIRA explicit package-installed investigation v1",
+  "$comment": "The evidence member is a report-local dpkg record projection, not an evidence-v1/v2 record. Selector equality with the expectation, record matching and the derived assessment are semantic checks outside JSON Schema. Patterns start with (?!.*\\n) because Python re lets $ match before a final newline.",
+  "type": "object",
+  "required": [
+    "investigation_version",
+    "template",
+    "scope",
+    "expectation",
+    "assessment",
+    "application_health",
+    "vulnerability_exposure",
+    "root_cause",
+    "evidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "investigation_version": {
+      "const": 1
+    },
+    "template": {
+      "const": "package-installed/v1"
+    },
+    "scope": {
+      "const": "local/dpkg"
+    },
+    "expectation": {
+      "type": "object",
+      "required": [
+        "package",
+        "architecture"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "package": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[a-z0-9][a-z0-9+.-]{1,127}$"
+        },
+        "architecture": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?!.*\\n)[a-z0-9][a-z0-9-]{0,31}$"
+            }
+          ]
+        }
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "required": [
+        "outcome",
+        "reason",
+        "evidence_ref"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "enum": [
+            "satisfied",
+            "not_satisfied",
+            "indeterminate"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "reported_installed",
+            "reported_not_installed",
+            "incomplete_installation_state",
+            "evidence_unavailable"
+          ]
+        },
+        "evidence_ref": {
+          "const": "#/evidence"
+        }
+      }
+    },
+    "application_health": {
+      "const": "not_assessed"
+    },
+    "vulnerability_exposure": {
+      "const": "not_assessed"
+    },
+    "root_cause": {
+      "const": "not_assessed"
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "source",
+        "selector",
+        "recorded_unix_ms",
+        "clock_trust",
+        "freshness",
+        "elapsed_ms",
+        "status",
+        "value",
+        "error_kind",
+        "failure_reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "const": "/var/lib/dpkg/status"
+        },
+        "selector": {
+          "type": "object",
+          "required": [
+            "package",
+            "architecture"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "package": {
+              "type": "string",
+              "pattern": "^(?!.*\\n)[a-z0-9][a-z0-9+.-]{1,127}$"
+            },
+            "architecture": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?!.*\\n)[a-z0-9][a-z0-9-]{0,31}$"
+                }
+              ]
+            }
+          }
+        },
+        "recorded_unix_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 340282366920938463463374607431768211455
+        },
+        "clock_trust": {
+          "const": "unverified"
+        },
+        "freshness": {
+          "const": "unknown"
+        },
+        "elapsed_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 340282366920938463463374607431768211455
+        },
+        "status": {
+          "enum": [
+            "observed",
+            "unavailable"
+          ]
+        },
+        "value": {},
+        "error_kind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 64
+        },
+        "failure_reason": {
+          "enum": [
+            null,
+            "timeout",
+            "limit_exceeded",
+            "malformed_data",
+            "permission_denied",
+            "not_found",
+            "backend_failed",
+            "io_failure"
+          ]
+        }
+      },
+      "if": {
+        "properties": {
+          "status": {
+            "const": "observed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "object",
+            "required": [
+              "records"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "records": {
+                "type": "array",
+                "maxItems": 16,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "package",
+                    "architecture",
+                    "version",
+                    "selection",
+                    "flag",
+                    "state"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "package": {
+                      "type": "string",
+                      "pattern": "^(?!.*\\n)[a-z0-9][a-z0-9+.-]{1,127}$"
+                    },
+                    "architecture": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^(?!.*\\n)[^\\x00]{1,512}$"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^(?!.*\\n)[^\\x00]{1,512}$"
+                        }
+                      ]
+                    },
+                    "selection": {
+                      "enum": [
+                        "unknown",
+                        "install",
+                        "hold",
+                        "deinstall",
+                        "purge"
+                      ]
+                    },
+                    "flag": {
+                      "enum": [
+                        "ok",
+                        "reinstreq"
+                      ]
+                    },
+                    "state": {
+                      "enum": [
+                        "not-installed",
+                        "config-files",
+                        "half-installed",
+                        "unpacked",
+                        "half-configured",
+                        "triggers-awaited",
+                        "triggers-pending",
+                        "installed"
+                      ]
+                    }
+                  },
+                  "if": {
+                    "properties": {
+                      "state": {
+                        "const": "installed"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "architecture": {
+                        "type": "string",
+                        "pattern": "^(?!.*\\n)[^\\x00]{1,512}$"
+                      },
+                      "version": {
+                        "type": "string",
+                        "pattern": "^(?!.*\\n)[^\\x00]{1,512}$"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error_kind": {
+            "type": "null"
+          },
+          "failure_reason": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "value": {
+            "type": "null"
+          },
+          "error_kind": {
+            "type": "string"
+          },
+          "failure_reason": {
+            "enum": [
+              "timeout",
+              "limit_exceeded",
+              "malformed_data",
+              "permission_denied",
+              "not_found",
+              "backend_failed",
+              "io_failure"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "reported_installed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "satisfied"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "reported_not_installed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "not_satisfied"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "incomplete_installation_state"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "indeterminate"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "evidence_unavailable"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "indeterminate"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "status": {
+                "const": "unavailable"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "evidence_unavailable"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "not": {
+                  "const": "evidence_unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
