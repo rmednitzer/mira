@@ -1,6 +1,6 @@
 # ADR 0012: bounded journal event evidence
 
-Status: **Proposed**, 2026-10-31. Design only; no code, schema or CLI change is made by this record. Implementation would follow in a separate PR after review.
+Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day, through seven review rounds). Design only; no code, schema or CLI change is made by this record. Implementation follows in a separate PR with its own review.
 
 ## Context
 
@@ -43,7 +43,7 @@ Observed on the development host (systemd 259):
 | E. `/dev/kmsg` or `dmesg` | Kernel ring buffer only, often restricted by `dmesg_restrict`, text-based and lost at reboot |
 | F. **Closed event classes by catalog `MESSAGE_ID`, queried with a fixed `journalctl` argv, exporting counts, unit names and boot-relative times only** | Answers "was there an OOM kill, unit failure or crash in this boot" without any message text |
 
-## Proposed decision (option F)
+## Decision (option F)
 
 ### Event classes
 
@@ -168,12 +168,23 @@ The following are deliberately **not** exported:
 
 Blast radius: one opt-in investigation template, its schema, guide, tests and validator. Existing commands and formats are unchanged. Revert the template as a unit. No operational state requires rollback.
 
-## Open questions for review
+## Review decisions
 
-1. **Shape:** an expectation template (`journal-events --absent ...`, proposed), or an observation-only command that just reports counts?
-2. **Classes:** are `oom-kill`, `unit-failure` and `coredump` the right first set? Watchdog failures (`375ac151…`, `8739789e…`) are a candidate fourth.
-3. **Detail:** export unit names (proposed, bounded and validated) or counts only? Should `coredump` include the crashing executable's short name (`COREDUMP_COMM`), which is useful but more revealing?
-4. **Boot scope:** current and previous-retained boot (proposed), or current only? `-b -1` cannot guarantee the immediately preceding boot, so the scope is named for what it is.
+1. **Shape:** an expectation template, `mira investigate journal-events --absent CLASS[,CLASS...]`, not an observation-only command. It gives clear exit codes for automation, and the report already carries every count as evidence. Raw counts would also hide the visibility rules: a zero from a journal MIRA cannot fully see would look like a real zero.
+2. **Classes:** `oom-kill`, `unit-failure` and `coredump`, with no watchdog class. The watchdog messages report that systemd could not open or ping a hardware watchdog, which is mostly an embedded concern. A later class can be added compatibly: older reports stay valid. `coredump` covers only core dumps processed by socket-activated systemd-coredump, and its absence is assessed only under the crash-handler rules above.
+3. **Detail:** export bounded, validated unit names (journal-wide unit syntax, at most 16 per class). Do not export the crashed executable's name (`COREDUMP_COMM`) or any other free-form process detail.
+4. **Boot scope:** `current` (bare `--boot`) and `previous-retained` (`-b -1`, run only after a visible current-boot sentinel). The scope is named for what the journal can actually deliver, and never claims the immediately preceding boot.
+
+Fifteen findings across seven review rounds shaped the decision section above:
+- text-free sentinel output
+- core-dump unit fields
+- retained-boot and running-boot selection
+- a journal-wide unit validator
+- producer binding (manager messages, including systemd-oomd kills; privilege-dropped and slice-bound core dumps; backtraces excluded)
+- the crash-handler precondition and its boot awareness
+- decoy-resistant window rules
+- requesting every re-check field
+- the all-files access completeness check
 
 ## Primary references
 
