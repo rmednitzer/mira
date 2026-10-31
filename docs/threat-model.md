@@ -72,6 +72,10 @@ package-installed/v1 admits only a Debian-policy package name and an optional ex
 
 uptime-minimum/v1 admits only a positive ASCII integer of at most 20 digits; kernel-release/v1 admits only the collector's release syntax, untrimmed and starting with a letter or digit, so an option such as `--json` cannot become the criterion. Both are refused before acquisition. Each reads only its existing bounded procfs source and adds no model, network, command or authority. Missing or malformed evidence stays indeterminate. Uptime is time since boot, often the host's inside containers; it is not reboot cause, restart history or clock trust. The release string is a name, not a build identity, livepatch state, package state, patch-compliance or vulnerability verdict. The local/procfs scope is not authenticated identity. See [ADR 0009](adr/0009-explicit-uptime-and-kernel-release.md).
 
+### Proposed capture integrity boundary
+
+Proposed, not implemented: [ADR 0011](adr/0011-host-identity-and-capture-integrity.md) would let the offline comparator verify detached OpenSSH signatures against an operator-maintained `allowed_signers` file, with one explicit principal and a MIRA-specific namespace. It would add a new execution boundary (TB7): a fixed-argument, shell-free `/usr/bin/ssh-keygen -Y verify` whose exit status alone is trusted. The analysis covers what a signature does and does not prove (key possession, not truth or freshness), replay of valid old captures, key custody and revocation, principal disclosure, and failing closed when the tool is missing.
+
 ### Planned platform observation boundary
 
 Status: design constraints only; no remote adapter, credential loading or network request is implemented. [ADR 0004](adr/0004-staged-platform-observation.md) and the [integration plan](platform-integrations.md) require a separate implementation review.
