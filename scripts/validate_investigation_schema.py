@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Independent service-active v1/v2 shape, scope and reported-state contract checks."""
-import argparse
 import json
 import os
 import re
@@ -8,8 +7,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 from referencing import Registry, Resource
+from validation_status import Inconclusive, mira_binary
+import validation_status
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = json.loads((ROOT / 'schemas/evidence-v1.schema.json').read_text())
@@ -60,8 +61,7 @@ def check_report(report):
 
 
 def cli(unit, template='service-active'):
-    result = subprocess.run([str(ROOT / 'target/debug/mira'), 'investigate',
-                             template, unit, '--json'],
+    result = subprocess.run([mira_binary(), 'investigate', template, unit, '--json'],
                             capture_output=True, text=True, timeout=15, check=False)
     report = json.loads(result.stdout)
     if result.returncode != check_report(report):
@@ -71,24 +71,25 @@ def cli(unit, template='service-active'):
     return report
 
 
+def direct_unit(unit):
+    """Direct systemctl properties, independent of MIRA's parser."""
+    argv = ['systemctl', '--system', '--no-pager', '--no-ask-password', 'show',
+            '--property=Id,Names,LoadState,ActiveState,SubState', '--', unit]
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=5, check=True)
+    return dict(line.split('=', 1) for line in result.stdout.splitlines())
+
+
 def live():
     if os.geteuid() == 0:
         raise ValueError('live check requires an unprivileged user')
     unit = 'systemd-journald.service'
-    argv = ['systemctl', '--system', '--no-pager', '--no-ask-password', 'show',
-            '--property=Id,Names,LoadState,ActiveState,SubState', '--', unit]
-
-    def direct():
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=5, check=True)
-        return dict(line.split('=', 1) for line in result.stdout.splitlines())
 
     def compare(unit, templates):
-        argv[-1] = unit
-        before = direct()
+        before = direct_unit(unit)
         reports = [cli(unit, template) for template in templates]
-        after = direct()
+        after = direct_unit(unit)
         if before != after:
-            raise ValueError('live fixture changed; comparison inconclusive')
+            raise Inconclusive('live fixture changed')
         value = {'id': before['Id'], 'load_state': before['LoadState'],
                  'active_state': before['ActiveState'], 'sub_state': before['SubState']}
         if unit not in before['Names'].split():
@@ -113,10 +114,7 @@ def live():
     print('unprivileged live investigation contract validated')
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--live-systemd', action='store_true')
-    args = parser.parse_args()
+def check_fixtures():
     for version in (1, 2):
         cases = json.loads((ROOT / f'tests/fixtures/investigation-v{version}.json').read_text())
         for record in cases['valid']:
@@ -124,31 +122,31 @@ def main():
         for record in cases['invalid']:
             try:
                 check_report(record)
-            except Exception as error:
-                from jsonschema import ValidationError
-                if not isinstance(error, (ValueError, ValidationError)):
-                    raise
+            except (ValueError, ValidationError):
+                pass
             else:
                 raise ValueError('invalid fixture accepted')
+
+
+def check_cli():
     for template, unit in [('restart', 'ssh.service'), ('service-active', '--user.service'),
                            ('service-active', 'x'), ('service-active', 'x' * 300 + '.service'),
                            ('service-active/v3', 'ssh.service'), ('service-active/', 'ssh.service'),
                            ('service-active/V2', 'ssh.service'),
                            ('service-active/v2', '--user.service')]:
-        result = subprocess.run([str(ROOT / 'target/debug/mira'), 'investigate',
-                                 template, unit, '--json'],
+        result = subprocess.run([mira_binary(), 'investigate', template, unit, '--json'],
                                 capture_output=True, text=True, timeout=5, check=False)
         if result.returncode != 2 or result.stdout:
             raise ValueError('invalid invocation dispatched or emitted a report')
-    if args.live_systemd:
-        live()
-    print('investigation-v1/v2 schemas, semantic fixtures and CLI admission validated')
+
+
+def main(argv=None):
+    validation_status.run(
+        'investigation validation',
+        {'fixtures': check_fixtures, 'cli': check_cli, 'live-systemd': live},
+        'investigation-v1/v2 schemas, semantic fixtures and CLI admission validated', argv,
+        opt_in={'live-systemd': '--live-systemd'})
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as error:
-        # A fixed diagnostic class, never record values or backend errors.
-        print(f'investigation validation failed: {type(error).__name__}', file=sys.stderr)
-        sys.exit(1)
+    main()

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Validate MIRA evidence JSONL using JSON Schema draft 2020-12."""
-import argparse
 import json
 import os
 import re
@@ -8,7 +7,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
+from validation_status import Inconclusive, mira_binary, note_record
+import validation_status
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ROOT / "schemas/evidence-v1.schema.json").read_text())
@@ -28,7 +29,7 @@ def check_record(record):
 
 def check_output(args, expected_count, allowed_sources, exit_codes):
     completed = subprocess.run(
-        [str(ROOT / "target/debug/mira"), *args],
+        [mira_binary(), *args],
         check=False, capture_output=True, text=True, timeout=15
     )
     if completed.returncode not in exit_codes:
@@ -46,23 +47,23 @@ def check_output(args, expected_count, allowed_sources, exit_codes):
     return records
 
 
+def direct_unit(unit):
+    """Direct systemctl properties, independent of MIRA's parser."""
+    argv = ["systemctl", "--system", "--no-pager", "--no-ask-password",
+            "show", "--property=Id,Names,LoadState,ActiveState,SubState", "--", unit]
+    result = subprocess.run(argv, check=True, capture_output=True, text=True, timeout=5)
+    return dict(line.split("=", 1) for line in result.stdout.splitlines())
+
+
 def check_live_systemd():
     if os.geteuid() == 0:
         raise AssertionError("live systemd check must run without root")
     unit = "systemd-journald.service"
-    argv = ["systemctl", "--system", "--no-pager", "--no-ask-password",
-            "show", "--property=Id,Names,LoadState,ActiveState,SubState", "--", unit]
-
-    def direct():
-        result = subprocess.run(argv, check=True, capture_output=True,
-                                text=True, timeout=5)
-        return dict(line.split("=", 1) for line in result.stdout.splitlines())
-
-    before = direct()
+    before = direct_unit(unit)
     records = check_output(["service", unit, "--json"], 1, ["systemd/system"], {0})
-    after = direct()
+    after = direct_unit(unit)
     if before != after:
-        raise AssertionError("live fixture changed during collection; comparison inconclusive")
+        raise Inconclusive("live fixture changed during collection")
     expected = {"id": before["Id"], "load_state": before["LoadState"],
                 "active_state": before["ActiveState"], "sub_state": before["SubState"]}
     if before["LoadState"] != "loaded" or unit not in before["Names"].split():
@@ -101,7 +102,7 @@ def check_live_procfs_values(before, records, after):
     if (before['total_kib'] != after['total_kib']
             or before['kernel'] != after['kernel']
             or before['uptime'] > after['uptime']):
-        raise ValueError('live procfs fixture changed; comparison inconclusive')
+        raise Inconclusive('live procfs fixture changed')
     by_source = {record['source']: record for record in records}
     for source in ('/proc/meminfo', '/proc/sys/kernel/osrelease', '/proc/uptime'):
         if by_source[source]['status'] != 'observed':
@@ -127,34 +128,31 @@ def check_live_procfs():
     )
     after = read_live_procfs()
     check_live_procfs_values(before, records, after)
+    for record in records:
+        note_record(record)
     print('unprivileged live procfs evidence validated')
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--live-systemd", action="store_true")
-    parser.add_argument("--live-procfs", action="store_true")
-    args = parser.parse_args()
+def check_fixtures():
     fixture = json.loads((ROOT / "tests/fixtures/evidence-v1.json").read_text())
     for record in fixture["valid"]:
         check_record(record)
     for record in fixture["invalid"]:
         try:
             check_record(record)
-        except (AssertionError, ValueError):
+        except (AssertionError, ValueError, ValidationError):
             pass
-        except Exception as exc:
-            from jsonschema import ValidationError
-            if not isinstance(exc, ValidationError):
-                raise
         else:
             raise AssertionError(f"invalid fixture accepted: {record}")
 
-    check_output(
+
+def check_cli():
+    for record in check_output(
         ["inspect", "--json"], 5,
         ["/proc/meminfo", "/proc/uptime", "/proc/sys/kernel/osrelease",
          "/proc/pressure/cpu", "/var/lib/dpkg/status"], {0, 1}
-    )
+    ):
+        note_record(record)
     service = check_output(["service", "--user.service", "--json"], 1, ["systemd/system"], {1})
     if service[0]["status"] != "unavailable" or service[0]["value"] is not None:
         raise AssertionError("invalid service name must remain unavailable")
@@ -164,21 +162,23 @@ def main():
         )
         if rejected[0]["scope"] != invalid_name or rejected[0]["status"] != "unavailable":
             raise AssertionError("rejected service scope must remain explicit")
-    if args.live_procfs:
-        check_live_procfs()
-    if args.live_systemd:
-        check_live_systemd()
-    print("evidence-v1 schema and CLI contract validated")
+    if not Path("/run/systemd/system").is_dir():
+        # Denial path: without systemd as init, a valid query stays explicitly unavailable.
+        record = check_output(["service", "systemd-journald.service", "--json"], 1,
+                              ["systemd/system"], {1})[0]
+        if record["status"] != "unavailable":
+            raise AssertionError("service observed without systemd as init")
+        note_record(record)
 
 
-def run():
-    try:
-        main()
-    except Exception as exc:
-        # Schema exceptions and child stderr can contain sampled host values.
-        print(f"evidence schema validation failed: {type(exc).__name__}", file=sys.stderr)
-        sys.exit(1)
+def main(argv=None):
+    validation_status.run(
+        "evidence schema validation",
+        {"fixtures": check_fixtures, "cli": check_cli,
+         "live-procfs": check_live_procfs, "live-systemd": check_live_systemd},
+        "evidence-v1 schema and CLI contract validated", argv,
+        opt_in={"live-procfs": "--live-procfs", "live-systemd": "--live-systemd"})
 
 
 if __name__ == "__main__":
-    run()
+    main()

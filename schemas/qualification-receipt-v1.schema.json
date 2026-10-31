@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/qualification-receipt-v1.schema.json",
+  "title": "MIRA host qualification receipt v1",
+  "$comment": "Closed field list from ADR 0013. No host name, machine ID, boot ID, user, address, full kernel release, package or unit name, or sampled value; additionalProperties enforces that. host_class is operator-declared. Patterns start with (?!.*\\n) because Python re lets $ match before a final newline.",
+  "type": "object",
+  "required": ["receipt_version", "source_commit", "source_tree", "binary_sha256", "binary_origin", "host_class", "os", "architecture", "systemd_version", "kernel_series", "capabilities", "checks", "started_unix_ms", "duration_ms"],
+  "additionalProperties": false,
+  "properties": {
+    "receipt_version": {"const": 1},
+    "source_commit": {"type": "string", "pattern": "^(?!.*\\n)[0-9a-f]{40}$"},
+    "source_tree": {"type": "string", "pattern": "^(?!.*\\n)[0-9a-f]{40}$"},
+    "binary_sha256": {"type": "string", "pattern": "^(?!.*\\n)[0-9a-f]{64}$"},
+    "binary_origin": {"enum": ["checkout-build", "installed"]},
+    "host_class": {"enum": ["physical-amd64", "physical-arm64", "vm", "container", "restricted-user", "wsl", "ci-runner"]},
+    "os": {
+      "type": "object",
+      "required": ["id", "version_id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": ["string", "null"], "pattern": "^(?!.*\\n)[a-z0-9._-]{1,64}$"},
+        "version_id": {"type": ["string", "null"], "pattern": "^(?!.*\\n)[a-z0-9._-]{1,64}$"}
+      }
+    },
+    "architecture": {"type": ["string", "null"], "pattern": "^(?!.*\\n)[a-z0-9-]{1,32}$"},
+    "systemd_version": {"type": ["integer", "null"], "minimum": 1, "maximum": 9999},
+    "kernel_series": {"type": ["string", "null"], "pattern": "^(?!.*\\n)[0-9]{1,4}\\.[0-9]{1,4}$"},
+    "capabilities": {
+      "type": "object",
+      "required": ["systemd", "journalctl", "journal_visible", "psi", "dpkg", "ssh_keygen", "boot_id"],
+      "additionalProperties": false,
+      "properties": {
+        "systemd": {"type": "boolean"},
+        "journalctl": {"type": "boolean"},
+        "journal_visible": {"type": "boolean"},
+        "psi": {"type": "boolean"},
+        "dpkg": {"type": "boolean"},
+        "ssh_keygen": {"type": "boolean"},
+        "boot_id": {"type": "boolean"}
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["validator", "group", "result", "reason", "duration_ms", "observation_gaps"],
+        "additionalProperties": false,
+        "properties": {
+          "validator": {"enum": ["evidence", "investigation", "capture", "memory", "pressure", "package", "host", "journal"]},
+          "group": {"type": "string", "pattern": "^(?!.*\\n)[a-z][a-z-]{0,31}$"},
+          "result": {"enum": ["passed", "failed", "not_applicable"]},
+          "reason": {"enum": [null, "validator_failed", "inconclusive", "runner_error", "no_systemd", "no_journal_access", "no_psi", "no_dpkg", "no_ssh_keygen", "no_boot_id"]},
+          "duration_ms": {"type": "integer", "minimum": 0},
+          "observation_gaps": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "object",
+              "required": ["source", "reason"],
+              "additionalProperties": false,
+              "properties": {
+                "source": {"enum": ["/proc/meminfo", "/proc/uptime", "/proc/sys/kernel/osrelease", "/proc/pressure/cpu", "/proc/pressure/memory", "/proc/pressure/io", "/var/lib/dpkg/status", "systemd/system", "/proc/sys/kernel/random/boot_id", "journal/system", "journal/oom-kill", "journal/unit-failure", "journal/coredump"]},
+                "reason": {"type": "string", "pattern": "^(?!.*\\n)[A-Za-z][A-Za-z0-9_]{0,63}$"}
+              }
+            }
+          }
+        },
+        "allOf": [
+          {"if": {"properties": {"result": {"const": "passed"}}}, "then": {"properties": {"reason": {"const": null}}}},
+          {"if": {"properties": {"result": {"const": "failed"}}}, "then": {"properties": {"reason": {"enum": ["validator_failed", "inconclusive", "runner_error"]}, "observation_gaps": {"maxItems": 0}}}},
+          {"if": {"properties": {"result": {"const": "not_applicable"}}}, "then": {"properties": {"reason": {"enum": ["no_systemd", "no_journal_access", "no_psi", "no_dpkg", "no_ssh_keygen", "no_boot_id"]}, "duration_ms": {"const": 0}, "observation_gaps": {"maxItems": 0}}}}
+        ]
+      }
+    },
+    "started_unix_ms": {"type": "integer", "minimum": 0},
+    "duration_ms": {"type": "integer", "minimum": 0}
+  }
+}

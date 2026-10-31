@@ -53,6 +53,12 @@ jobs:
           .schema-venv/bin/python scripts/validate_package_investigation.py
           .schema-venv/bin/python scripts/validate_host_investigations.py
           .schema-venv/bin/python scripts/validate_journal_investigation.py
+          .schema-venv/bin/python scripts/test_validation_contract.py
+          .schema-venv/bin/python scripts/test_qualify_host.py
+      - name: Qualify the runner with the checkout build
+        run: |
+          mkdir -p dist
+          .schema-venv/bin/python scripts/qualify_host.py --host-class ci-runner --receipt dist/qualification-checkout.json
       - name: Install native packaging tools
         run: |
           sudo apt-get update -qq
@@ -104,6 +110,9 @@ jobs:
           fi
           (cd dist && sha256sum -c *.sha256)
           package-extract/usr/bin/mira demo
+      - name: Qualify the runner with the extracted package binary
+        run: |
+          .schema-venv/bin/python scripts/qualify_host.py --host-class ci-runner --binary package-extract/usr/bin/mira --receipt dist/qualification-package.json
       - name: Test isolated Debian package lifecycle
         run: |
           deb="$(find dist -maxdepth 1 -name '*.deb' -print -quit)"
@@ -133,6 +142,8 @@ jobs:
           path: |
             dist/clean-install-receipt.json
             dist/rebuild-receipt.json
+            dist/qualification-checkout.json
+            dist/qualification-package.json
             dist/*.deb
             dist/*.deb.sha256
           if-no-files-found: error

@@ -7,8 +7,9 @@ import unittest
 from unittest.mock import patch
 
 from validate_evidence_schema import (
-    check_live_procfs, check_live_procfs_values, check_record, read_live_procfs, run,
+    check_live_procfs, check_live_procfs_values, check_record, main, read_live_procfs,
 )
+from validation_status import Inconclusive
 
 
 class LiveProcfsTests(unittest.TestCase):
@@ -51,7 +52,7 @@ class LiveProcfsTests(unittest.TestCase):
     def test_changed_endpoint_or_reversed_time_is_inconclusive(self):
         for field, value in [('total_kib', 101), ('kernel', 'another'), ('uptime', 9)]:
             after = {**self.after, field: value}
-            with self.subTest(field=field), self.assertRaises(ValueError):
+            with self.subTest(field=field), self.assertRaises(Inconclusive):
                 check_live_procfs_values(self.before, self.records, after)
 
     def test_unavailable_required_observations_cannot_pass(self):
@@ -95,10 +96,11 @@ class LiveProcfsTests(unittest.TestCase):
     def test_failure_diagnostic_does_not_echo_sample_values(self):
         diagnostic = io.StringIO()
         output = io.StringIO()
-        with patch('validate_evidence_schema.main', side_effect=ValueError('private-sample')):
+        with patch('validate_evidence_schema.check_fixtures',
+                   side_effect=ValueError('private-sample')):
             with contextlib.redirect_stderr(diagnostic), contextlib.redirect_stdout(output):
                 with self.assertRaises(SystemExit) as result:
-                    run()
+                    main(['--only', 'fixtures'])
         self.assertEqual(result.exception.code, 1)
         self.assertEqual(output.getvalue(), '')
         self.assertEqual(diagnostic.getvalue(), 'evidence schema validation failed: ValueError\n')

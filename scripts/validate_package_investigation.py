@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Independent explicit package-installed schema, semantics and live dpkg checks."""
 import json
+import os
 import subprocess
-import sys
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, ValidationError
 from compare_evidence import strict_json
+from validation_status import Inconclusive, mira_binary, note_record
+import validation_status
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ROOT / 'schemas/package-installed-v1.schema.json').read_text())
@@ -106,7 +108,7 @@ def selected(stanzas, package, architecture):
 
 
 def run(arguments, timeout):
-    return subprocess.run([str(ROOT / 'target/debug/mira'), 'investigate', 'package-installed',
+    return subprocess.run([mira_binary(), 'investigate', 'package-installed',
                            *arguments], capture_output=True, timeout=timeout, check=False)
 
 
@@ -132,24 +134,29 @@ def check_live():
             raise ValueError('MIRA package records disagree with the independent parse')
     after, _ = read_status()
     if before != after:
-        raise ValueError('dpkg status changed during validation; comparison inconclusive')
+        raise Inconclusive('dpkg status changed during validation')
+
+
+def check_cli():
     for selector in ('', 'a', 'Dpkg', 'dpkg:', ':amd64', 'dpkg:x:y', '../dpkg', 'dpkg_x'):
         result = run([selector, '--json'], 5)
         if result.returncode != 2 or result.stdout:
             raise ValueError('invalid package selector dispatched')
+    if not os.access(STATUS, os.R_OK):
+        # Denial path: an unreadable or missing database stays explicitly unavailable.
+        result = run(['dpkg', '--json'], 15)
+        report = strict_json(result.stdout)
+        if result.returncode != check_report(report) or report['evidence']['status'] != 'unavailable':
+            raise ValueError('package evidence observed without a readable database')
+        note_record(report['evidence'])
 
 
-def main():
-    check_fixtures()
-    check_live()
-    print('package-installed schema, semantic fixtures and live dpkg comparison validated')
+def main(argv=None):
+    validation_status.run(
+        'package investigation validation',
+        {'fixtures': check_fixtures, 'cli': check_cli, 'live-dpkg': check_live},
+        'package-installed schema, semantic fixtures and live dpkg comparison validated', argv)
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as error:
-        # Reports and the status file describe the host; print only the error type.
-        print(f'package investigation validation failed: {type(error).__name__}',
-              file=sys.stderr)
-        sys.exit(1)
+    main()

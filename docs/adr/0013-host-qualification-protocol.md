@@ -1,6 +1,6 @@
 # ADR 0013: representative host qualification protocol
 
-Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day, through three review rounds). Design only; no code, script or CLI change is made by this record. Implementation follows in a separate PR with its own review.
+Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day, through three review rounds). **Implemented**; guide: [host qualification](../qualification.md). Reviewed receipts from the required host classes are outstanding.
 
 ## Context
 
