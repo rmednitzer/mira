@@ -7,6 +7,7 @@ pub mod evidence;
 pub mod evidence_json;
 pub mod experiment;
 pub mod host_extra;
+pub mod host_investigation;
 pub mod investigation;
 pub mod linux;
 pub mod memory_investigation;

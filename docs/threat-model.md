@@ -1,6 +1,6 @@
 # Threat model — MIRA
 
-> Scope (2026-10-30): implemented local Linux evidence collection, closed activation, explicit memory-expectation, pressure-ceiling and package-presence templates, serialization/comparison, native tests and experimental CLI packaging. The retained simulation has separate authority/control limitations below. Future natural-language intent, AI, UI, remote and write adapters require a new review; this document does not certify the proposed full operations product.
+> Scope (2026-10-30): implemented local Linux evidence collection, closed activation, explicit memory-expectation, pressure-ceiling, package-presence, uptime-minimum and kernel-release templates, serialization/comparison, native tests and experimental CLI packaging. The retained simulation has separate authority/control limitations below. Future natural-language intent, AI, UI, remote and write adapters require a new review; this document does not certify the proposed full operations product.
 
 ## Linux operations boundaries
 
@@ -65,6 +65,10 @@ pressure-ceiling/v1 admits only a closed resource name (`cpu`, `memory`, `io`) a
 ### Explicit package presence
 
 package-installed/v1 admits only a Debian-policy package name and an optional exact architecture, refused before the database is opened. It reads only the existing bounded dpkg status source and validates the whole database, so a malformed stanza elsewhere cannot leave a partially trusted answer. Disclosure is limited to the selected name's records (at most 16), not the inventory. Version, architecture and status text are attacker-influenceable literals: JSON escapes them and human output prints them escaped. Only `installed` with flag `ok` satisfies; transitional and reinstall-required states stay indeterminate, and selection words cannot decide. The report carries `vulnerability_exposure: "not_assessed"`, because installed versions alone cannot establish exposure on Ubuntu (SEC-03). No dpkg/apt command, network, model or authority is added. See [ADR 0008](adr/0008-explicit-package-installed.md).
+
+### Explicit uptime and kernel release
+
+uptime-minimum/v1 admits only a positive ASCII integer of at most 20 digits; kernel-release/v1 admits only the collector's release syntax, untrimmed and starting with a letter or digit, so an option such as `--json` cannot become the criterion. Both are refused before acquisition. Each reads only its existing bounded procfs source and adds no model, network, command or authority. Missing or malformed evidence stays indeterminate. Uptime is time since boot, often the host's inside containers; it is not reboot cause, restart history or clock trust. The release string is a name, not a build identity, livepatch state, package state, patch-compliance or vulnerability verdict. The local/procfs scope is not authenticated identity. See [ADR 0009](adr/0009-explicit-uptime-and-kernel-release.md).
 
 ### Planned platform observation boundary
 

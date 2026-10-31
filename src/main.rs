@@ -89,6 +89,42 @@ fn main() {
             eprintln!("Usage: {PACKAGE_USAGE}");
             std::process::exit(2);
         }
+        [_, command, template, option, minimum]
+            if command == "investigate"
+                && template == "uptime-minimum"
+                && option == "--min-uptime-seconds" =>
+        {
+            uptime_minimum(minimum, false)
+        }
+        [_, command, template, option, minimum, format]
+            if command == "investigate"
+                && template == "uptime-minimum"
+                && option == "--min-uptime-seconds"
+                && format == "--json" =>
+        {
+            uptime_minimum(minimum, true)
+        }
+        [_, command, template, ..] if command == "investigate" && template == "uptime-minimum" => {
+            eprintln!("Usage: {UPTIME_USAGE}");
+            std::process::exit(2);
+        }
+        [_, command, template, option, release]
+            if command == "investigate" && template == "kernel-release" && option == "--expect" =>
+        {
+            kernel_release(release, false)
+        }
+        [_, command, template, option, release, format]
+            if command == "investigate"
+                && template == "kernel-release"
+                && option == "--expect"
+                && format == "--json" =>
+        {
+            kernel_release(release, true)
+        }
+        [_, command, template, ..] if command == "investigate" && template == "kernel-release" => {
+            eprintln!("Usage: {KERNEL_USAGE}");
+            std::process::exit(2);
+        }
         [_, command, label] if command == "capture" => capture(label, false),
         [_, command, label, option] if command == "capture" && option == "--pressure" => {
             capture(label, true)
@@ -108,9 +144,88 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE}"
+                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE}"
             );
             std::process::exit(2);
+        }
+    }
+}
+
+const UPTIME_USAGE: &str = "mira investigate uptime-minimum --min-uptime-seconds N [--json]";
+const KERNEL_USAGE: &str = "mira investigate kernel-release --expect RELEASE [--json]";
+
+fn uptime_minimum(minimum: &str, json: bool) {
+    use mira::host_investigation as host;
+    let report = host::parse_minimum_uptime(minimum)
+        .and_then(|minimum| host::collect_uptime(minimum, std::path::Path::new("/proc")));
+    let Ok(report) = report else {
+        eprintln!("MIRA: uptime minimum must be a positive integer number of seconds");
+        std::process::exit(2);
+    };
+    if json {
+        println!("{}", report.to_json());
+    } else {
+        println!(
+            "MIRA uptime-minimum/v1 scope=local/procfs minimum_uptime_seconds={}",
+            report.minimum()
+        );
+        println!(
+            "outcome={} reason={}",
+            report.outcome().as_str(),
+            report.reason()
+        );
+        host_evidence_lines(report.evidence(), |seconds| {
+            format!("uptime_seconds={seconds}")
+        });
+        println!(
+            "Time since boot only; reboot cause, service restarts and health are not assessed."
+        );
+    }
+    std::process::exit(report.outcome().exit_code());
+}
+
+fn kernel_release(expected: &str, json: bool) {
+    use mira::host_investigation as host;
+    let Ok(report) = host::collect_kernel(expected, std::path::Path::new("/proc")) else {
+        eprintln!(
+            "MIRA: expected kernel release must be 1-256 characters from A-Za-z0-9._+- starting with a letter or digit"
+        );
+        std::process::exit(2);
+    };
+    if json {
+        println!("{}", report.to_json());
+    } else {
+        println!(
+            "MIRA kernel-release/v1 scope=local/procfs expected={}",
+            report.expected()
+        );
+        println!(
+            "outcome={} reason={}",
+            report.outcome().as_str(),
+            report.reason()
+        );
+        host_evidence_lines(report.evidence(), |release| format!("release={release}"));
+        println!(
+            "Running release name only; build identity, livepatch state, packages and vulnerability exposure are not assessed."
+        );
+    }
+    std::process::exit(report.outcome().exit_code());
+}
+
+/// Shared human evidence lines; observed values are already lexically validated.
+fn host_evidence_lines<T>(
+    evidence: &mira::evidence::Evidence<T>,
+    describe: impl FnOnce(&T) -> String,
+) {
+    println!(
+        "source={} recorded_unix_ms={} clock_trust=unverified freshness=unknown",
+        evidence.source,
+        recorded(evidence.collected_unix_ms)
+    );
+    match &evidence.status {
+        mira::evidence::EvidenceStatus::Observed(value) => println!("{}", describe(value)),
+        mira::evidence::EvidenceStatus::Unavailable { reason, .. } => {
+            println!("failure_reason={reason}");
         }
     }
 }
