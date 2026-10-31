@@ -52,13 +52,14 @@ They were written for CI, though, and have three limits:
    - **Observation gaps:** a validator can pass while MIRA correctly reported a source as unavailable. For example, the pressure validator accepts an unavailable PSI file with exit 3. When `MIRA_QUALIFICATION_STATUS` names a new file, each validator writes the unavailable observations it saw there: only fixed source identifiers (such as `/proc/pressure/io` or `journal/system`) with their fixed `failure_reason`, and never values. A passing group can therefore still carry gaps.
 3. **Probes preconditions** with read-only checks before each check group:
    - systemd as PID 1, and `systemctl` present
-   - `journalctl` present, and a visible PID 1 sentinel
+   - `journalctl` present; separately, a visible PID 1 sentinel (only for groups that need readable journal events, see below)
    - `/proc/pressure` present
    - `dpkg` status readable
    - `ssh-keygen` present
    - the `/proc/sys/kernel/random/boot_id` file present
 4. Runs each applicable check group once (`--only GROUP`), with a bounded timeout. Exit 0 is **passed** and exit 1 is **failed**. Exit 4 (**inconclusive**) is retried at most twice, then recorded as failed with reason `inconclusive`. Any other exit status, a timeout, or a validator that cannot start is failed with reason `runner_error`.
 5. Records each check group whose precondition is absent as **not applicable** with a fixed reason (`no_systemd`, `no_journal_access`, `no_psi`, `no_dpkg`, `no_ssh_keygen`, `no_boot_id`), and never runs it.
+6. **Denial paths stay applicable.** A precondition never gates the check that validates MIRA's own handling of that missing capability. The journal validator therefore splits into `live-visibility`, which needs only `journalctl` and compares MIRA's `journal_visible` and `journal_access_complete` answers with the validator's independent ones, including when they are false, and `live-counts`, which additionally needs a visible sentinel. On the `restricted-user` run, `live-visibility` is expected to **pass** with `journal_not_visible` or `journal_access_incomplete` confirmed, and only `live-counts` is `not_applicable` (`no_journal_access`). Missing access is thus tested, not merely recorded. The same rule applies to any later denial-path check.
 
 ### Receipt
 
@@ -110,6 +111,7 @@ The protocol documents, per class, which check groups are expected to be `not_ap
 
 - **Validator contract tests:** for each validator with a live comparison, a forced mid-comparison change exits 4 and wrong evidence still exits 1. These cover procfs, systemd, dpkg, uptime/kernel, journal and boot binding.
 - **Runner tests:** a fake binary and fake probes cover passed, failed, inconclusive-then-retried, and every `not_applicable` reason. They also cover refusal as root, refusal of an existing receipt path, and refusal of a dirty checkout.
+- **Denial-path test:** with `journalctl` present but no visible sentinel, the runner runs `live-visibility`, which must pass and confirm `journal_not_visible`, and records only `live-counts` as `not_applicable`.
 - **Group and gap tests:** each validator lists its groups, and `--only` runs exactly the selected ones. A capture run without `ssh-keygen` still passes its other groups. A pressure run with one unreadable PSI file passes and reports that source in `observation_gaps`, and the runner flags it as unexpected for a physical-host class.
 - **Receipt checks:** a receipt schema, plus a test that the receipt contains no forbidden data. The test runs the runner on a host-like fixture and scans the receipt for the host name, machine ID, boot ID and user name.
 - **`MIRA_BINARY` in every validator,** with CI running the runner against both the checkout build and the extracted package binary. CI publishes its receipt as `ci-runner` evidence.
