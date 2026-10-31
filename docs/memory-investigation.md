@@ -5,7 +5,7 @@ mira investigate memory-headroom --min-available-kib 1048576
 mira investigate memory-headroom --min-available-kib 1048576 --json
 ```
 
-The example criterion is 1 GiB in KiB, not a universal recommendation. The operator must choose a positive ASCII integer, at most 20 digits, fitting u64. Leading zeros are normalized. There is no default or learned health threshold. Invalid, signed, fractional, exponent, zero and overflowing criteria exit 2 before reading evidence and emit no report.
+The example criterion is 1 GiB in KiB, not a universal recommendation. The operator must choose a positive ASCII integer, at most 20 digits, fitting u64. Leading zeros are normalized. There is no default or learned health threshold. Invalid, signed, fractional, exponent, zero and overflowing criteria exit 2 before reading evidence and emit no report. Missing, reordered or extra arguments also exit 2 with the template's own usage line; they are never treated as an unknown template or a service scope.
 
 Only /proc/meminfo is read through the existing bounded collector. No systemctl, package database, other procfs source, network, model or privileged helper is required. The scope local/procfs names the interface visible to this process; it is not authenticated host identity.
 
