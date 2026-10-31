@@ -61,12 +61,7 @@ impl Report {
     }
 
     pub fn to_json(&self) -> String {
-        let evidence = evidence_json::record(&self.evidence, None, |memory| {
-            format!(
-                "{{\"total_kib\":{},\"available_kib\":{}}}",
-                memory.total_kib, memory.available_kib
-            )
-        });
+        let evidence = evidence_json::record(&self.evidence, None, evidence_json::memory_value);
         format!(
             "{{\"investigation_version\":1,\"template\":\"memory-headroom/v1\",\"scope\":\"local/procfs\",\"expectation\":{{\"minimum_available_kib\":{}}},\"assessment\":{{\"outcome\":{},\"reason\":{},\"evidence_ref\":\"#/evidence\"}},\"application_health\":\"not_assessed\",\"root_cause\":\"not_assessed\",\"evidence\":{evidence}}}",
             self.minimum,

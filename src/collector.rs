@@ -1,5 +1,10 @@
 //! Stable collection failures. These codes describe acquisition, never health.
-use std::{fmt, io};
+use std::{
+    fmt,
+    fs::File,
+    io::{self, Read},
+    path::Path,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FailureReason {
@@ -55,4 +60,16 @@ pub(crate) fn limit_exceeded() -> io::Error {
 
 pub(crate) fn backend_failed() -> io::Error {
     io::Error::other(FailureReason::BackendFailed)
+}
+
+/// Read one whole source as UTF-8, admitting exactly `limit` bytes. At most
+/// `limit + 1` bytes are read so overflow is detected without unbounded input.
+pub(crate) fn read_bounded(path: &Path, limit: u64) -> io::Result<String> {
+    let mut bytes = Vec::new();
+    File::open(path)?.take(limit + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > limit {
+        return Err(limit_exceeded());
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid UTF-8"))
 }

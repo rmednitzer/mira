@@ -1,7 +1,7 @@
 //! Versioned, bounded JSON Lines evidence projection. No external dependencies.
 //! Times are untrusted recording timestamps; freshness is unknown without a trusted clock.
 use crate::evidence::{Evidence, EvidenceStatus, Snapshot};
-use crate::{packages, systemd};
+use crate::{host_extra, linux, packages, systemd};
 
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -20,6 +20,28 @@ pub(crate) fn quoted(value: &str) -> String {
     }
     out.push('"');
     out
+}
+
+/// Shared value encodings keep inspect, capture and investigation records identical.
+pub(crate) fn memory_value(memory: &linux::MemoryEvidence) -> String {
+    format!(
+        "{{\"total_kib\":{},\"available_kib\":{}}}",
+        memory.total_kib, memory.available_kib
+    )
+}
+
+pub(crate) fn pressure_value(pressure: &host_extra::CpuPressure) -> String {
+    format!(
+        "{{\"some_avg10_basis_points\":{},\"full_avg10_basis_points\":{}}}",
+        pressure.some_avg10_basis_points,
+        pressure
+            .full_avg10_basis_points
+            .map_or_else(|| "null".to_owned(), |n| n.to_string())
+    )
+}
+
+pub(crate) fn packages_value(installed: &[packages::Package]) -> String {
+    format!("{{\"installed_count\":{}}}", installed.len())
 }
 
 fn timestamp(time: Option<u128>) -> String {
@@ -85,25 +107,11 @@ pub fn host_records(
     packages: &Evidence<Vec<packages::Package>>,
 ) -> Vec<String> {
     vec![
-        record(&snapshot.memory, None, |m| {
-            format!(
-                "{{\"total_kib\":{},\"available_kib\":{}}}",
-                m.total_kib, m.available_kib
-            )
-        }),
+        record(&snapshot.memory, None, memory_value),
         record(&snapshot.uptime, None, |v| v.to_string()),
         record(&snapshot.kernel_release, None, |v| quoted(v)),
-        record(&snapshot.cpu_pressure, None, |v| {
-            format!(
-                "{{\"some_avg10_basis_points\":{},\"full_avg10_basis_points\":{}}}",
-                v.some_avg10_basis_points,
-                v.full_avg10_basis_points
-                    .map_or_else(|| "null".to_owned(), |n| n.to_string())
-            )
-        }),
-        record(packages, None, |list| {
-            format!("{{\"installed_count\":{}}}", list.len())
-        }),
+        record(&snapshot.cpu_pressure, None, pressure_value),
+        record(packages, None, |list| packages_value(list)),
     ]
 }
 

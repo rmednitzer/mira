@@ -99,18 +99,11 @@ pub fn collect(
     let host = evidence::collect(proc_root);
     let packages = evidence::collect_packages(status);
     let mut records = vec![
-        evidence_json::record_v2(&host.memory, None, |m| {
-            format!(
-                "{{\"total_kib\":{},\"available_kib\":{}}}",
-                m.total_kib, m.available_kib
-            )
-        }),
+        evidence_json::record_v2(&host.memory, None, evidence_json::memory_value),
         evidence_json::record_v2(&host.uptime, None, |v| v.to_string()),
         evidence_json::record_v2(&host.kernel_release, None, |v| evidence_json::quoted(v)),
         pressure_record(&host.cpu_pressure),
-        evidence_json::record_v2(&packages, None, |p| {
-            format!("{{\"installed_count\":{}}}", p.len())
-        }),
+        evidence_json::record_v2(&packages, None, |p| evidence_json::packages_value(p)),
     ];
     let mut all_available = host.complete() && packages.is_available();
     if matches!(profile, Profile::HostPressure) {
@@ -134,14 +127,7 @@ pub fn collect(
 }
 
 fn pressure_record(observation: &evidence::Evidence<host_extra::CpuPressure>) -> String {
-    evidence_json::record_v2(observation, None, |p| {
-        format!(
-            "{{\"some_avg10_basis_points\":{},\"full_avg10_basis_points\":{}}}",
-            p.some_avg10_basis_points,
-            p.full_avg10_basis_points
-                .map_or_else(|| "null".to_owned(), |v| v.to_string())
-        )
-    })
+    evidence_json::record_v2(observation, None, evidence_json::pressure_value)
 }
 
 #[cfg(test)]

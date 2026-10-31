@@ -1,6 +1,8 @@
 //! MIRA: read-only Linux evidence, explicit investigations and retained coordination research.
 //! Evidence is observational; the simulation is not an authenticated or safety-certified controller.
 
+pub mod capture;
+pub mod collector;
 pub mod evidence;
 pub mod evidence_json;
 pub mod experiment;
@@ -380,6 +382,3 @@ mod tests {
         assert_eq!(run(), run());
     }
 }
-
-pub mod capture;
-pub mod collector;
