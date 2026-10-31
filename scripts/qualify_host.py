@@ -208,7 +208,8 @@ def run_group(root, script, group, binary, timeout):
     with tempfile.TemporaryDirectory(prefix='mira-qualify-') as temp:
         for attempt in range(ATTEMPTS):
             status = Path(temp) / f'status-{attempt}.json'
-            env = {**os.environ, 'MIRA_BINARY': binary, 'MIRA_QUALIFICATION_STATUS': str(status)}
+            env = {**os.environ, 'MIRA_BINARY': binary, 'MIRA_QUALIFICATION_STATUS': str(status),
+                   'PYTHONDONTWRITEBYTECODE': '1'}
             try:
                 code = run_validator([sys.executable, str(root / 'scripts' / script), '--only',
                                       group], root, env, timeout)
