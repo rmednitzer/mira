@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -62,7 +63,7 @@ EXPECTED = {
     'physical-arm64': (set(), set(), set()),
     'vm': (set(), set(), set()),
     'container': ({'no_systemd', 'no_journal_access', 'no_ssh_keygen', 'no_boot_id'},
-                  {'systemd/system'}, set()),
+                  {'systemd/system', 'journal/system'}, set()),
     'restricted-user': ({'no_journal_access'}, {'journal/system'}, {'journal/system'}),
     'wsl': (set(), set(), set()),
     'ci-runner': (set(), set(), set()),
@@ -176,6 +177,28 @@ def admit_gaps(status):
     return [{'source': source, 'reason': reason} for source, reason in sorted(gaps)]
 
 
+def run_validator(argv, cwd, env, timeout):
+    """Run in a new session and kill its whole process group on exit or timeout."""
+    process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               start_new_session=True)
+    deadline, timed_out = time.monotonic() + timeout, False
+    # Wait without reaping: while the leader is unreaped its group ID cannot be reused.
+    while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
+        if time.monotonic() >= deadline:
+            timed_out = True
+            break
+        time.sleep(0.05)
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    code = process.wait()
+    if timed_out:
+        raise subprocess.TimeoutExpired(argv, timeout)
+    return code
+
+
 def run_group(root, script, group, binary, timeout):
     """Run one group; return (result, reason, gaps) without keeping validator output."""
     with tempfile.TemporaryDirectory(prefix='mira-qualify-') as temp:
@@ -183,10 +206,8 @@ def run_group(root, script, group, binary, timeout):
             status = Path(temp) / f'status-{attempt}.json'
             env = {**os.environ, 'MIRA_BINARY': binary, 'MIRA_QUALIFICATION_STATUS': str(status)}
             try:
-                code = subprocess.run([sys.executable, str(root / 'scripts' / script), '--only',
-                                       group], cwd=root, env=env, stdin=subprocess.DEVNULL,
-                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                      timeout=timeout, check=False).returncode
+                code = run_validator([sys.executable, str(root / 'scripts' / script), '--only',
+                                      group], root, env, timeout)
             except (OSError, subprocess.TimeoutExpired):
                 return 'failed', 'runner_error', []
             if code == INCONCLUSIVE:

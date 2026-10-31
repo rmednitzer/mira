@@ -21,7 +21,7 @@ Exit status: 0 when every group passed or was expectedly not applicable with onl
 
 ## What runs
 
-Each validator declares fixed check groups (`--list-groups`) and runs a selection with `--only GROUP[,GROUP]`. Without `--only` a validator runs as before, so CI's existing invocations are unchanged. The validators take the binary from `MIRA_BINARY`. They exit 0 passed, 1 failed (wrong evidence) or 4 inconclusive (a live value changed during the comparison). The runner retries an inconclusive group at most twice and then records it as failed with reason `inconclusive`. Any other exit status, a timeout or a validator that cannot start is failed with reason `runner_error`.
+Each validator declares fixed check groups (`--list-groups`) and runs a selection with `--only GROUP[,GROUP]`. Without `--only` a validator runs as before, so CI's existing invocations are unchanged. The validators take the binary from `MIRA_BINARY`. They exit 0 passed, 1 failed (wrong evidence) or 4 inconclusive (a live value changed during the comparison). The runner retries an inconclusive group at most twice and then records it as failed with reason `inconclusive`. Any other exit status, a timeout or a validator that cannot start is failed with reason `runner_error`. Each validator runs in its own session, and its whole process group is killed when it exits or times out, so no work it started outlives its group.
 
 | Validator | Groups | Gated on |
 |---|---|---|
@@ -55,7 +55,7 @@ A group can pass while MIRA correctly reported a source as unavailable. Through 
 | `physical-amd64` | yes | none | none |
 | `physical-arm64` | yes | none | none |
 | `vm` | yes | none | none |
-| `container` | yes | `no_systemd`, `no_journal_access`, `no_ssh_keygen`, `no_boot_id` | `systemd/system` |
+| `container` | yes | `no_systemd`, `no_journal_access`, `no_ssh_keygen`, `no_boot_id` | `systemd/system`, `journal/system` |
 | `restricted-user` | yes | `no_journal_access` (only `live-counts`) | `journal/system`, which is also **required** |
 | `wsl` | no | none | none |
 | `ci-runner` | no | none | none |

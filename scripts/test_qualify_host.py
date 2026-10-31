@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -35,6 +36,13 @@ with open(counter, 'a') as handle:
     handle.write('x')
 attempt = len(open(counter).read()) - 1
 code = spec['codes'][min(attempt, len(spec['codes']) - 1)]
+if spec.get('spawn'):
+    import subprocess, time
+    child = subprocess.Popen(['sleep', '60'])
+    with open(os.path.join(os.environ['FAKE_STATE'], 'child'), 'w') as handle:
+        handle.write(str(child.pid))
+    if spec['spawn'] == 'hang':
+        time.sleep(60)
 if spec.get('status', True):
     with open(os.environ['MIRA_QUALIFICATION_STATUS'], 'x') as handle:
         json.dump({'observation_gaps': spec.get('gaps', [])}, handle)
@@ -106,11 +114,47 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(json.loads(self.receipt.read_text()), receipt)
         RECEIPT.validate(receipt)
 
-    def test_timeout_is_a_runner_error(self):
-        (self.temp / 'plan.json').write_text(json.dumps({'slow': {'codes': [0]}}))
-        with patch('qualify_host.subprocess.run', side_effect=subprocess.TimeoutExpired('x', 1)):
-            result = qualify_host.run_group(self.root, 'fake.py', 'slow', str(self.binary), 1)
+    def child_alive(self):
+        pid = (self.state / 'child').read_text()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                state = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
+            except FileNotFoundError:
+                return False
+            if state == 'Z':
+                return False
+            time.sleep(0.05)
+        return True
+
+    def test_timeout_is_a_runner_error_and_kills_the_validator_group(self):
+        (self.temp / 'plan.json').write_text(json.dumps({'slow': {'codes': [0], 'spawn': 'hang'}}))
+        env = {'FAKE_PLAN': str(self.temp / 'plan.json'), 'FAKE_STATE': str(self.state)}
+        began = time.monotonic()
+        with patch.dict(os.environ, env):
+            result = qualify_host.run_group(self.root, 'fake.py', 'slow', str(self.binary), 2)
         self.assertEqual(result, ('failed', 'runner_error', []))
+        self.assertLess(time.monotonic() - began, 30)
+        # The bound covers the work the validator started, not only the validator.
+        self.assertFalse(self.child_alive())
+
+    def test_descendants_left_behind_by_a_finished_validator_are_killed(self):
+        (self.temp / 'plan.json').write_text(json.dumps({'done': {'codes': [0], 'spawn': 'exit'}}))
+        env = {'FAKE_PLAN': str(self.temp / 'plan.json'), 'FAKE_STATE': str(self.state)}
+        with patch.dict(os.environ, env):
+            result = qualify_host.run_group(self.root, 'fake.py', 'done', str(self.binary), 30)
+        self.assertEqual(result, ('passed', None, []))
+        self.assertFalse(self.child_alive())
+
+    def test_container_journal_denial_qualifies(self):
+        journal = next(groups for name, _, groups in VALIDATORS if name == 'journal')
+        plan = {group: {'codes': [0]} for group in journal}
+        plan['live-visibility']['gaps'] = [{'source': 'journal/system',
+                                            'reason': 'journal_not_visible'}]
+        receipt = self.run_plan(plan, groups=journal, host_class='container',
+                                capabilities={**ALL, 'systemd': False, 'journal_visible': False})
+        self.assertEqual(self.by_group(receipt)['live-counts']['reason'], 'no_journal_access')
+        self.assertEqual(findings(receipt), [])
 
     def test_every_not_applicable_reason_and_no_execution(self):
         groups = {f'needs-{need.replace("_", "-")}': (need,) for need in qualify_host.NOT_APPLICABLE}
