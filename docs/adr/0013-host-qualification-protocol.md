@@ -45,7 +45,9 @@ They were written for CI, though, and have three limits:
 `scripts/qualify_host.py --host-class CLASS --receipt NEW_FILE [--binary PATH]` runs from a clean source checkout with the hash-locked schema environment (`requirements-schema.txt`, as for every validator). It:
 
 1. **Refuses root**, refuses an existing receipt path, and refuses a dirty checkout, so that the receipt binds a known source.
-2. Uses `--binary` (default `target/debug/mira` after a locked build) for every check. The validators gain one `MIRA_BINARY` environment input, replacing the hard-coded `target/debug/mira` path; that is the only validator change.
+2. Uses `--binary` (default `target/debug/mira` after a locked build) for every check. The validators gain a two-part contract and change in no other way:
+   - **Binary input:** a `MIRA_BINARY` environment input replaces the hard-coded `target/debug/mira` path.
+   - **Inconclusive status:** today a comparison spoiled by a changing live value raises the same `ValueError` as wrong evidence and exits 1. A shared `Inconclusive` exception (in `scripts/validation_status.py`) is raised instead wherever a validator detects that a live sample changed mid-comparison, and the top-level handlers map it to **exit 4**. The exit codes become 0 passed, 1 failed, 4 inconclusive. The message stays the fixed exception type, so no sampled value is printed.
 3. **Probes preconditions** with read-only checks before each validator:
    - systemd as PID 1, and `systemctl` present
    - `journalctl` present, and a visible PID 1 sentinel
@@ -53,7 +55,7 @@ They were written for CI, though, and have three limits:
    - `dpkg` status readable
    - `ssh-keygen` present
    - the `/proc/sys/kernel/random/boot_id` file present
-4. Runs every applicable validator once, with a bounded timeout, and records **passed** or **failed**. Inconclusive results (a live value changed during a comparison) are retried at most twice, then recorded as failed with reason `inconclusive`.
+4. Runs every applicable validator once, with a bounded timeout. Exit 0 is **passed** and exit 1 is **failed**. Exit 4 (**inconclusive**) is retried at most twice, then recorded as failed with reason `inconclusive`. Any other exit status, a timeout, or a validator that cannot start is failed with reason `runner_error`.
 5. Records each check whose precondition is absent as **not applicable** with a fixed reason (`no_systemd`, `no_journal_access`, `no_psi`, `no_dpkg`, `no_ssh_keygen`, `no_boot_id`), and never runs it.
 
 ### Receipt
@@ -102,6 +104,7 @@ The protocol documents, per class, which checks are expected to be `not_applicab
 
 ## Acceptance for implementation
 
+- **Validator contract tests:** for each validator with a live comparison, a forced mid-comparison change exits 4 and wrong evidence still exits 1. These cover procfs, systemd, dpkg, uptime/kernel, journal and boot binding.
 - **Runner tests:** a fake binary and fake probes cover passed, failed, inconclusive-then-retried, and every `not_applicable` reason. They also cover refusal as root, refusal of an existing receipt path, and refusal of a dirty checkout.
 - **Receipt checks:** a receipt schema, plus a test that the receipt contains no forbidden data. The test runs the runner on a host-like fixture and scans the receipt for the host name, machine ID, boot ID and user name.
 - **`MIRA_BINARY` in every validator,** with CI running the runner against both the checkout build and the extracted package binary. CI publishes its receipt as `ci-runner` evidence.
@@ -109,7 +112,7 @@ The protocol documents, per class, which checks are expected to be `not_applicab
 
 ## Consequences and rollback
 
-Blast radius: one script, one environment input in each validator, a receipt schema, a guide and CI wiring. The runtime package and CLI are unchanged. Reverting removes only tooling. Receipts already published remain historical evidence.
+Blast radius: one script, one environment input and the inconclusive exit status in each validator, a receipt schema, a guide and CI wiring. The runtime package and CLI are unchanged. Reverting removes only tooling. Receipts already published remain historical evidence.
 
 ## Open questions for review
 
