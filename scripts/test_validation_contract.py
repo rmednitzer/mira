@@ -191,5 +191,23 @@ class ContractTests(unittest.TestCase):
                                  'reason': unavailable['failure_reason']}])
 
 
+    def test_count_invocations_report_journal_access_gaps(self):
+        report = json.loads((ROOT / 'tests/fixtures/journal-events-v1.json').read_text())['valid'][9]
+        self.assertIs(report['evidence']['journal_access_complete'], False)
+        counts = {entry['class']: entry['count'] or 0 for entry in report['evidence']['classes']}
+
+        def mira(argv, **options):
+            return subprocess.CompletedProcess(argv, 3, json.dumps(report).encode(), b'')
+        with tempfile.TemporaryDirectory() as temp:
+            status = Path(temp) / 'status.json'
+            os.environ['MIRA_QUALIFICATION_STATUS'] = str(status)
+            self.assertEqual(self.status(
+                journal, 'live-counts', CONFIGURATIONS=((['unit-failure'], 'current', 'current'),),
+                visible=lambda boot: True, independent_counts=lambda absent, boot: counts,
+                subprocess=type('Run', (), {'run': staticmethod(mira)})), 0)
+            gaps = json.loads(status.read_text())['observation_gaps']
+        self.assertEqual(gaps, [{'source': 'journal/system', 'reason': 'journal_access_incomplete'}])
+
+
 if __name__ == '__main__':
     unittest.main()

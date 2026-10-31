@@ -227,8 +227,14 @@ def investigate(absent, flag):
     report = strict_json(result.stdout)
     if result.returncode != check_report(report):
         raise ValueError('journal exit mismatch')
-    # Every accepted report contributes its unavailable classes, whichever group ran it.
-    for entry in report['evidence']['classes']:
+    # Every accepted report contributes its gaps, whichever group ran it. A previous boot
+    # that is not retained is not a gap; the running boot not being visible is.
+    evidence = report['evidence']
+    if evidence['journal_visible'] is False and flag == 'current':
+        note_gap('journal/system', 'journal_not_visible')
+    if evidence['journal_access_complete'] is False:
+        note_gap('journal/system', 'journal_access_incomplete')
+    for entry in evidence['classes']:
         if entry['status'] == 'unavailable':
             note_gap(f"journal/{entry['class']}", entry['failure_reason'])
     return report['evidence']
@@ -244,15 +250,11 @@ def check_live_visibility():
         if evidence['journal_visible'] is not before['visible']:
             raise ValueError('MIRA journal visibility disagrees with direct journalctl')
         if not before['visible']:
-            if boot == 'current':
-                note_gap('journal/system', 'journal_not_visible')
             continue
         if evidence['journal_access_complete'] is not before['access']:
             raise ValueError('MIRA journal access disagrees with direct file checks')
         if evidence['crash_handler'] != before['handler']:
             raise ValueError('MIRA crash handler disagrees with direct core_pattern')
-        if not before['access']:
-            note_gap('journal/system', 'journal_access_incomplete')
 
 
 def check_live_counts():
