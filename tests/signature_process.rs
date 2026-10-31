@@ -174,3 +174,80 @@ fn verification_trusts_only_the_exit_status() {
         .unwrap();
     assert_eq!(missing.status.code(), Some(4));
 }
+
+#[test]
+fn a_failed_self_check_cannot_delete_through_a_swapped_parent() {
+    let dir = Dir::new();
+    let parent = dir.0.join("output");
+    let victim_dir = dir.0.join("victim");
+    fs::create_dir(&parent).unwrap();
+    fs::create_dir(&victim_dir).unwrap();
+    let victim = victim_dir.join("capture.json.sig");
+    fs::write(&victim, "operator data").unwrap();
+    let signature = parent.join("capture.json.sig");
+    let output = Command::new(env!("CARGO_BIN_EXE_mira"))
+        .args([
+            "capture",
+            "fixture",
+            "--signature",
+            signature.to_str().unwrap(),
+            "--sign-with",
+            "key",
+        ])
+        .env(
+            "MIRA_TEST_SSH_KEYGEN",
+            env!("CARGO_BIN_EXE_mira-process-fixture"),
+        )
+        .env("MIRA_PROCESS_FIXTURE_MODE", "keygen-check-swap")
+        .env("MIRA_FIXTURE_SWAP_FROM", &parent)
+        .env("MIRA_FIXTURE_SWAP_TO", &victim_dir)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(4));
+    assert!(output.stdout.is_empty());
+    assert_eq!(fs::read_to_string(&victim).unwrap(), "operator data");
+}
+
+#[test]
+fn the_self_check_runs_on_a_private_staged_copy() {
+    let dir = Dir::new();
+    let record = dir.0.join("record");
+    let signature = dir.0.join("capture.json.sig");
+    let output = Command::new(env!("CARGO_BIN_EXE_mira"))
+        .args([
+            "capture",
+            "fixture",
+            "--signature",
+            signature.to_str().unwrap(),
+            "--sign-with",
+            "key",
+        ])
+        .env(
+            "MIRA_TEST_SSH_KEYGEN",
+            env!("CARGO_BIN_EXE_mira-process-fixture"),
+        )
+        .env("MIRA_PROCESS_FIXTURE_MODE", "keygen-check-record")
+        .env("MIRA_FIXTURE_RECORD", &record)
+        .output()
+        .unwrap();
+    assert!(matches!(output.status.code(), Some(0 | 1)));
+    let recorded = fs::read_to_string(&record).unwrap();
+    let mut lines = recorded.lines();
+    let checked = std::path::PathBuf::from(lines.next().unwrap());
+    let staging = std::path::PathBuf::from(lines.next().unwrap());
+    assert_ne!(checked, signature, "self-check read the output path");
+    assert_eq!(lines.next(), Some("700"), "staging directory not private");
+    assert!(
+        staging
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("mira-signature-")
+    );
+    assert!(!staging.exists(), "staging directory left behind");
+    assert!(
+        fs::read(&signature)
+            .unwrap()
+            .starts_with(b"-----BEGIN SSH SIGNATURE-----\n")
+    );
+}

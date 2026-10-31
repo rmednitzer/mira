@@ -92,8 +92,9 @@ pub enum Failure {
 }
 
 /// Sign `document` (the exact bytes about to be printed), self-check the
-/// signature, then create `signature_path` exclusively. The file is removed
-/// if writing or the self-check fails, so no unchecked signature remains.
+/// signature on a private staged copy, and only then create `signature_path`
+/// exclusively. The output path is never unlinked or reopened by name, so a
+/// directory swapped underneath it cannot redirect cleanup to another file.
 pub fn sign(document: &[u8], key: &Path, signature_path: &Path) -> Result<(), Failure> {
     let kind = Kind::of(document).ok_or(Failure::Document)?;
     // Fail fast before any passphrase prompt; create_new below is authoritative.
@@ -123,20 +124,60 @@ pub fn sign(document: &[u8], key: &Path, signature_path: &Path) -> Result<(), Fa
     if !signature.starts_with(ARMOR) {
         return Err(Failure::Tool);
     }
+    check_staged(document, kind, &signature)?;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(signature_path)
         .map_err(|_| Failure::Output)?;
-    let written = file.write_all(&signature).and_then(|()| file.sync_all());
-    drop(file);
-    let checked = written
-        .map_err(|_| Failure::Output)
-        .and_then(|()| check(document, kind, signature_path));
-    if checked.is_err() {
-        let _ = fs::remove_file(signature_path);
+    if file
+        .write_all(&signature)
+        .and_then(|()| file.sync_all())
+        .is_err()
+    {
+        // Empty the file through its own descriptor rather than unlinking a
+        // name that may no longer refer to it. An empty file never verifies.
+        let _ = file.set_len(0);
+        return Err(Failure::Output);
     }
-    checked
+    Ok(())
+}
+
+/// Self-check the signature from a fresh directory only this process can
+/// write to (mode 0700, created exclusively), then remove the staged copy.
+fn check_staged(document: &[u8], kind: Kind, signature: &[u8]) -> Result<(), Failure> {
+    use std::os::unix::fs::DirBuilderExt;
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let base = std::env::temp_dir();
+    let mut staging = None;
+    for _ in 0..16 {
+        let unique = format!(
+            "mira-signature-{}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |time| time.as_nanos())
+        );
+        let candidate = base.join(unique);
+        // create, not create_all: an existing entry is never reused.
+        if fs::DirBuilder::new().mode(0o700).create(&candidate).is_ok() {
+            staging = Some(candidate);
+            break;
+        }
+    }
+    let staging = staging.ok_or(Failure::Tool)?;
+    let staged = staging.join("signature");
+    let result = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&staged)
+        .and_then(|mut file| file.write_all(signature))
+        .map_err(|_| Failure::Tool)
+        .and_then(|()| check(document, kind, &staged));
+    let _ = fs::remove_file(&staged);
+    let _ = fs::remove_dir(&staging);
+    result
 }
 
 /// `-Y check-novalidate`: the signature is well formed, covers these bytes and

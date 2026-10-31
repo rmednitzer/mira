@@ -78,11 +78,11 @@ mira investigate TEMPLATE ... --json --signature PATH --sign-with KEY > report.j
 - Order of operations:
   1. Build the document in memory.
   2. Run `/usr/bin/ssh-keygen -Y sign -f KEY -n NAMESPACE`, with the bytes on stdin and the signature read from stdout.
-  3. Create PATH exclusively, never overwriting, and write and sync the signature.
-  4. Self-check it with `-Y check-novalidate` over the same bytes.
+  3. Self-check it with `-Y check-novalidate` over the same bytes, reading a staged copy from a fresh private directory (mode 0700, created exclusively under the temporary directory and removed afterwards).
+  4. Create PATH exclusively, never overwriting, and write and sync the signature.
   5. Only then print the document.
 
-  Implementation note: `check-novalidate` reads the signature from a file (`-s`), so the self-check runs after the exclusive write rather than before it. A failed write or self-check removes the file again, so no unchecked signature remains.
+  Implementation note: `check-novalidate` reads the signature only from a file (`-s`), hence the private staged copy. The output path is never unlinked or reopened by name. An earlier draft checked the output file in place and removed it on failure; a security review showed that a user controlling a parent directory could swap it for a symlink and redirect that removal to another file. If writing PATH fails after it was created, MIRA empties it through its own descriptor instead of unlinking it, and an empty file never verifies.
 - If any step fails (a missing `ssh-keygen`, a non-zero exit, an empty or oversized signature, a failed self-check, or an existing PATH), MIRA prints no document, writes no signature and exits **4** with a fixed diagnostic. Partial or unsigned output is never presented as signed.
 - `ssh-keygen` inherits the terminal's stderr and the environment (`SSH_AUTH_SOCK`), so passphrase and FIDO2 touch prompts reach the operator. Signing has a bounded but interactive timeout. Without a terminal or agent, an encrypted key fails cleanly (exit 4).
 - Investigation exit codes 0, 1 and 3 keep their meaning when signing succeeds.

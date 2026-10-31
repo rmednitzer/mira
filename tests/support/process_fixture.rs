@@ -39,7 +39,10 @@ fn ssh_keygen(mode: &str) -> io::Result<()> {
             if !key.is_empty() && namespace_ok(namespace) =>
         {
             match mode {
-                "keygen-ok" | "keygen-check-fails" => io::stdout().write_all(
+                "keygen-ok"
+                | "keygen-check-fails"
+                | "keygen-check-record"
+                | "keygen-check-swap" => io::stdout().write_all(
                     b"-----BEGIN SSH SIGNATURE-----\nZml4dHVyZQ==\n-----END SSH SIGNATURE-----\n",
                 ),
                 "keygen-unarmored" => io::stdout().write_all(b"not a signature\n"),
@@ -51,10 +54,31 @@ fn ssh_keygen(mode: &str) -> io::Result<()> {
         ["-Y", "check-novalidate", "-n", namespace, "-s", signature]
             if namespace_ok(namespace) && !signature.is_empty() =>
         {
-            if mode == "keygen-check-fails" {
-                process::exit(255);
+            match mode {
+                "keygen-check-fails" => process::exit(255),
+                "keygen-check-record" => {
+                    // Record where the self-check read its signature from.
+                    use std::os::unix::fs::PermissionsExt;
+                    let parent = std::path::Path::new(signature).parent().unwrap();
+                    let mode = std::fs::metadata(parent)?.permissions().mode() & 0o777;
+                    std::fs::write(
+                        env::var_os("MIRA_FIXTURE_RECORD").unwrap(),
+                        format!("{signature}\n{}\n{mode:o}\n", parent.display()),
+                    )?;
+                    Ok(())
+                }
+                "keygen-check-swap" => {
+                    // The reported attack: swap the output's parent for a
+                    // symlink into a victim directory, then fail the check.
+                    let from = env::var_os("MIRA_FIXTURE_SWAP_FROM").unwrap();
+                    let to = env::var_os("MIRA_FIXTURE_SWAP_TO").unwrap();
+                    let aside = std::path::PathBuf::from(&from).with_extension("aside");
+                    std::fs::rename(&from, aside)?;
+                    std::os::unix::fs::symlink(to, &from)?;
+                    process::exit(255)
+                }
+                _ => Ok(()),
             }
-            Ok(())
         }
         [
             "-Y",
