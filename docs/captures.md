@@ -62,7 +62,19 @@ Produce two captures with the same label and profile, then run:
 .schema-venv/bin/python scripts/compare_evidence.py before.json after.json
 ```
 
-Capture comparison emits comparison-v2 with explicit completion and operator-asserted scope. capture-v2 input, alone or mixed with capture-v1 of the same scope and profile, is compared by value only; its timeline is validated but not yet used for ordering. Different scopes/profiles and mixed capture/legacy input are refused. Equal labels do not prove that two captures came from the same host. Changes compare values, not timing, and unavailable evidence remains indeterminate. Freshness and clock order remain unknown/unverified. Legacy evidence-v1 JSONL remains supported as comparison-v1, without completion claims.
+Capture comparison emits comparison-v2 with explicit completion and operator-asserted scope. Mixed capture-v1/v2 input of the same scope and profile also compares values as comparison-v2. When **both** inputs are capture-v2, the comparator emits comparison-v3: identical value rows plus a capture-level `timing` member.
+
+```sh
+.schema-venv/bin/python scripts/compare_evidence.py before.json after.json --max-window-ms 1000
+```
+
+| Boot evidence | `boot_relation` | `order` | `interval_cs` |
+|---|---|---|---|
+| Both observed, equal boot IDs | `same_boot_reported` | `before_precedes_after` or `after_precedes_before` when the uptime windows are strictly separated; `overlapping` when they touch or overlap | gap in centiseconds, or null when overlapping |
+| Both observed, different boot IDs | `different_boot_or_host_reported` | `unverified` | null |
+| Either side not requested or unavailable | `unknown` | `unverified` | null |
+
+`different_boot_or_host_reported` is two-sided on purpose: boot IDs differ between hosts as well as between boots, and labels do not authenticate hosts. Order comes from boot-relative uptime, so wall-clock steps between captures cannot reorder them; it includes suspended time. `timing.before` and `timing.after` echo each window and wall-clock label. The optional `--max-window-ms N` adds `window_within_policy` per side. That is a consumer criterion, not a freshness guarantee, and it is refused unless both inputs are capture-v2. Row-level `freshness: unknown` and `clock_order: unverified` and `overall_freshness: unknown` are unchanged: the comparator still makes no claim about age relative to the present.
 
 Input is limited to 1 MiB, 128 legacy records and JSON nesting depth 32. Strict UTF-8 and unique object keys are required. Numeric values must use integer JSON tokens; decimal and exponent forms are refused before conversion, even when mathematically integral. This preserves exact integer comparisons and leaves numeric-looking strings unchanged. Nonfinite numbers, invalid Unicode, empty input and incomplete/contradictory capture sets are refused. Nonblocking open and descriptor validation reject FIFOs/devices, including path replacement before open. Symlinks remain supported; parent paths are caller-trusted and mutable regular files are not immutable snapshots. Use a trusted private directory for capture custody. There is no general application deadline for regular filesystem reads.
 

@@ -208,5 +208,122 @@ class AdmissionTests(unittest.TestCase):
                     load(p, VALIDATOR)
 
 
+TIMELINE = json.loads((ROOT / "tests/fixtures/capture-v2.json").read_text())["valid"][0]
+BOOT_A = "e740207d-b13a-48dd-8e9d-595a950d6930"
+BOOT_B = "00000000-0000-4000-8000-000000000000"
+
+
+def timeline_capture(boot, window=7):
+    document = copy.deepcopy(TIMELINE)
+    document["collection"]["boot"] = boot
+    document["collection"]["monotonic_window_ms"] = window
+    document["collection"]["ended_unix_ms"] = document["collection"]["started_unix_ms"] + window
+    return document
+
+
+def bound(started, ended, boot_id=BOOT_A):
+    return {"binding": "observed", "boot_id": boot_id,
+            "started_uptime_cs": started, "ended_uptime_cs": ended}
+
+
+class TimelineComparisonTests(unittest.TestCase):
+    def compare_documents(self, before, after, max_window_ms=None):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = []
+            for name, document in (("before", before), ("after", after)):
+                path = Path(temp) / name
+                path.write_text(json.dumps(document))
+                paths.append(path)
+            return compare(load(paths[0], VALIDATOR), load(paths[1], VALIDATOR), max_window_ms)
+
+    def test_same_boot_windows_are_ordered_or_overlapping(self):
+        for first, second, order, interval in [
+            ((100, 110), (200, 205), "before_precedes_after", 90),
+            ((200, 205), (100, 110), "after_precedes_before", 90),
+            ((100, 110), (111, 120), "before_precedes_after", 1),
+            # Touching or overlapping windows cannot be ordered at 1 cs resolution.
+            ((100, 110), (110, 120), "overlapping", None),
+            ((100, 120), (105, 106), "overlapping", None),
+            ((100, 100), (100, 100), "overlapping", None),
+        ]:
+            result = self.compare_documents(timeline_capture(bound(*first)),
+                                            timeline_capture(bound(*second)))
+            self.assertEqual(result["comparison_version"], 3)
+            self.assertEqual(result["timing"]["boot_relation"], "same_boot_reported")
+            self.assertEqual((result["timing"]["order"], result["timing"]["interval_cs"]),
+                             (order, interval), (first, second))
+
+    def test_other_boot_evidence_never_orders(self):
+        unavailable = {"binding": "unavailable", "failure_reason": "not_found"}
+        for first, second, relation in [
+            (bound(100, 110), bound(200, 205, BOOT_B), "different_boot_or_host_reported"),
+            (bound(100, 110), {"binding": "not_requested"}, "unknown"),
+            ({"binding": "not_requested"}, {"binding": "not_requested"}, "unknown"),
+            (unavailable, bound(100, 110), "unknown"),
+        ]:
+            timing = self.compare_documents(timeline_capture(first),
+                                            timeline_capture(second))["timing"]
+            self.assertEqual(timing["boot_relation"], relation)
+            self.assertEqual((timing["order"], timing["interval_cs"]), ("unverified", None))
+            # Freshness stays unknown at every level; timing never claims it.
+            self.assertNotIn("fresh", json.dumps(timing))
+
+    def test_window_policy_is_a_consumer_criterion(self):
+        result = self.compare_documents(timeline_capture(bound(1, 2), window=7),
+                                        timeline_capture(bound(3, 4), window=60), 50)
+        timing = result["timing"]
+        self.assertEqual(timing["max_window_ms"], 50)
+        self.assertEqual((timing["before"]["window_within_policy"],
+                          timing["after"]["window_within_policy"]), (True, False))
+        self.assertEqual(timing["before"]["monotonic_window_ms"], 7)
+        self.assertEqual(result["overall_freshness"], "unknown")
+        unset = self.compare_documents(timeline_capture(bound(1, 2)),
+                                       timeline_capture(bound(3, 4)))["timing"]
+        self.assertIsNone(unset["max_window_ms"])
+        self.assertIsNone(unset["before"]["window_within_policy"])
+
+    def test_values_rows_and_older_versions_are_unchanged(self):
+        before = timeline_capture(bound(1, 2))
+        v3 = self.compare_documents(before, timeline_capture(bound(3, 4)))
+        legacy = copy.deepcopy(before)
+        legacy["capture_version"] = 1
+        del legacy["collection"], legacy["timeline"]
+        v2 = self.compare_documents(legacy, before)
+        self.assertEqual(v2["comparison_version"], 2)
+        self.assertNotIn("timing", v2)
+        self.assertEqual(v3["changes"], v2["changes"])
+        self.assertTrue(all(row["clock_order"] == "unverified" for row in v3["changes"]))
+        with self.assertRaisesRegex(ValueError, "window policy"):
+            self.compare_documents(legacy, before, 50)
+        with self.assertRaisesRegex(ValueError, "window policy"):
+            compare({}, {}, 50)
+
+    def test_inconsistent_timelines_are_refused_before_comparison(self):
+        reversed_boot = timeline_capture(bound(10, 9))
+        stepped = timeline_capture(bound(1, 2))
+        stepped["collection"]["wall_clock"] = "stepped_or_suspended"
+        for document in (reversed_boot, stepped):
+            with self.assertRaises(ValueError):
+                self.compare_documents(document, timeline_capture(bound(1, 2)))
+
+    def test_cli_reports_timing_and_refuses_bad_policy(self):
+        with tempfile.TemporaryDirectory() as temp:
+            before, after = Path(temp) / "before", Path(temp) / "after"
+            before.write_text(json.dumps(timeline_capture(bound(100, 110))))
+            after.write_text(json.dumps(timeline_capture(bound(200, 205))))
+            script = str(ROOT / "scripts/compare_evidence.py")
+            run = lambda *extra: subprocess.run([sys.executable, script, str(before), str(after), *extra],
+                                                capture_output=True, text=True, timeout=30, check=False)
+            result = run("--max-window-ms", "10")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(result.stdout)
+            self.assertEqual(report["timing"]["order"], "before_precedes_after")
+            self.assertEqual(report["timing"]["interval_cs"], 90)
+            for bad in ("-1", "x", "1.5"):
+                refused = run("--max-window-ms", bad)
+                self.assertEqual(refused.returncode, 2, bad)
+                self.assertEqual(refused.stdout, "", bad)
+
+
 if __name__ == "__main__":
     unittest.main()

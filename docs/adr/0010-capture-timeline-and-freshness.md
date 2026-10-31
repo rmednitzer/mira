@@ -1,6 +1,6 @@
 # ADR 0010: capture timeline, boot binding and freshness vocabulary
 
-Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day). Implementation is staged, each stage with its own review. **Stages 1 (timeline) and 2 (boot binding) are implemented**; stage 3 (comparison-v3) is not. Until stage 3, the comparator accepts capture-v2 for value comparison only (comparison-v2, timing unknown). The boot samples are taken inside the monotonic window, at its edges, and are not timeline entries.
+Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day). **Implemented in three reviewed stages:** stage 1 timeline (capture-v2), stage 2 opt-in boot binding, stage 3 comparison-v3. The boot samples are taken inside the monotonic window, at its edges, and are not timeline entries. Windows that touch or overlap at centisecond resolution are reported as `overlapping`, never ordered. `--max-window-ms` requires two capture-v2 inputs.
 
 ## Context
 

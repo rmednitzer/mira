@@ -44,6 +44,23 @@ def check_live_boot():
         if not before_cs <= boot['started_uptime_cs'] <= boot['ended_uptime_cs'] <= after_cs:
             raise ValueError('MIRA boot window outside direct uptime interval')
         shapes.append((document['capture_version'], sorted(boot), len(document['timeline'])))
+    # Two consecutive bound captures report the same boot and never the reverse order.
+    with tempfile.TemporaryDirectory() as temp:
+        paths = []
+        for name in ('first', 'second'):
+            result = subprocess.run([str(ROOT / 'target/debug/mira'), 'capture', 'synthetic-ci',
+                                     '--bind-boot'], capture_output=True, timeout=15, check=False)
+            path = Path(temp) / name
+            path.write_bytes(result.stdout)
+            paths.append(path)
+        legacy = Draft202012Validator(json.loads((ROOT / 'schemas/evidence-v1.schema.json').read_text()))
+        timing = compare(load(paths[0], legacy), load(paths[1], legacy), 60000)['timing']
+        if timing['boot_relation'] != 'same_boot_reported':
+            raise ValueError('consecutive captures did not report the same boot')
+        if timing['order'] not in ('before_precedes_after', 'overlapping'):
+            raise ValueError('consecutive captures ordered backwards')
+        if not (timing['before']['window_within_policy'] and timing['after']['window_within_policy']):
+            raise ValueError('live capture window exceeded a 60 s policy')
     # --bind-boot implies --timeline: both spellings give the same shape.
     if shapes[0] != shapes[1]:
         raise ValueError('--bind-boot does not imply --timeline')
@@ -138,8 +155,8 @@ def main():
             path.write_bytes(result.stdout)
             current = load(path, validator)
             report = compare(current, current)
-            if report['comparison_version'] != 2:
-                raise ValueError('capture-v2 value comparison changed version')
+            if report['comparison_version'] != 3 or report['timing']['boot_relation'] != 'unknown':
+                raise ValueError('unbound capture-v2 pair not compared as comparison-v3')
             # Mixed capture-v1/v2 input with matching scope and profile compares values.
             plain = subprocess.run([str(ROOT / 'target/debug/mira'), 'capture', 'synthetic-ci',
                                     *(['--pressure'] if pressure else [])],
