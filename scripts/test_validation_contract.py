@@ -2,8 +2,11 @@
 """Each live comparison exits 4 on a forced mid-comparison change and 1 on wrong evidence."""
 import contextlib
 import io
+import json
 import os
 import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -52,8 +55,9 @@ class ContractTests(unittest.TestCase):
                 module.main(['--only', group])
         code = result.exception.code
         # Wrong evidence must fail the comparison itself, not crash the validator.
-        endings = (': Inconclusive\n',) if code == 4 else (': ValueError\n', ': AssertionError\n')
-        self.assertTrue(diagnostic.getvalue().endswith(endings), diagnostic.getvalue())
+        if code:
+            endings = (': Inconclusive\n',) if code == 4 else (': ValueError\n', ': AssertionError\n')
+            self.assertTrue(diagnostic.getvalue().endswith(endings), diagnostic.getvalue())
         return code
 
     def test_procfs(self):
@@ -128,6 +132,40 @@ class ContractTests(unittest.TestCase):
             real, lambda b: ('00000000-0000-0000-0000-000000000000', b[1]))), 4)
         self.assertEqual(self.status(capture, 'live-boot', direct_boot=lambda: (
             '00000000-0000-0000-0000-000000000000', real()[1])), 1)
+
+
+    def test_default_journal_run_keeps_the_denial_path_passing(self):
+        # Standalone default runs on a host without a visible journal still pass; only a
+        # runner that selected live-counts after probing a visible sentinel gets exit 4.
+        quiet = {'visible': lambda boot: False, 'check_live_visibility': lambda: None}
+        with contextlib.ExitStack() as stack:
+            for name, value in quiet.items():
+                stack.enter_context(patch.object(journal, name, value))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            with self.assertRaises(SystemExit) as result:
+                journal.main([])
+        self.assertEqual(result.exception.code, 0)
+        self.assertEqual(self.status(journal, 'live-counts', visible=lambda boot: False), 4)
+
+    def test_every_capture_invocation_reports_its_gaps(self):
+        real = capture.capture
+
+        def partial(*arguments, **options):
+            result = real(*arguments, **options)
+            if '--timeline' not in arguments or result.returncode == 2:
+                return result
+            document = json.loads(result.stdout)
+            record = next(r for r in document['records'] if r['source'] == '/proc/uptime')
+            record.update(status='unavailable', value=None, error_kind='PermissionDenied',
+                          failure_reason='permission_denied')
+            document['all_available'] = False
+            return subprocess.CompletedProcess(result.args, 1, json.dumps(document).encode(), b'')
+        with tempfile.TemporaryDirectory() as temp:
+            status = Path(temp) / 'status.json'
+            os.environ['MIRA_QUALIFICATION_STATUS'] = str(status)
+            self.assertEqual(self.status(capture, 'cli', capture=partial), 0)
+            gaps = json.loads(status.read_text())['observation_gaps']
+        self.assertIn({'source': '/proc/uptime', 'reason': 'permission_denied'}, gaps)
 
 
 if __name__ == '__main__':

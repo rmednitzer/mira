@@ -138,6 +138,20 @@ class RunnerTests(unittest.TestCase):
         # The bound covers the work the validator started, not only the validator.
         self.assertFalse(self.child_alive())
 
+    def test_interrupt_kills_the_validator_group(self):
+        (self.temp / 'plan.json').write_text(json.dumps({'slow': {'codes': [0], 'spawn': 'hang'}}))
+        env = {'FAKE_PLAN': str(self.temp / 'plan.json'), 'FAKE_STATE': str(self.state)}
+        real_sleep = time.sleep
+
+        def interrupt(seconds):
+            if (self.state / 'child').exists():
+                raise KeyboardInterrupt
+            real_sleep(seconds)
+        with patch.dict(os.environ, env), patch('qualify_host.time.sleep', interrupt), \
+                self.assertRaises(KeyboardInterrupt):
+            qualify_host.run_group(self.root, 'fake.py', 'slow', str(self.binary), 60)
+        self.assertFalse(self.child_alive())
+
     def test_descendants_left_behind_by_a_finished_validator_are_killed(self):
         (self.temp / 'plan.json').write_text(json.dumps({'done': {'codes': [0], 'spawn': 'exit'}}))
         env = {'FAKE_PLAN': str(self.temp / 'plan.json'), 'FAKE_STATE': str(self.state)}

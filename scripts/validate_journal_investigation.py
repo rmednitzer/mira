@@ -257,7 +257,10 @@ def check_live_counts():
         if not seen and boot == 'previous_retained':
             continue  # No retained previous boot: nothing to count.
         if not seen:
-            raise Inconclusive('current-boot journal not visible for count comparison')
+            if validation_status.explicitly_selected('live-counts'):
+                # The runner selected this group after probing a visible sentinel.
+                raise Inconclusive('current-boot journal not visible for count comparison')
+            return  # Default run: the denial path is checked by live-visibility.
         before = independent_counts(absent, boot)
         evidence = investigate(absent, flag)
         if independent_counts(absent, boot) != before or not visible(boot):

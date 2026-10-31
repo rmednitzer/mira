@@ -11,7 +11,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, ValidationError
 from capture_contract import ROOT, VALIDATOR_V2, check_capture
 from compare_evidence import CAPTURE_NAMESPACE, Trust, load, compare, strict_json
-from validation_status import Inconclusive, mira_binary, note_record
+from validation_status import Inconclusive, mira_binary, note_gap, note_record
 import validation_status
 
 LEGACY = Draft202012Validator(json.loads((ROOT / 'schemas/evidence-v1.schema.json').read_text()))
@@ -20,6 +20,17 @@ LEGACY = Draft202012Validator(json.loads((ROOT / 'schemas/evidence-v1.schema.jso
 def capture(*arguments, timeout=15, **options):
     return subprocess.run([mira_binary(), 'capture', *arguments], capture_output=True,
                           timeout=timeout, check=False, **options)
+
+
+def admit(result):
+    """Admit one capture and report every unavailable source it carries, boot ID included."""
+    document = check_capture(strict_json(result.stdout))
+    for record in document['records']:
+        note_record(record)
+    boot = document.get('collection', {}).get('boot', {})
+    if boot.get('binding') == 'unavailable':
+        note_gap('/proc/sys/kernel/random/boot_id', boot['failure_reason'])
+    return document
 
 
 def direct_boot():
@@ -41,7 +52,7 @@ def check_live_boot():
         before_id, before_cs = direct_boot()
         result = capture('synthetic-ci', *options)
         after_id, after_cs = direct_boot()
-        document = check_capture(strict_json(result.stdout))
+        document = admit(result)
         if result.returncode != (0 if document['all_available'] else 1):
             raise ValueError('boot-bound capture exit mismatch')
         boot = document['collection']['boot']
@@ -57,6 +68,7 @@ def check_live_boot():
         paths = []
         for name in ('first', 'second'):
             result = capture('synthetic-ci', '--bind-boot')
+            admit(result)
             path = Path(temp) / name
             path.write_bytes(result.stdout)
             paths.append(path)
@@ -89,6 +101,7 @@ def check_live_signed_comparison():
                              '--sign-with', str(key), timeout=30, stdin=subprocess.DEVNULL)
             if result.returncode not in (0, 1) or not result.stdout:
                 raise ValueError('signed live capture failed')
+            admit(result)
             path.write_bytes(result.stdout)
             paths.append(path)
         trust = Trust(signers, 'host-a')
@@ -142,15 +155,13 @@ def check_schema():
 def check_cli():
     for pressure in (False, True):
         result = capture('synthetic-ci', *(['--pressure'] if pressure else []))
-        document = check_capture(strict_json(result.stdout))
+        document = admit(result)
         if result.returncode != (0 if document['all_available'] else 1):
             raise ValueError('capture exit mismatch')
         if len(document['records']) != (7 if pressure else 5):
             raise ValueError('capture source count mismatch')
-        for record in document['records']:
-            note_record(record)
         result = capture('synthetic-ci', *(['--pressure'] if pressure else []), '--timeline')
-        document = check_capture(strict_json(result.stdout))
+        document = admit(result)
         if document['capture_version'] != 2:
             raise ValueError('timeline capture is not capture-v2')
         if result.returncode != (0 if document['all_available'] else 1):
@@ -174,7 +185,7 @@ def check_compare():
         path = Path(temp) / 'capture'
         for pressure in (False, True):
             result = capture('synthetic-ci', *(['--pressure'] if pressure else []))
-            check_capture(strict_json(result.stdout))
+            admit(result)
             path.write_bytes(result.stdout)
             admitted = load(path, LEGACY)
             report = compare(admitted, admitted)
@@ -205,7 +216,7 @@ def check_compare():
             else:
                 raise ValueError('mixed capture formats admitted')
             result = capture('synthetic-ci', *(['--pressure'] if pressure else []), '--timeline')
-            document = check_capture(strict_json(result.stdout))
+            document = admit(result)
             path.write_bytes(result.stdout)
             current = load(path, LEGACY)
             report = compare(current, current)
@@ -213,6 +224,7 @@ def check_compare():
                 raise ValueError('unbound capture-v2 pair not compared as comparison-v3')
             # Mixed capture-v1/v2 input with matching scope and profile compares values.
             plain = capture('synthetic-ci', *(['--pressure'] if pressure else []))
+            admit(plain)
             path.write_bytes(plain.stdout)
             mixed = compare(load(path, LEGACY), current)
             if mixed['comparison_version'] != 2 or len(mixed['changes']) != len(document['records']):

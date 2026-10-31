@@ -183,17 +183,20 @@ def run_validator(argv, cwd, env, timeout):
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                start_new_session=True)
     deadline, timed_out = time.monotonic() + timeout, False
-    # Wait without reaping: while the leader is unreaped its group ID cannot be reused.
-    while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
-        if time.monotonic() >= deadline:
-            timed_out = True
-            break
-        time.sleep(0.05)
     try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    code = process.wait()
+        # Wait without reaping: while the leader is unreaped its group ID cannot be reused.
+        while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
+            if time.monotonic() >= deadline:
+                timed_out = True
+                break
+            time.sleep(0.05)
+    finally:
+        # Also on an interrupt: the new session does not receive the terminal's SIGINT.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        code = process.wait()
     if timed_out:
         raise subprocess.TimeoutExpired(argv, timeout)
     return code

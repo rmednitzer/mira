@@ -26,6 +26,7 @@ GAP_SOURCES = frozenset({
 })
 GAP_REASON = re.compile(r'[A-Za-z][A-Za-z0-9_]{0,63}')
 _GAPS = set()
+_EXPLICIT = set()
 
 
 class Inconclusive(Exception):
@@ -35,6 +36,11 @@ class Inconclusive(Exception):
 def mira_binary():
     value = os.environ.get(BINARY_ENV)
     return str(Path(value).absolute()) if value else str(ROOT / 'target/debug/mira')
+
+
+def explicitly_selected(group):
+    """True when --only named this group, as the runner does after probing its preconditions."""
+    return group in _EXPLICIT
 
 
 def note_gap(source, reason):
@@ -86,6 +92,9 @@ def run(label, groups, message, argv=None, opt_in=None):
         selected = [name for name in groups if name not in opt_in
                     or getattr(args, opt_in[name].lstrip('-').replace('-', '_'))]
     _GAPS.clear()
+    _EXPLICIT.clear()
+    if args.only is not None:
+        _EXPLICIT.update(selected)
     code, failure = PASSED, None
     try:
         for name in selected:
