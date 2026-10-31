@@ -117,3 +117,52 @@ fn resource_sources_and_basis_points_are_preserved() {
         assert!(observation.elapsed_ms.is_some());
     }
 }
+
+#[test]
+fn timeline_covers_every_source_in_profile_order_within_one_window() {
+    let fixture = Fixture::new("timeline");
+    for profile in [Profile::Host, Profile::HostPressure] {
+        let capture = capture::collect(
+            "timeline-fixture",
+            profile,
+            &fixture.0,
+            &fixture.0.join("status"),
+        )
+        .unwrap();
+        let timeline = capture.timeline();
+        let sources: Vec<_> = timeline.entries.iter().map(|entry| entry.source).collect();
+        assert_eq!(sources, profile.sources());
+        let mut previous = 0;
+        for entry in &timeline.entries {
+            let elapsed = entry.elapsed_ms.expect("monotonic elapsed time");
+            assert!(entry.offset_ms >= previous, "{entry:?}");
+            assert!(
+                entry.offset_ms + elapsed <= timeline.monotonic_window_ms,
+                "{entry:?}"
+            );
+            previous = entry.offset_ms;
+        }
+        assert!(timeline.started_unix_ms <= timeline.ended_unix_ms);
+        assert_ne!(timeline.wall_clock(), "unknown");
+
+        // capture-v2 is capture-v1 with a new version and the timing members
+        // inserted before records; every record byte is unchanged.
+        let v1 = capture.to_json();
+        let v2 = capture.to_timeline_json();
+        let split = v1.find("\"records\":").unwrap();
+        let head = v1[..split].replacen("\"capture_version\":1", "\"capture_version\":2", 1);
+        assert!(v2.starts_with(&head), "{v2}");
+        assert!(v2.ends_with(&v1[split..]), "{v2}");
+        let timing = &v2[head.len()..v2.len() - (v1.len() - split)];
+        assert!(timing.starts_with("\"collection\":{\"monotonic_window_ms\":"));
+        assert!(timing.contains("\"boot\":{\"binding\":\"not_requested\"}"));
+        assert!(timing.contains(&format!(
+            "\"timeline\":[{{\"source\":\"/proc/meminfo\",\"offset_ms\":{},",
+            timeline.entries[0].offset_ms
+        )));
+        assert_eq!(
+            timing.matches("\"source\":").count(),
+            profile.sources().len()
+        );
+    }
+}

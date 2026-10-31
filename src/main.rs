@@ -125,9 +125,17 @@ fn main() {
             eprintln!("Usage: {KERNEL_USAGE}");
             std::process::exit(2);
         }
-        [_, command, label] if command == "capture" => capture(label, false),
+        [_, command, label] if command == "capture" => capture(label, false, false),
         [_, command, label, option] if command == "capture" && option == "--pressure" => {
-            capture(label, true)
+            capture(label, true, false)
+        }
+        [_, command, label, option] if command == "capture" && option == "--timeline" => {
+            capture(label, false, true)
+        }
+        [_, command, label, pressure, timeline]
+            if command == "capture" && pressure == "--pressure" && timeline == "--timeline" =>
+        {
+            capture(label, true, true)
         }
         [_, command] if command == "inspect" => inspect(),
         [_, command, format] if command == "inspect" && format == "--json" => inspect_json(),
@@ -144,7 +152,7 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "Usage: mira capture LABEL [--pressure] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE}"
+                "Usage: mira capture LABEL [--pressure] [--timeline] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE}"
             );
             std::process::exit(2);
         }
@@ -540,7 +548,7 @@ fn investigate(name: &str, unit: &str, json: bool) {
     std::process::exit(report.assessment().outcome().exit_code());
 }
 
-fn capture(label: &str, pressure: bool) {
+fn capture(label: &str, pressure: bool, timeline: bool) {
     use mira::capture::{self, Profile};
     let profile = if pressure {
         Profile::HostPressure
@@ -559,7 +567,12 @@ fn capture(label: &str, pressure: bool) {
             std::process::exit(2);
         }
     };
-    println!("{}", report.to_json());
+    // capture-v1 stays the default; --timeline opts into capture-v2 (ADR 0010).
+    if timeline {
+        println!("{}", report.to_timeline_json());
+    } else {
+        println!("{}", report.to_json());
+    }
     if !report.all_available() {
         std::process::exit(1);
     }

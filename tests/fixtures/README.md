@@ -10,6 +10,8 @@ Native subprocess fixtures live in `tests/support/process_fixture.rs`, separate 
 
 `evidence-v1.json` holds independent evidence-v1 records: valid kernel, uptime and systemd observations (including a `+` kernel suffix, an escaped unit instance and a literal escape sequence in a state), and invalid ones for version, freshness, value/status contradictions and the observed-string lexical contract.
 
+`capture-v2.json` freezes ten valid and thirty-one invalid timeline captures: both profiles, zero-width windows, missing wall-clock edges, steps forwards and backwards, the 1% tolerance boundary, and the future boot-binding shapes. Twelve invalid documents are schema-valid but contradict the timeline rules. They are synthetic contract cases, not timing measurements.
+
 `capture-v1.json` freezes independent authored complete and deliberately invalid capture documents, including unavailable reasons and source-coverage contradictions. Native source/availability cases live in `tests/capture.rs`; optional memory/IO PSI files are generated in isolated temporary roots. No real host data or model judge supplies expected verdicts.
 
 `memory-headroom-v1.json` freezes seven valid and fourteen invalid memory-expectation reports, including equality, u64 bounds, unavailable evidence and contradictory assessments. They are synthetic contract cases, not host-health labels.

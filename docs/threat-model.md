@@ -44,7 +44,7 @@ The independent live procfs check compares kernel release and total memory again
 
 ### Capture admission and completeness
 
-Accepted design, not yet implemented: [ADR 0010](adr/0010-capture-timeline-and-freshness.md) adds an opt-in capture-v2 timeline (one monotonic window, wall-clock consistency within it) and an opt-in boot binding for same-boot ordering in the comparator. Its analysis covers forged timelines, procfs emulation and boot-ID linkability across captures and container tenants. The boot ID would never be collected by default.
+[ADR 0010](adr/0010-capture-timeline-and-freshness.md) stage 1 is implemented: opt-in `--timeline` emits capture-v2 with one monotonic window, per-source offsets and a fixed wall-clock consistency rule. Records are unchanged and no identifier is added. A forged timeline is caught only when internally inconsistent; signatures remain separate work. The opt-in boot binding for same-boot ordering (stages 2 and 3) is designed, not implemented. Its analysis covers forged timelines, procfs emulation and boot-ID linkability across captures and container tenants. The boot ID would never be collected by default.
 
 Capture-v1 uses an explicit operator label and closed source profile; neither is authenticated host identity. Evidence-v2 records add per-source monotonic elapsed time and fixed failure reasons without changing v1 exports. Missing PSI remains unavailable; no pressure threshold, trigger write or health inference is admitted. Completion means all requested results exist, not that observations are available, fresh or authentic.
 

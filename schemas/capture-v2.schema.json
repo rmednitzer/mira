@@ -1,0 +1,309 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/capture-v2.schema.json",
+  "title": "MIRA complete capture v2 (collection timeline)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "capture_version",
+    "capture_scope",
+    "scope_trust",
+    "profile",
+    "expected_sources",
+    "collection_complete",
+    "all_available",
+    "collection",
+    "timeline",
+    "records"
+  ],
+  "properties": {
+    "capture_version": {
+      "const": 2
+    },
+    "capture_scope": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^(?!.*\\n)[A-Za-z0-9._-]+$"
+    },
+    "scope_trust": {
+      "const": "operator_asserted"
+    },
+    "profile": {
+      "enum": [
+        "host/v1",
+        "host-pressure/v1"
+      ]
+    },
+    "expected_sources": {
+      "type": "array"
+    },
+    "collection_complete": {
+      "const": true
+    },
+    "all_available": {
+      "type": "boolean"
+    },
+    "collection": {
+      "type": "object",
+      "required": [
+        "monotonic_window_ms",
+        "started_unix_ms",
+        "ended_unix_ms",
+        "wall_clock",
+        "boot"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "monotonic_window_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 340282366920938463463374607431768211455
+        },
+        "started_unix_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 340282366920938463463374607431768211455
+        },
+        "ended_unix_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 340282366920938463463374607431768211455
+        },
+        "wall_clock": {
+          "enum": [
+            "consistent",
+            "stepped_or_suspended",
+            "unknown"
+          ]
+        },
+        "boot": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "binding"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "binding": {
+                  "const": "not_requested"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "binding",
+                "boot_id",
+                "started_uptime_cs",
+                "ended_uptime_cs"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "binding": {
+                  "const": "observed"
+                },
+                "boot_id": {
+                  "type": "string",
+                  "pattern": "^(?!.*\\n)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "started_uptime_cs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 18446744073709551615
+                },
+                "ended_uptime_cs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 18446744073709551615
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "binding",
+                "failure_reason"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "binding": {
+                  "const": "unavailable"
+                },
+                "failure_reason": {
+                  "enum": [
+                    "timeout",
+                    "limit_exceeded",
+                    "malformed_data",
+                    "permission_denied",
+                    "not_found",
+                    "backend_failed",
+                    "io_failure"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "wall_clock": {
+                "enum": [
+                  "consistent",
+                  "stepped_or_suspended"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "started_unix_ms": {
+                "type": "integer"
+              },
+              "ended_unix_ms": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "timeline": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 7,
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "offset_ms",
+          "elapsed_ms"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "enum": [
+              "/proc/meminfo",
+              "/proc/uptime",
+              "/proc/sys/kernel/osrelease",
+              "/proc/pressure/cpu",
+              "/var/lib/dpkg/status",
+              "/proc/pressure/memory",
+              "/proc/pressure/io"
+            ]
+          },
+          "offset_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 340282366920938463463374607431768211455
+          },
+          "elapsed_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 340282366920938463463374607431768211455
+          }
+        }
+      }
+    },
+    "records": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 7,
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://github.com/rmednitzer/mira/blob/main/schemas/evidence-v2.schema.json"
+          },
+          {
+            "properties": {
+              "elapsed_ms": {
+                "type": "integer"
+              },
+              "scope": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "host/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "expected_sources": {
+            "const": [
+              "/proc/meminfo",
+              "/proc/uptime",
+              "/proc/sys/kernel/osrelease",
+              "/proc/pressure/cpu",
+              "/var/lib/dpkg/status"
+            ]
+          },
+          "records": {
+            "minItems": 5,
+            "maxItems": 5
+          },
+          "timeline": {
+            "minItems": 5,
+            "maxItems": 5
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "host-pressure/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "expected_sources": {
+            "const": [
+              "/proc/meminfo",
+              "/proc/uptime",
+              "/proc/sys/kernel/osrelease",
+              "/proc/pressure/cpu",
+              "/var/lib/dpkg/status",
+              "/proc/pressure/memory",
+              "/proc/pressure/io"
+            ]
+          },
+          "records": {
+            "minItems": 7,
+            "maxItems": 7
+          },
+          "timeline": {
+            "minItems": 7,
+            "maxItems": 7
+          }
+        }
+      }
+    }
+  ],
+  "$comment": "capture-v1 plus a collection window and per-source timeline on one monotonic reference (ADR 0010). Timeline/record agreement, offset bounds, the wall-clock rule and boot-window order are semantic checks outside JSON Schema. Patterns start with (?!.*\\n) because Python re lets $ match before a final newline."
+}
