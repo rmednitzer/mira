@@ -334,7 +334,8 @@ class PressureGapTests(unittest.TestCase):
         temp = Path(tempfile.mkdtemp(prefix='mira-qualify-psi-'))
         self.addCleanup(shutil.rmtree, temp)
         root = temp / 'checkout'
-        files = {}
+        # The real ignore rules: validators write bytecode caches into the checkout.
+        files = {'.gitignore': (ROOT / '.gitignore').read_text()}
         for directory in ('scripts', 'schemas', 'tests/fixtures'):
             for path in (ROOT / directory).glob('*.py' if directory == 'scripts' else '*.json'):
                 files[f'{directory}/{path.name}'] = path.read_text()
