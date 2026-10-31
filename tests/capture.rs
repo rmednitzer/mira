@@ -166,3 +166,72 @@ fn timeline_covers_every_source_in_profile_order_within_one_window() {
         );
     }
 }
+
+#[test]
+fn boot_binding_is_opt_in_and_unavailable_without_partial_values() {
+    const ID: &str = "e740207d-b13a-48dd-8e9d-595a950d6930";
+    let fixture = Fixture::new("boot");
+    let status = fixture.0.join("status");
+    let collect = |bind: bool| {
+        let collect = if bind {
+            capture::collect_with_boot
+        } else {
+            capture::collect
+        };
+        collect("boot-fixture", Profile::Host, &fixture.0, &status).unwrap()
+    };
+    // Without a request the boot ID file is never needed.
+    assert_eq!(collect(false).boot(), &capture::BootBinding::NotRequested);
+    assert_eq!(
+        collect(true).boot(),
+        &capture::BootBinding::Unavailable(mira::collector::FailureReason::NotFound)
+    );
+    fs::create_dir_all(fixture.0.join("sys/kernel/random")).unwrap();
+    let boot_id = fixture.0.join("sys/kernel/random/boot_id");
+    fs::write(&boot_id, format!("{ID}\n")).unwrap();
+    let uptime = fs::read_to_string(fixture.0.join("uptime")).unwrap();
+    let centiseconds = mira::linux::parse_uptime_centiseconds(&uptime).unwrap();
+    let bound = collect(true);
+    assert_eq!(
+        bound.boot(),
+        &capture::BootBinding::Observed {
+            boot_id: ID.to_owned(),
+            started_uptime_cs: centiseconds,
+            ended_uptime_cs: centiseconds,
+        }
+    );
+    assert!(bound.all_available());
+    let json = bound.to_timeline_json();
+    assert!(json.contains(&format!("\"boot_id\":\"{ID}\"")));
+    assert!(
+        !bound.to_json().contains(ID),
+        "capture-v1 must not carry the boot ID"
+    );
+    for (contents, reason) in [
+        (ID.to_uppercase() + "\n", "malformed_data"),
+        (ID.to_owned(), "malformed_data"),
+        (format!("{ID}\n{ID}\n"), "limit_exceeded"),
+    ] {
+        fs::write(&boot_id, contents).unwrap();
+        let capture = collect(true);
+        let json = capture.to_timeline_json();
+        assert!(
+            json.contains(&format!(
+                "\"boot\":{{\"binding\":\"unavailable\",\"failure_reason\":\"{reason}\"}}"
+            )),
+            "{json}"
+        );
+        assert!(!json.contains(ID));
+        // Boot binding failure never changes record availability.
+        assert!(capture.all_available());
+    }
+    // Malformed uptime makes both the uptime record and the binding unavailable.
+    fs::write(&boot_id, format!("{ID}\n")).unwrap();
+    fs::write(fixture.0.join("uptime"), "garbage\n").unwrap();
+    let capture = collect(true);
+    assert!(!capture.all_available());
+    assert_eq!(
+        capture.boot(),
+        &capture::BootBinding::Unavailable(mira::collector::FailureReason::MalformedData)
+    );
+}

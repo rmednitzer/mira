@@ -1,5 +1,6 @@
 //! Complete, explicitly scoped captures. Labels are operator assertions, not identity.
 use crate::{
+    collector::FailureReason,
     evidence, evidence_json,
     host_extra::{self, PressureResource},
     linux, packages,
@@ -134,12 +135,77 @@ impl Recorder {
     }
 }
 
+/// Opt-in boot binding (ADR 0010 stage 2). Only `NotRequested` reads nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BootBinding {
+    NotRequested,
+    Observed {
+        boot_id: String,
+        started_uptime_cs: u64,
+        ended_uptime_cs: u64,
+    },
+    Unavailable(FailureReason),
+}
+
+impl BootBinding {
+    fn to_json(&self) -> String {
+        match self {
+            Self::NotRequested => "{\"binding\":\"not_requested\"}".to_owned(),
+            Self::Observed {
+                boot_id,
+                started_uptime_cs,
+                ended_uptime_cs,
+            } => format!(
+                "{{\"binding\":\"observed\",\"boot_id\":{},\"started_uptime_cs\":{started_uptime_cs},\"ended_uptime_cs\":{ended_uptime_cs}}}",
+                evidence_json::quoted(boot_id)
+            ),
+            Self::Unavailable(reason) => format!(
+                "{{\"binding\":\"unavailable\",\"failure_reason\":{}}}",
+                evidence_json::quoted(reason.as_str())
+            ),
+        }
+    }
+}
+
+/// One edge sample: the boot ID and boot-relative uptime in centiseconds.
+pub type BootSample = io::Result<(String, u64)>;
+
+/// Combine the two window-edge samples. Any failure, a changed boot ID or a
+/// reversed uptime window is unavailable; partial values are never exported.
+pub fn bind_boot(started: BootSample, ended: BootSample) -> BootBinding {
+    let unavailable =
+        |error: &io::Error| BootBinding::Unavailable(FailureReason::from_error(error));
+    let (started_id, started_uptime_cs) = match started {
+        Ok(sample) => sample,
+        Err(error) => return unavailable(&error),
+    };
+    let (ended_id, ended_uptime_cs) = match ended {
+        Ok(sample) => sample,
+        Err(error) => return unavailable(&error),
+    };
+    if started_id != ended_id || ended_uptime_cs < started_uptime_cs {
+        return BootBinding::Unavailable(FailureReason::MalformedData);
+    }
+    BootBinding::Observed {
+        boot_id: started_id,
+        started_uptime_cs,
+        ended_uptime_cs,
+    }
+}
+
+fn boot_sample(proc_root: &Path) -> BootSample {
+    let boot_id = host_extra::boot_id(proc_root)?;
+    let uptime = linux::uptime_centiseconds(proc_root)?;
+    Ok((boot_id, uptime))
+}
+
 pub struct Capture {
     label: String,
     profile: Profile,
     records: Vec<String>,
     all_available: bool,
     timeline: Timeline,
+    boot: BootBinding,
 }
 impl Capture {
     pub fn all_available(&self) -> bool {
@@ -147,6 +213,9 @@ impl Capture {
     }
     pub fn timeline(&self) -> &Timeline {
         &self.timeline
+    }
+    pub fn boot(&self) -> &BootBinding {
+        &self.boot
     }
     /// capture-v1, unchanged; the timeline is not exported.
     pub fn to_json(&self) -> String {
@@ -171,11 +240,12 @@ impl Capture {
         self.render(
             2,
             &format!(
-                "\"collection\":{{\"monotonic_window_ms\":{},\"started_unix_ms\":{},\"ended_unix_ms\":{},\"wall_clock\":{},\"boot\":{{\"binding\":\"not_requested\"}}}},\"timeline\":[{entries}],",
+                "\"collection\":{{\"monotonic_window_ms\":{},\"started_unix_ms\":{},\"ended_unix_ms\":{},\"wall_clock\":{},\"boot\":{}}},\"timeline\":[{entries}],",
                 timeline.monotonic_window_ms,
                 evidence_json::timestamp(timeline.started_unix_ms),
                 evidence_json::timestamp(timeline.ended_unix_ms),
-                evidence_json::quoted(timeline.wall_clock())
+                evidence_json::quoted(timeline.wall_clock()),
+                self.boot.to_json()
             ),
         )
     }
@@ -205,12 +275,34 @@ pub fn collect(
     proc_root: &Path,
     status: &Path,
 ) -> io::Result<Capture> {
+    collect_inner(label, profile, false, proc_root, status)
+}
+
+/// As [`collect`], plus boot ID and centisecond uptime samples at both window
+/// edges. Only this explicit entry point reads the boot ID.
+pub fn collect_with_boot(
+    label: &str,
+    profile: Profile,
+    proc_root: &Path,
+    status: &Path,
+) -> io::Result<Capture> {
+    collect_inner(label, profile, true, proc_root, status)
+}
+
+fn collect_inner(
+    label: &str,
+    profile: Profile,
+    bind: bool,
+    proc_root: &Path,
+    status: &Path,
+) -> io::Result<Capture> {
     validate_label(label)?;
     let mut recorder = Recorder {
         start: Instant::now(),
         entries: Vec::with_capacity(profile.sources().len()),
     };
     let started_unix_ms = evidence::timestamp();
+    let started_boot = bind.then(|| boot_sample(proc_root));
     let memory = recorder.observe("/proc/meminfo", || linux::memory(proc_root));
     let uptime = recorder.observe("/proc/uptime", || linux::uptime(proc_root));
     let kernel = recorder.observe("/proc/sys/kernel/osrelease", || {
@@ -241,6 +333,10 @@ pub fn collect(
             records.push(pressure_record(&observation));
         }
     }
+    let boot = match started_boot {
+        Some(started) => bind_boot(started, boot_sample(proc_root)),
+        None => BootBinding::NotRequested,
+    };
     let monotonic_window_ms = recorder.start.elapsed().as_millis();
     let ended_unix_ms = evidence::timestamp();
     Ok(Capture {
@@ -254,6 +350,7 @@ pub fn collect(
             ended_unix_ms,
             entries: recorder.entries,
         },
+        boot,
     })
 }
 
@@ -364,7 +461,59 @@ mod tests {
                     },
                 ],
             },
+            boot: BootBinding::NotRequested,
         }
+    }
+
+    #[test]
+    fn boot_binding_requires_two_agreeing_edge_samples() {
+        let id = || "e740207d-b13a-48dd-8e9d-595a950d6930".to_owned();
+        let other = || "00000000-0000-0000-0000-000000000000".to_owned();
+        let missing = || Err(io::Error::new(io::ErrorKind::NotFound, "private"));
+        let denied = || Err(io::Error::new(io::ErrorKind::PermissionDenied, "private"));
+        assert_eq!(
+            bind_boot(Ok((id(), 10)), Ok((id(), 12))),
+            BootBinding::Observed {
+                boot_id: id(),
+                started_uptime_cs: 10,
+                ended_uptime_cs: 12,
+            }
+        );
+        assert!(matches!(
+            bind_boot(Ok((id(), 10)), Ok((id(), 10))),
+            BootBinding::Observed { .. }
+        ));
+        for (started, ended, reason) in [
+            (
+                Ok((id(), 10)),
+                Ok((other(), 12)),
+                FailureReason::MalformedData,
+            ),
+            (Ok((id(), 12)), Ok((id(), 10)), FailureReason::MalformedData),
+            (missing(), Ok((id(), 12)), FailureReason::NotFound),
+            (Ok((id(), 10)), denied(), FailureReason::PermissionDenied),
+            // The first failure decides the reason.
+            (denied(), missing(), FailureReason::PermissionDenied),
+        ] {
+            assert_eq!(bind_boot(started, ended), BootBinding::Unavailable(reason));
+        }
+    }
+
+    #[test]
+    fn boot_binding_renders_each_shape_without_partial_values() {
+        let mut capture = fixed_capture();
+        capture.boot = BootBinding::Observed {
+            boot_id: "e740207d-b13a-48dd-8e9d-595a950d6930".to_owned(),
+            started_uptime_cs: 1_102_523,
+            ended_uptime_cs: 1_102_524,
+        };
+        assert!(capture.to_timeline_json().contains(r#""boot":{"binding":"observed","boot_id":"e740207d-b13a-48dd-8e9d-595a950d6930","started_uptime_cs":1102523,"ended_uptime_cs":1102524}}"#));
+        capture.boot = BootBinding::Unavailable(FailureReason::NotFound);
+        let json = capture.to_timeline_json();
+        assert!(json.contains(r#""boot":{"binding":"unavailable","failure_reason":"not_found"}}"#));
+        assert!(!json.contains("boot_id"));
+        // capture-v1 never carries the boot binding.
+        assert!(!capture.to_json().contains("boot"));
     }
 
     #[test]

@@ -50,7 +50,7 @@ cat <<'EOF'
 .SH NAME
 mira \- read-only Linux evidence CLI
 .SH SYNOPSIS
-.B mira capture LABEL [--pressure] [--timeline]
+.B mira capture LABEL [--pressure] [--timeline] [--bind-boot]
 .br
 .B mira inspect [--json]
 .br
@@ -76,6 +76,8 @@ No remediation or background service.
 Inspect/service: 0 for available evidence, 1 for unavailable evidence, 2 for usage.
 Capture: 0 all sources available, 1 complete with unavailable sources, 2 usage.
 --timeline emits capture-v2 with a monotonic collection window and per-source offsets.
+--bind-boot (implies --timeline) also records the boot ID and boot-relative
+window; the boot ID links captures from one boot and is never read otherwise.
 Investigations (service-active, memory-headroom, pressure-ceiling, package-installed, uptime-minimum and kernel-release): 0 satisfied, 1 not satisfied, 3 indeterminate, 2 rejected invocation.
 .PP
 service-active and service-active/v1 emit the unchanged v1 report.

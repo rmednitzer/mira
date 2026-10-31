@@ -57,10 +57,11 @@ pub fn parse_meminfo(text: &str) -> io::Result<MemoryEvidence> {
     })
 }
 
-/// Validate both nonnegative decimal-second fields, retaining whole uptime seconds.
-/// Idle is summed across CPUs, so it may exceed uptime. Avoid floating point.
-pub fn parse_uptime(text: &str) -> io::Result<u64> {
-    fn seconds(field: &str) -> io::Result<u64> {
+/// Validate both nonnegative decimal-second fields and return the uptime field's
+/// whole seconds and fraction digits. Idle is summed across CPUs, so it may
+/// exceed uptime. No floating point is used.
+fn uptime_field(text: &str) -> io::Result<(u64, &str)> {
+    fn seconds(field: &str) -> io::Result<(u64, &str)> {
         let (whole, fraction) = match field.split_once('.') {
             Some((whole, fraction)) if !fraction.is_empty() => (whole, fraction),
             Some(_) => {
@@ -77,9 +78,10 @@ pub fn parse_uptime(text: &str) -> io::Result<u64> {
                 "invalid seconds",
             ));
         }
-        whole
+        let whole = whole
             .parse::<u64>()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "seconds overflow"))
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "seconds overflow"))?;
+        Ok((whole, fraction))
     }
 
     let mut fields = text.split_ascii_whitespace();
@@ -100,6 +102,24 @@ pub fn parse_uptime(text: &str) -> io::Result<u64> {
     Ok(uptime)
 }
 
+/// Whole uptime seconds; the fraction is validated and discarded.
+pub fn parse_uptime(text: &str) -> io::Result<u64> {
+    uptime_field(text).map(|(whole, _)| whole)
+}
+
+/// Uptime in centiseconds, the kernel's printed resolution. Extra fraction
+/// digits are truncated, never rounded up; overflow is invalid data.
+pub fn parse_uptime_centiseconds(text: &str) -> io::Result<u64> {
+    let (whole, fraction) = uptime_field(text)?;
+    let digits = fraction.as_bytes();
+    let tenths = digits.first().map_or(0, |digit| u64::from(digit - b'0'));
+    let hundredths = digits.get(1).map_or(0, |digit| u64::from(digit - b'0'));
+    whole
+        .checked_mul(100)
+        .and_then(|value| value.checked_add(tenths * 10 + hundredths))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "uptime overflow"))
+}
+
 /// Read one source so callers can timestamp it before starting the next.
 /// The procfs root is caller-selected for fixtures, not a confinement boundary.
 pub fn memory(proc_root: &Path) -> io::Result<MemoryEvidence> {
@@ -108,6 +128,10 @@ pub fn memory(proc_root: &Path) -> io::Result<MemoryEvidence> {
 }
 pub fn uptime(proc_root: &Path) -> io::Result<u64> {
     read_bounded(&proc_root.join("uptime"), MAX_SOURCE_BYTES).and_then(|value| parse_uptime(&value))
+}
+pub fn uptime_centiseconds(proc_root: &Path) -> io::Result<u64> {
+    read_bounded(&proc_root.join("uptime"), MAX_SOURCE_BYTES)
+        .and_then(|value| parse_uptime_centiseconds(&value))
 }
 
 #[cfg(test)]
@@ -177,6 +201,40 @@ mod tests {
     #[test]
     fn rejects_uptime_overflow() {
         assert!(parse_uptime("18446744073709551616.5 0.0").is_err());
+    }
+    #[test]
+    fn centiseconds_keep_kernel_resolution_and_truncate() {
+        for (text, expected) in [
+            ("42.50 0.00\n", 4_250),
+            ("42.5 0.00\n", 4_250),
+            ("42 0", 4_200),
+            ("42.509 0.00", 4_250),
+            ("0.01 0.00", 1),
+            ("0 0", 0),
+            ("184467440737095516.15 0.00", u64::MAX),
+        ] {
+            assert_eq!(parse_uptime_centiseconds(text).unwrap(), expected, "{text}");
+        }
+        for invalid in [
+            "184467440737095516.16 0.00",
+            "184467440737095517 0.00",
+            "42.50",
+            "42.50 x",
+            "-1.00 0.00",
+            "1e3 0.00",
+            "42.50\u{00a0}0.00",
+        ] {
+            assert_eq!(
+                parse_uptime_centiseconds(invalid).unwrap_err().kind(),
+                io::ErrorKind::InvalidData,
+                "{invalid:?}"
+            );
+        }
+        // Whole-second parsing is unaffected by the centisecond limit.
+        assert_eq!(
+            parse_uptime("184467440737095517 0.00").unwrap(),
+            184_467_440_737_095_517
+        );
     }
     #[test]
     fn rejects_missing_uptime() {

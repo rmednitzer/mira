@@ -118,6 +118,32 @@ pub fn parse_kernel_release(input: &str) -> io::Result<String> {
     Ok(trimmed.to_owned())
 }
 
+/// The kernel's random per-boot UUID: 36 lowercase hex-and-hyphen characters
+/// in 8-4-4-4-12 groups and one trailing newline, nothing else.
+pub fn parse_boot_id(input: &str) -> io::Result<String> {
+    let id = input
+        .strip_suffix('\n')
+        .filter(|id| id.len() == 36)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid boot ID"))?;
+    let valid = id.bytes().enumerate().all(|(index, byte)| match index {
+        8 | 13 | 18 | 23 => byte == b'-',
+        _ => byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte),
+    });
+    if !valid {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid boot ID",
+        ));
+    }
+    Ok(id.to_owned())
+}
+
+/// Bounded to 64 bytes; read only when the operator requests boot binding.
+pub fn boot_id(proc_root: &Path) -> io::Result<String> {
+    read_bounded(&proc_root.join("sys/kernel/random/boot_id"), 64)
+        .and_then(|value| parse_boot_id(&value))
+}
+
 /// Closed resource selection; no caller-supplied path or trigger writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PressureResource {
@@ -224,6 +250,32 @@ mod tests {
         assert_eq!(parse_kernel_release(" 6.17.0\t\n").unwrap(), "6.17.0");
         for invalid in ["6.17.0\u{00a0}\n", "\u{2003}6.17.0\n", "6.17.0\u{0085}"] {
             assert!(parse_kernel_release(invalid).is_err(), "{invalid:?}");
+        }
+    }
+    #[test]
+    fn boot_ids_are_strict_lowercase_uuids_with_one_newline() {
+        let id = "e740207d-b13a-48dd-8e9d-595a950d6930";
+        assert_eq!(parse_boot_id(&format!("{id}\n")).unwrap(), id);
+        for invalid in [
+            id.to_owned(),
+            format!("{id}\n\n"),
+            format!("{id} \n"),
+            format!(" {id}\n"),
+            format!("{}\n", id.to_uppercase()),
+            format!("{}\n", id.replace('-', "")),
+            format!("{}\n", id.replacen('-', "_", 1)),
+            format!("{}g\n", &id[..35]),
+            format!("{}\n", &id[..35]),
+            format!("{id}0\n"),
+            format!("{}\u{00e9}\n", &id[..34]),
+            "\n".to_owned(),
+            String::new(),
+        ] {
+            assert_eq!(
+                parse_boot_id(&invalid).unwrap_err().kind(),
+                io::ErrorKind::InvalidData,
+                "{invalid:?}"
+            );
         }
     }
     #[test]

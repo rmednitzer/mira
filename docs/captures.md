@@ -7,7 +7,7 @@ mira capture incident-a --pressure > pressure.json
 
 The command emits one capture-v1 JSON document. `host/v1` requests memory, uptime, kernel release, CPU PSI and installed package count. Explicit `--pressure` selects `host-pressure/v1`, adding memory and IO PSI. The question is whether the kernel reports resource stalls alongside resource availability, not whether an application is healthy or why it failed. Only avg10 is projected in basis points; unprojected PSI fields are not interpreted. CPU full is undefined at system scope and its compatibility value is not an operational CPU-full metric. There are no threshold writes, trigger registration, discovery, model calls or background monitoring.
 
-LABEL must contain 1–64 ASCII letters, digits, dots, underscores or hyphens and must begin with a letter or digit. The leading-character rule rejects option-shaped input such as `mira capture --pressure`, which would otherwise become the label of a `host/v1` capture without pressure sources; such invocations exit 2 without collection. Capture-v1 admission is unchanged, so documents produced earlier with other leading characters remain valid for comparison. It is an operator assertion for comparison scope, never authenticated host identity. Avoid secrets or identifying infrastructure names in public captures. No hostname, machine ID or boot ID is collected automatically. The opt-in [collection timeline](#collection-timeline-capture-v2) adds no identifier. A planned `--bind-boot` ([ADR 0010](adr/0010-capture-timeline-and-freshness.md), not implemented) will collect the boot ID only on explicit request.
+LABEL must contain 1–64 ASCII letters, digits, dots, underscores or hyphens and must begin with a letter or digit. The leading-character rule rejects option-shaped input such as `mira capture --pressure`, which would otherwise become the label of a `host/v1` capture without pressure sources; such invocations exit 2 without collection. Capture-v1 admission is unchanged, so documents produced earlier with other leading characters remain valid for comparison. It is an operator assertion for comparison scope, never authenticated host identity. Avoid secrets or identifying infrastructure names in public captures. No hostname, machine ID or boot ID is collected automatically. The opt-in [collection timeline](#collection-timeline-capture-v2) adds no identifier. Only an explicit [`--bind-boot`](#boot-binding) collects the boot ID.
 
 ## Contract
 
@@ -31,10 +31,28 @@ Options follow the label in this fixed order; `--timeline --pressure` and repeat
 - `collection.monotonic_window_ms`: from one monotonic reference taken before the first acquisition to the end of the last one. Every source was read within this window, as measured by MIRA's own clock (CLOCK_MONOTONIC on Linux, which excludes suspend).
 - `collection.started_unix_ms` / `ended_unix_ms`: unverified wall-clock readings at the window edges, or null.
 - `collection.wall_clock`: `consistent` when both edges exist, the end is not before the start, and the wall delta is within max(50 ms, 1% of the window, rounded down) of the monotonic window. `stepped_or_suspended` otherwise, and `unknown` when an edge is missing. It describes only the capture window, not the clock's accuracy.
-- `collection.boot`: `{"binding": "not_requested"}`. The schema already defines the `observed` and `unavailable` shapes of the planned boot binding.
+- `collection.boot`: `{"binding": "not_requested"}` unless [`--bind-boot`](#boot-binding) is given.
 - `timeline`: one entry per record, in record order, with the acquisition's `offset_ms` from the reference and its `elapsed_ms` (equal to the record's). Offsets never decrease, and offset plus elapsed never exceeds the window.
 
 Milliseconds are truncated, so a 0 ms window means everything was read within the same millisecond. Record-level `freshness: "unknown"` stays: the window bounds skew within one capture, not how old the capture is now. The [capture-v2 schema](../schemas/capture-v2.schema.json) checks structure; consumers must also check timeline/record agreement, offset bounds and the wall-clock rule, as `scripts/capture_contract.py` does.
+
+## Boot binding
+
+```sh
+mira capture incident-a --bind-boot
+mira capture incident-a --pressure --timeline --bind-boot
+```
+
+`--bind-boot` implies `--timeline`; the option order stays `[--pressure] [--timeline] [--bind-boot]`. At both edges of the monotonic window, MIRA reads `/proc/sys/kernel/random/boot_id` (at most 64 bytes; exactly a lowercase 8-4-4-4-12 hex UUID and one newline) and `/proc/uptime` at centisecond resolution. These samples are inside the window but are not timeline entries. The uptime record keeps whole seconds, unchanged.
+
+```json
+"boot": {"binding": "observed", "boot_id": "e740207d-b13a-48dd-8e9d-595a950d6930",
+         "started_uptime_cs": 1341874, "ended_uptime_cs": 1341875}
+```
+
+`observed` requires both samples to succeed, equal boot IDs and `ended >= started`. Anything else is `{"binding": "unavailable", "failure_reason": ...}` with no partial values. A missing file gives `not_found`, a malformed or changed ID or reversed uptime gives `malformed_data`, and an oversized file gives `limit_exceeded`. A failed binding never fails the capture or changes `all_available`.
+
+The boot ID is a kernel-generated random identifier that changes on every boot. It links every capture from one boot, and containers on one host usually share it, so it can link tenants. Treat it like a label: keep it out of public captures unless linkability is intended. It is never collected without `--bind-boot`, never appears in capture-v1 or investigation reports, and does not authenticate a host. procfs can be emulated or altered by a privileged party, so the binding is what the kernel interface reported.
 
 ## Compare
 
