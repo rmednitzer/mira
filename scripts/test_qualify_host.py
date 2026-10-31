@@ -160,6 +160,19 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result, ('passed', None, []))
         self.assertFalse(self.child_alive())
 
+    def test_container_without_boot_id_qualifies(self):
+        capture = next(groups for name, _, groups in VALIDATORS if name == 'capture')
+        plan = {group: {'codes': [0]} for group in capture}
+        # signed-compare still runs and reports the unavailable boot binding it requested.
+        plan['signed-compare']['gaps'] = [{'source': '/proc/sys/kernel/random/boot_id',
+                                           'reason': 'not_found'}]
+        receipt = self.run_plan(plan, groups=capture, host_class='container',
+                                capabilities={**ALL, 'boot_id': False})
+        checks = self.by_group(receipt)
+        self.assertEqual(checks['live-boot']['reason'], 'no_boot_id')
+        self.assertEqual(checks['signed-compare']['result'], 'passed')
+        self.assertEqual(findings(receipt), [])
+
     def test_container_journal_denial_qualifies(self):
         journal = next(groups for name, _, groups in VALIDATORS if name == 'journal')
         plan = {group: {'codes': [0]} for group in journal}

@@ -55,7 +55,7 @@ A group can pass while MIRA correctly reported a source as unavailable. Through 
 | `physical-amd64` | yes | none | none |
 | `physical-arm64` | yes | none | none |
 | `vm` | yes | none | none |
-| `container` | yes | `no_systemd`, `no_journal_access`, `no_ssh_keygen`, `no_boot_id` | `systemd/system`, `journal/system` |
+| `container` | yes | `no_systemd`, `no_journal_access`, `no_ssh_keygen`, `no_boot_id` | `systemd/system`, `journal/system`, `/proc/sys/kernel/random/boot_id` |
 | `restricted-user` | yes | `no_journal_access` (only `live-counts`) | `journal/system`, which is also **required** |
 | `wsl` | no | none | none |
 | `ci-runner` | no | none | none |
