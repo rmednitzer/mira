@@ -136,3 +136,22 @@ PSI, kernel-release and dpkg Status regressions apply the same rule: Unicode sep
 [ADR 0009](adr/0009-explicit-uptime-and-kernel-release.md) defines an explicit minimum uptime and an exact expected release, with no defaults and no version ordering. `tests/host_investigations.rs` writes synthetic procfs files. Uptime cases sit just below, at and above the minimum (59.99, 60.00 and 60.01 seconds against 60), at fractional values around one second, and at both sides of u64::MAX. Malformed, single-field, signed, exponent, Unicode-separated, overflowing, oversized and missing uptime stays indeterminate even against a minimum of 1. Kernel cases cover exact matches with and without a trailing newline, case, prefix, suffix and adjacent-number differences, and malformed, oversized and empty sources. CLI cases refuse nine malformed minimums, nine malformed or option-shaped releases (including `--json`, which earlier development showed could otherwise become the criterion) and eight malformed invocations with exit 2 and no stdout. Unit tests freeze one report of each template byte for byte.
 
 `tests/fixtures/uptime-minimum-v1.json` holds six valid and sixteen invalid reports, and `tests/fixtures/kernel-release-v1.json` five valid and seventeen invalid. `scripts/validate_host_investigations.py` requires fourteen invalid reports of each to fail the schema, and exactly two (uptime) and three (kernel) to pass it but fail the independent value checks. Its live check reads `/proc/uptime` and `/proc/sys/kernel/osrelease` directly before and after MIRA. MIRA's uptime must fall within the direct whole-second interval, and the minimum equal to the first direct sample must be met. The expected release equal to the direct sample must match, and the same release with a suffix must differ. Changed kernel endpoints or reversed uptime make the comparison inconclusive and fail it.
+
+## Journal events acceptance
+
+[ADR 0012](adr/0012-bounded-journal-events.md) defines text-free, producer-bound journal evidence. Unit tests in `src/journal.rs` cover:
+- class and boot parsing, and the exact sentinel and class argv (bare `--boot`, never offset 0)
+- the producer bindings, and the absence of the backtrace ID
+- the journal-wide unit validator for every unit type, and export parsing that keeps only allowed fields and rejects binary framing
+- producer binding against decoys and defects, the window rule (one valid entry is conclusive; a full window of decoys is unavailable), the unit cap, and the coredump cgroup and unit-field mapping
+- the full outcome precedence, and the crash-handler check
+
+`tests/journal_process.rs` (test-support) drives the real CLI through a native `journalctl` fixture. The fixture writes the expected argv out independently and exits 64 on any deviation. The tests cover:
+- every outcome row, for both boots, including the handler change between boots
+- recorded units and times, and the absence of message text, PIDs, cursors and the boot ID
+- call order, proving that `-b -1` never runs when the running boot is not visible
+- mixed file permissions (an unreadable archive gives `journal_access_incomplete`; recorded events stay conclusive), and no system journal files at all
+- decoy, wrong-origin, backtrace, missing-field, binary, invalid-unit, oversized, failing and missing-tool cases
+- eleven refused invocations that never start `journalctl`
+
+`scripts/validate_journal_investigation.py` checks the fixtures with its own outcome-precedence implementation. Its live check derives visibility, file access, per-class producer-valid counts and the crash handler with its own `journalctl` queries and parser, before and after MIRA. It requires agreement and fails as inconclusive if the journal changed in between.

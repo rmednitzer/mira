@@ -1,0 +1,2443 @@
+{
+  "valid": [
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "events_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "db.service",
+              "home.mount"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 10,
+            "last_monotonic_us": 20,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "session-3.scope",
+              "systemd-fsck@dev-disk-by\\x2duuid-1.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 30,
+            "last_monotonic_us": 31,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "recorded",
+            "count": 1,
+            "truncated": false,
+            "units": [
+              "nginx.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 40,
+            "last_monotonic_us": 40,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "unit-failure"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "journal_not_visible",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": false,
+        "journal_access_complete": null,
+        "crash_handler": null,
+        "classes": [
+          {
+            "class": "unit-failure",
+            "status": "not_queried",
+            "count": null,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "previous_retained"
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "crash_handler_unknown_for_boot",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "previous_retained",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "unknown_for_boot",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "unit-failure"
+        ],
+        "boot": "previous_retained"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "events_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "previous_retained",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": null,
+        "classes": [
+          {
+            "class": "unit-failure",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "session-3.scope",
+              "systemd-fsck@dev-disk-by\\x2duuid-1.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 30,
+            "last_monotonic_us": 31,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "unit-failure"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": null,
+        "classes": [
+          {
+            "class": "unit-failure",
+            "status": "unavailable",
+            "count": null,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": "limit_exceeded"
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "unit-failure"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "events_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": null,
+        "classes": [
+          {
+            "class": "unit-failure",
+            "status": "recorded",
+            "count": 1,
+            "truncated": true,
+            "units": [
+              "real.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": 6,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "evidence_unavailable",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": null,
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "unavailable",
+            "count": null,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": "backend_failed"
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "crash_handler_not_systemd_coredump",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "other",
+        "classes": [
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "unit-failure"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "journal_access_incomplete",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": false,
+        "crash_handler": null,
+        "classes": [
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v2",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/procfs",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ],
+        "message": "private log text"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null,
+            "pid": 1234
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "events_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "bad unit"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 10,
+            "last_monotonic_us": 20,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "session-3.scope",
+              "systemd-fsck@dev-disk-by\\x2duuid-1.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 30,
+            "last_monotonic_us": 31,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "recorded",
+            "count": 1,
+            "truncated": false,
+            "units": [
+              "nginx.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 40,
+            "last_monotonic_us": 40,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "events_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "x.notaunit"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 10,
+            "last_monotonic_us": 20,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "session-3.scope",
+              "systemd-fsck@dev-disk-by\\x2duuid-1.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 30,
+            "last_monotonic_us": 31,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "recorded",
+            "count": 1,
+            "truncated": false,
+            "units": [
+              "nginx.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 40,
+            "last_monotonic_us": 40,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "events_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "u0.service",
+              "u1.service",
+              "u2.service",
+              "u3.service",
+              "u4.service",
+              "u5.service",
+              "u6.service",
+              "u7.service",
+              "u8.service",
+              "u9.service",
+              "u10.service",
+              "u11.service",
+              "u12.service",
+              "u13.service",
+              "u14.service",
+              "u15.service",
+              "u16.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 10,
+            "last_monotonic_us": 20,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "session-3.scope",
+              "systemd-fsck@dev-disk-by\\x2duuid-1.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 30,
+            "last_monotonic_us": 31,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "recorded",
+            "count": 1,
+            "truncated": false,
+            "units": [
+              "nginx.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 40,
+            "last_monotonic_us": 40,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "oom-kill"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "watchdog"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "previous"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "events_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "recorded",
+            "count": 0,
+            "truncated": false,
+            "units": [
+              "db.service",
+              "home.mount"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 10,
+            "last_monotonic_us": 20,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "session-3.scope",
+              "systemd-fsck@dev-disk-by\\x2duuid-1.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 30,
+            "last_monotonic_us": 31,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "recorded",
+            "count": 1,
+            "truncated": false,
+            "units": [
+              "nginx.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 40,
+            "last_monotonic_us": 40,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "events_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "recorded",
+            "count": 1001,
+            "truncated": false,
+            "units": [
+              "db.service",
+              "home.mount"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 10,
+            "last_monotonic_us": 20,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "session-3.scope",
+              "systemd-fsck@dev-disk-by\\x2duuid-1.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 30,
+            "last_monotonic_us": 31,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "recorded",
+            "count": 1,
+            "truncated": false,
+            "units": [
+              "nginx.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 40,
+            "last_monotonic_us": 40,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [
+              "a.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "unavailable",
+            "count": null,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "apport",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/user",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ],
+        "boot_id": "e740207d"
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "previous_retained",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "unit-failure"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": false,
+        "crash_handler": null,
+        "classes": [
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "other",
+        "classes": [
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "previous_retained"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "previous_retained",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "unknown_for_boot",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "not_satisfied",
+        "reason": "events_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure",
+          "coredump"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "journal_not_visible",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "db.service",
+              "home.mount"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 10,
+            "last_monotonic_us": 20,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "recorded",
+            "count": 2,
+            "truncated": false,
+            "units": [
+              "session-3.scope",
+              "systemd-fsck@dev-disk-by\\x2duuid-1.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 30,
+            "last_monotonic_us": 31,
+            "failure_reason": null
+          },
+          {
+            "class": "coredump",
+            "status": "recorded",
+            "count": 1,
+            "truncated": false,
+            "units": [
+              "nginx.service"
+            ],
+            "units_truncated": false,
+            "first_monotonic_us": 40,
+            "last_monotonic_us": 40,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "unit-failure"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": false,
+        "journal_access_complete": null,
+        "crash_handler": null,
+        "classes": [
+          {
+            "class": "unit-failure",
+            "status": "not_queried",
+            "count": null,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": null,
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "unavailable",
+            "count": null,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": "backend_failed"
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "oom-kill",
+          "unit-failure"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "satisfied",
+        "reason": "none_recorded",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": true,
+        "journal_access_complete": true,
+        "crash_handler": "systemd-coredump",
+        "classes": [
+          {
+            "class": "oom-kill",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          },
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "investigation_version": 1,
+      "template": "journal-events/v1",
+      "scope": "local/journal",
+      "expectation": {
+        "absent": [
+          "unit-failure"
+        ],
+        "boot": "current"
+      },
+      "assessment": {
+        "outcome": "indeterminate",
+        "reason": "journal_not_visible",
+        "evidence_ref": "#/evidence"
+      },
+      "application_health": "not_assessed",
+      "root_cause": "not_assessed",
+      "evidence": {
+        "source": "journal/system",
+        "boot": "current",
+        "recorded_unix_ms": 1700000000000,
+        "clock_trust": "unverified",
+        "freshness": "unknown",
+        "elapsed_ms": 3,
+        "journal_visible": false,
+        "journal_access_complete": null,
+        "crash_handler": null,
+        "classes": [
+          {
+            "class": "unit-failure",
+            "status": "none",
+            "count": 0,
+            "truncated": false,
+            "units": [],
+            "units_truncated": false,
+            "first_monotonic_us": null,
+            "last_monotonic_us": null,
+            "failure_reason": null
+          }
+        ]
+      }
+    }
+  ],
+  "semantic_only": 11
+}

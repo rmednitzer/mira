@@ -120,10 +120,137 @@ fn ssh_keygen(mode: &str) -> io::Result<()> {
     }
 }
 
+/// Stand-in for `journalctl`. Expected argv is written out independently of
+/// MIRA's code; any deviation exits 64. Outputs are export-format entries.
+fn journalctl(mode: &str) -> io::Result<()> {
+    const BASE: [&str; 3] = ["--system", "--no-pager", "--quiet"];
+    const SENTINEL: [&str; 6] = ["-n", "1", "-o", "export", "--output-fields=_PID", "_PID=1"];
+    const FIELDS: &str = "--output-fields=MESSAGE_ID,UNIT,USER_UNIT,COREDUMP_UNIT,COREDUMP_USER_UNIT,_UID,_EXE,_SYSTEMD_UNIT,_SYSTEMD_SLICE";
+    const MANAGER: [&str; 2] = ["_UID=0", "_EXE=/usr/lib/systemd/systemd"];
+    let args: Vec<String> = env::args().skip(1).collect();
+    if let Some(record) = env::var_os("MIRA_FIXTURE_RECORD") {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(record)?;
+        writeln!(file, "{}", args.join(" "))?;
+    }
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    if args.len() < 4 || args[..3] != BASE {
+        process::exit(64);
+    }
+    let (previous, rest) = match &args[3..] {
+        ["--boot", rest @ ..] => (false, rest),
+        ["-b", "-1", rest @ ..] => (true, rest),
+        _ => process::exit(64),
+    };
+    let mut out = io::stdout().lock();
+    if rest == SENTINEL {
+        let visible = match mode {
+            "journal-no-current" => previous,
+            "journal-no-previous" if previous => process::exit(1),
+            _ => true,
+        };
+        if visible {
+            out.write_all(b"__CURSOR=s=1\n__MONOTONIC_TIMESTAMP=1\n_BOOT_ID=e7\n_PID=1\n\n")?;
+        }
+        return out.flush();
+    }
+    let ["-o", "export", fields, "-n", "1001", matches @ ..] = rest else {
+        process::exit(64);
+    };
+    if *fields != FIELDS {
+        process::exit(64);
+    }
+    let group = |ids: &[&str], binding: &[&str]| -> Vec<String> {
+        let mut args = Vec::new();
+        for (index, id) in ids.iter().enumerate() {
+            if index > 0 {
+                args.push("+".to_owned());
+            }
+            args.push(format!("MESSAGE_ID={id}"));
+            args.extend(binding.iter().map(|arg| (*arg).to_owned()));
+        }
+        args
+    };
+    let oom = group(
+        &[
+            "fe6faa94e7774663a0da52717891d8ef",
+            "d989611b15e44c9dbf31e3c81256e4ed",
+        ],
+        &MANAGER,
+    );
+    let failure = group(
+        &[
+            "d9b373ed55a64feb8242e02dbe79a49c",
+            "be02cf6855d2428ba40df7e9d022f03d",
+        ],
+        &MANAGER,
+    );
+    let core = group(
+        &["fc2e22bc6ee647b6b90729ab34a250b1"],
+        &[
+            "_EXE=/usr/lib/systemd/systemd-coredump",
+            r"_SYSTEMD_SLICE=system-systemd\x2dcoredump.slice",
+        ],
+    );
+    let matches: Vec<String> = matches.iter().map(|arg| (*arg).to_owned()).collect();
+    let class = if matches == oom {
+        "oom"
+    } else if matches == failure {
+        "failure"
+    } else if matches == core {
+        "core"
+    } else {
+        process::exit(64)
+    };
+    let manager_entry = |id: &str, unit: &str, producer: &str, time: u32| {
+        format!(
+            "__CURSOR=s=1\n__MONOTONIC_TIMESTAMP={time}\nMESSAGE_ID={id}\nUNIT={unit}\n{producer}\n_EXE=/usr/lib/systemd/systemd\n_SYSTEMD_UNIT=init.scope\n\n"
+        )
+    };
+    let core_entry = |unit: &str, cgroup: &str, time: u32| {
+        format!(
+            "__MONOTONIC_TIMESTAMP={time}\nMESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1\nCOREDUMP_UNIT={unit}\n_UID=989\n_EXE=/usr/lib/systemd/systemd-coredump\n_SYSTEMD_UNIT={cgroup}\n_SYSTEMD_SLICE=system-systemd\\x2dcoredump.slice\n\n"
+        )
+    };
+    let id = if class == "oom" {
+        "fe6faa94e7774663a0da52717891d8ef"
+    } else {
+        "d9b373ed55a64feb8242e02dbe79a49c"
+    };
+    let body = match (mode, class) {
+        ("journal-events", "oom") => manager_entry(id, "db.service", "_UID=0", 20) + &manager_entry(id, "home.mount", "_UID=0", 10),
+        ("journal-events", "failure") => {
+            manager_entry(id, "session-3.scope", "_UID=0", 30) + &manager_entry(id, r"systemd-fsck@dev-disk-by\x2duuid-1.service", "_UID=0", 31)
+        }
+        ("journal-events", "core") => core_entry("nginx.service", "systemd-coredump@0-77-0.service", 40),
+        ("journal-decoys-full", "failure") => manager_entry(id, "forged.service", "_UID=33", 5).repeat(1001),
+        ("journal-decoys-one-valid", "failure") => {
+            manager_entry(id, "forged.service", "_UID=33", 5).repeat(1000) + &manager_entry(id, "real.service", "_UID=0", 6)
+        }
+        ("journal-wrong-origin", "failure") => manager_entry(id, "forged.service", "_UID=1000", 5),
+        ("journal-backtrace", "core") => core_entry("victim.service", "attacker.service", 5),
+        ("journal-missing-field", "failure") => {
+            "__MONOTONIC_TIMESTAMP=5\nMESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c\n_UID=0\nUNIT=a.service\n\n".to_owned()
+        }
+        ("journal-binary", "failure") => "MESSAGE\n\u{5}\0\0\0\0\0\0\0hello\n\n".to_owned(),
+        ("journal-bad-unit", "failure") => manager_entry(id, "x.notaunit", "_UID=0", 5),
+        ("journal-oversized", "failure") => "X".repeat(3 * 1024 * 1024),
+        ("journal-fail", "failure") => process::exit(1),
+        _ => String::new(),
+    };
+    out.write_all(body.as_bytes())?;
+    out.flush()
+}
+
 fn main() -> io::Result<()> {
     let mode = env::var("MIRA_PROCESS_FIXTURE_MODE").unwrap_or_default();
     if mode.starts_with("keygen-") {
         return ssh_keygen(&mode);
+    }
+    if mode.starts_with("journal-") {
+        return journalctl(&mode);
     }
     if mode == "keep-stdout" {
         // The parent exits first. Keep the inherited stdout open for a finite
