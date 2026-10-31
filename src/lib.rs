@@ -9,6 +9,7 @@ pub mod experiment;
 pub mod host_extra;
 pub mod host_investigation;
 pub mod investigation;
+pub mod journal;
 pub mod linux;
 pub mod memory_investigation;
 pub mod package_investigation;

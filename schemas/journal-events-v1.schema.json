@@ -1,0 +1,544 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/journal-events-v1.schema.json",
+  "title": "MIRA bounded journal-events investigation v1",
+  "$comment": "Structure, closed vocabularies, unit syntax and reason/outcome only. The outcome precedence, class order and boot agreement are semantic checks outside JSON Schema (ADR 0012). The report never carries message text, PIDs, command lines, executable names, cursors or boot IDs; additionalProperties enforces that. Patterns start with (?!.*\\n) because Python re lets $ match before a final newline.",
+  "type": "object",
+  "required": [
+    "investigation_version",
+    "template",
+    "scope",
+    "expectation",
+    "assessment",
+    "application_health",
+    "root_cause",
+    "evidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "investigation_version": {
+      "const": 1
+    },
+    "template": {
+      "const": "journal-events/v1"
+    },
+    "scope": {
+      "const": "local/journal"
+    },
+    "expectation": {
+      "type": "object",
+      "required": [
+        "absent",
+        "boot"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "absent": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "oom-kill",
+              "unit-failure",
+              "coredump"
+            ]
+          }
+        },
+        "boot": {
+          "enum": [
+            "current",
+            "previous_retained"
+          ]
+        }
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "required": [
+        "outcome",
+        "reason",
+        "evidence_ref"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "enum": [
+            "satisfied",
+            "not_satisfied",
+            "indeterminate"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "none_recorded",
+            "events_recorded",
+            "journal_not_visible",
+            "journal_access_incomplete",
+            "crash_handler_not_systemd_coredump",
+            "crash_handler_unknown_for_boot",
+            "evidence_unavailable"
+          ]
+        },
+        "evidence_ref": {
+          "const": "#/evidence"
+        }
+      }
+    },
+    "application_health": {
+      "const": "not_assessed"
+    },
+    "root_cause": {
+      "const": "not_assessed"
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "source",
+        "boot",
+        "recorded_unix_ms",
+        "clock_trust",
+        "freshness",
+        "elapsed_ms",
+        "journal_visible",
+        "journal_access_complete",
+        "crash_handler",
+        "classes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "const": "journal/system"
+        },
+        "boot": {
+          "enum": [
+            "current",
+            "previous_retained"
+          ]
+        },
+        "recorded_unix_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 340282366920938463463374607431768211455
+        },
+        "clock_trust": {
+          "const": "unverified"
+        },
+        "freshness": {
+          "const": "unknown"
+        },
+        "elapsed_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 340282366920938463463374607431768211455
+        },
+        "journal_visible": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "journal_access_complete": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "crash_handler": {
+          "enum": [
+            null,
+            "systemd-coredump",
+            "other",
+            "unknown_for_boot"
+          ]
+        },
+        "classes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": [
+              "class",
+              "status",
+              "count",
+              "truncated",
+              "units",
+              "units_truncated",
+              "first_monotonic_us",
+              "last_monotonic_us",
+              "failure_reason"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "class": {
+                "enum": [
+                  "oom-kill",
+                  "unit-failure",
+                  "coredump"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "recorded",
+                  "none",
+                  "unavailable",
+                  "not_queried"
+                ]
+              },
+              "count": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "units": {
+                "type": "array",
+                "maxItems": 16,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "maxLength": 255,
+                  "pattern": "^(?!.*\\n)(?!-)(?:[A-Za-z0-9:_.@-]|\\\\x[0-9A-Fa-f]{2})+\\.(?:service|socket|device|mount|automount|swap|target|path|timer|slice|scope)$"
+                }
+              },
+              "units_truncated": {
+                "type": "boolean"
+              },
+              "first_monotonic_us": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 18446744073709551615
+              },
+              "last_monotonic_us": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 18446744073709551615
+              },
+              "failure_reason": {
+                "enum": [
+                  null,
+                  "timeout",
+                  "limit_exceeded",
+                  "malformed_data",
+                  "permission_denied",
+                  "not_found",
+                  "backend_failed",
+                  "io_failure"
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "recorded"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "last_monotonic_us": {
+                      "type": "integer"
+                    },
+                    "failure_reason": {
+                      "type": "null"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "none"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "count": {
+                      "const": 0
+                    },
+                    "truncated": {
+                      "const": false
+                    },
+                    "units": {
+                      "maxItems": 0
+                    },
+                    "units_truncated": {
+                      "const": false
+                    },
+                    "first_monotonic_us": {
+                      "type": "null"
+                    },
+                    "last_monotonic_us": {
+                      "type": "null"
+                    },
+                    "failure_reason": {
+                      "type": "null"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "unavailable"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "count": {
+                      "type": "null"
+                    },
+                    "units": {
+                      "maxItems": 0
+                    },
+                    "failure_reason": {
+                      "enum": [
+                        "timeout",
+                        "limit_exceeded",
+                        "malformed_data",
+                        "permission_denied",
+                        "not_found",
+                        "backend_failed",
+                        "io_failure"
+                      ]
+                    },
+                    "first_monotonic_us": {
+                      "type": "null"
+                    },
+                    "last_monotonic_us": {
+                      "type": "null"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "not_queried"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "count": {
+                      "type": "null"
+                    },
+                    "units": {
+                      "maxItems": 0
+                    },
+                    "failure_reason": {
+                      "type": "null"
+                    },
+                    "first_monotonic_us": {
+                      "type": "null"
+                    },
+                    "last_monotonic_us": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "none_recorded"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "satisfied"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "events_recorded"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "not_satisfied"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "journal_not_visible"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "indeterminate"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "journal_access_incomplete"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "indeterminate"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "crash_handler_not_systemd_coredump"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "indeterminate"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "crash_handler_unknown_for_boot"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "indeterminate"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "reason": {
+                "const": "evidence_unavailable"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment": {
+            "properties": {
+              "outcome": {
+                "const": "indeterminate"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

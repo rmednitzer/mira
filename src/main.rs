@@ -141,6 +141,30 @@ fn main() {
             eprintln!("Usage: {KERNEL_USAGE}");
             std::process::exit(2);
         }
+        [_, command, template, absent, classes, rest @ ..]
+            if command == "investigate" && template == "journal-events" && absent == "--absent" =>
+        {
+            let (boot, json) = match rest {
+                [] => (Some("current"), false),
+                [format] if format == "--json" => (Some("current"), true),
+                [option, boot] if option == "--boot" => (Some(boot.as_str()), false),
+                [option, boot, format] if option == "--boot" && format == "--json" => {
+                    (Some(boot.as_str()), true)
+                }
+                _ => (None, false),
+            };
+            match boot {
+                Some(boot) => journal_events(classes, boot, json),
+                None => {
+                    eprintln!("Usage: {JOURNAL_USAGE}");
+                    std::process::exit(2);
+                }
+            }
+        }
+        [_, command, template, ..] if command == "investigate" && template == "journal-events" => {
+            eprintln!("Usage: {JOURNAL_USAGE}");
+            std::process::exit(2);
+        }
         [_, command, label, options @ ..] if command == "capture" => {
             match CaptureOptions::parse(options) {
                 Some(options) => capture(label, options),
@@ -293,9 +317,75 @@ fn verify(file: &str, signature: &str, allowed: &str, principal: &str, revocatio
 
 fn usage() -> ! {
     eprintln!(
-        "Usage: mira capture LABEL [--pressure] [--timeline] [--bind-boot] [--signature PATH --sign-with KEY] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE} | {VERIFY_USAGE} (investigate --json also accepts --signature PATH --sign-with KEY)"
+        "Usage: mira capture LABEL [--pressure] [--timeline] [--bind-boot] [--signature PATH --sign-with KEY] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE} | {JOURNAL_USAGE} | {VERIFY_USAGE} (investigate --json also accepts --signature PATH --sign-with KEY)"
     );
     std::process::exit(2);
+}
+
+const JOURNAL_USAGE: &str = "mira investigate journal-events --absent oom-kill|unit-failure|coredump[,...] [--boot current|previous-retained] [--json]";
+
+fn journal_events(classes: &str, boot: &str, json: bool) {
+    use mira::journal::{self, Boot, ClassEvidence};
+    // Both criteria are refused before journalctl runs.
+    let (Ok(classes), Some(boot)) = (journal::parse_classes(classes), Boot::from_name(boot)) else {
+        eprintln!(
+            "MIRA: --absent takes oom-kill, unit-failure and coredump without repetition; --boot is current or previous-retained"
+        );
+        std::process::exit(2);
+    };
+    let report = journal::investigate(&classes, boot, &journal::Paths::for_cli());
+    let reason = report.reason();
+    if json {
+        emit_json(&report.to_json());
+    } else {
+        let collection = report.collection();
+        println!(
+            "MIRA journal-events/v1 scope=local/journal boot={}",
+            collection.boot.report_name()
+        );
+        println!(
+            "outcome={} reason={}",
+            reason.outcome().as_str(),
+            reason.as_str()
+        );
+        println!(
+            "journal_visible={} journal_access_complete={}",
+            collection
+                .visible
+                .map_or("unknown", |v| if v { "yes" } else { "no" }),
+            collection
+                .access_complete
+                .map_or("unknown", |v| if v { "yes" } else { "no" })
+        );
+        for (class, evidence) in &collection.classes {
+            match evidence {
+                ClassEvidence::Recorded {
+                    count,
+                    truncated,
+                    units,
+                    ..
+                } => println!(
+                    "{}: {}{count} recorded units={}",
+                    class.name(),
+                    if *truncated { "at least " } else { "" },
+                    if units.is_empty() {
+                        "none".to_owned()
+                    } else {
+                        units.join(",")
+                    }
+                ),
+                ClassEvidence::None => println!("{}: none recorded", class.name()),
+                ClassEvidence::Unavailable(reason) => {
+                    println!("{}: unavailable ({reason})", class.name());
+                }
+                ClassEvidence::NotQueried => println!("{}: not queried", class.name()),
+            }
+        }
+        println!(
+            "Catalog events only, no message text; none recorded does not mean none occurred."
+        );
+    }
+    std::process::exit(reason.outcome().exit_code());
 }
 
 const UPTIME_USAGE: &str = "mira investigate uptime-minimum --min-uptime-seconds N [--json]";

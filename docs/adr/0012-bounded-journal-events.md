@@ -1,6 +1,6 @@
 # ADR 0012: bounded journal event evidence
 
-Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day, through seven review rounds). Design only; no code, schema or CLI change is made by this record. Implementation follows in a separate PR with its own review.
+Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day, through seven review rounds). **Implemented**; user guide: [journal investigation](../journal-investigation.md).
 
 ## Context
 

@@ -210,7 +210,7 @@ fn check(document: &[u8], kind: Kind, signature_path: &Path) -> Result<(), Failu
 /// O_NONBLOCK on Linux x86_64 and aarch64, MIRA's only supported targets.
 /// std exposes no portable constant and `unsafe`/libc are not admitted.
 #[cfg(target_os = "linux")]
-const O_NONBLOCK: i32 = 0o4000;
+pub(crate) const O_NONBLOCK: i32 = 0o4000;
 
 /// Read a document once, bounded, without requiring UTF-8. The open is
 /// nonblocking and the opened descriptor must be a regular file, so a FIFO or
