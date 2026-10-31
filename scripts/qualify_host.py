@@ -256,6 +256,7 @@ def qualify(host_class, receipt_path, binary, *, root=ROOT, validators=VALIDATOR
     if not executable(binary):
         raise Refused('binary is not an executable file')
     commit, tree = source_identity(root)
+    digest = hashlib.sha256(binary.read_bytes()).hexdigest()
     started_ms, started = time.time_ns() // 1_000_000, time.monotonic_ns()
     capabilities, platform = probe()
     checks = []
@@ -272,6 +273,11 @@ def qualify(host_class, receipt_path, binary, *, root=ROOT, validators=VALIDATOR
             checks.append({'validator': name, 'group': group, 'result': result, 'reason': reason,
                            'duration_ms': (time.monotonic_ns() - began) // 1_000_000,
                            'observation_gaps': gaps})
+    # The receipt must describe the bytes and source that were actually tested.
+    if hashlib.sha256(binary.read_bytes()).hexdigest() != digest:
+        raise Refused('binary changed during qualification')
+    if source_identity(root) != (commit, tree):
+        raise Refused('source checkout changed during qualification')
     try:
         binary.resolve().relative_to((root / 'target').resolve())
         origin = 'checkout-build'
@@ -279,7 +285,7 @@ def qualify(host_class, receipt_path, binary, *, root=ROOT, validators=VALIDATOR
         origin = 'installed'
     receipt = {
         'receipt_version': 1, 'source_commit': commit, 'source_tree': tree,
-        'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
+        'binary_sha256': digest,
         'binary_origin': origin, 'host_class': host_class, **platform,
         'capabilities': capabilities, 'checks': checks, 'started_unix_ms': started_ms,
         'duration_ms': (time.monotonic_ns() - started) // 1_000_000,

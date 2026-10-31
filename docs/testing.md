@@ -168,14 +168,14 @@ All eight validators share the contract in `scripts/validation_status.py`:
 
 Without `--only` each validator runs as before.
 
-`scripts/test_validation_contract.py` forces a mid-comparison change and a schema-valid wrong value into each live comparison: procfs, systemd evidence, the service investigation, dpkg, uptime and kernel release, journal visibility and counts, and boot binding. Each forced change exits 4 and each wrong value exits 1, with only the fixed exception type printed. It also checks that a default journal run without a visible journal still passes, while an explicit `--only live-counts` exits 4, and that a source unavailable only in a later timeline capture is still reported as a gap.
+`scripts/test_validation_contract.py` forces a mid-comparison change and a schema-valid wrong value into each live comparison: procfs, systemd evidence, the service investigation, dpkg, uptime and kernel release, journal visibility and counts, and boot binding. Each forced change exits 4 and each wrong value exits 1, with only the fixed exception type printed. It also checks that a default journal run without a visible journal still passes, while an explicit `--only live-counts` exits 4, and that a source unavailable only in a later timeline capture, or a journal class unavailable only during `live-visibility`, is still reported as a gap.
 
 `scripts/test_qualify_host.py` drives the runner with fake validators and probes. It covers:
 - passed, failed, inconclusive retried at most twice, runner errors (unknown exit, missing or malformed gap report, timeout), and every not-applicable reason without executing the group
 - a validator's descendants killed with its process group on timeout, after a normal exit and when the runner is interrupted
 - a container whose journal denial (`journal/system` gap, `live-counts` not applicable) qualifies without findings
 - a container without a boot ID, where `live-boot` is not applicable and `signed-compare` reports the boot-ID gap, qualifies without findings
-- refusal as root, of an existing receipt, of a non-executable binary, and of an untracked or modified file
+- refusal as root, of an existing receipt, of a non-executable binary, of an untracked or modified file, and of a binary replaced during the run
 - the denial path: with `journalctl` present and no visible sentinel, `live-visibility` runs and `live-counts` alone is `no_journal_access`; a `restricted-user` receipt without the confirmed `journal/system` gap is a finding
 - a missing `ssh-keygen` gating only `signed-compare`
 - a real pressure validator run against a wrapper binary with one unreadable PSI file, which passes and reports the gap; the runner flags it as unexpected for `physical-amd64`

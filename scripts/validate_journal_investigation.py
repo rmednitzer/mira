@@ -227,6 +227,10 @@ def investigate(absent, flag):
     report = strict_json(result.stdout)
     if result.returncode != check_report(report):
         raise ValueError('journal exit mismatch')
+    # Every accepted report contributes its unavailable classes, whichever group ran it.
+    for entry in report['evidence']['classes']:
+        if entry['status'] == 'unavailable':
+            note_gap(f"journal/{entry['class']}", entry['failure_reason'])
     return report['evidence']
 
 
@@ -268,8 +272,6 @@ def check_live_counts():
         if evidence['journal_visible'] is not True:
             raise ValueError('MIRA journal visibility disagrees with direct journalctl')
         for entry in evidence['classes']:
-            if entry['status'] == 'unavailable':
-                note_gap(f"journal/{entry['class']}", entry['failure_reason'])
             if (entry['count'] or 0) != before[entry['class']]:
                 raise ValueError('MIRA journal counts disagree with direct journalctl')
 

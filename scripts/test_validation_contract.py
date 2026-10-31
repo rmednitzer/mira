@@ -168,5 +168,28 @@ class ContractTests(unittest.TestCase):
         self.assertIn({'source': '/proc/uptime', 'reason': 'permission_denied'}, gaps)
 
 
+    def test_every_journal_invocation_reports_unavailable_classes(self):
+        cases = json.loads((ROOT / 'tests/fixtures/journal-events-v1.json').read_text())
+        report = cases['valid'][0]
+        unavailable = cases['valid'][5]['evidence']['classes'][0]
+        report['evidence']['classes'][1] = unavailable
+        report['assessment'].update(outcome='indeterminate', reason='evidence_unavailable')
+        journal.check_report(report)
+
+        def mira(argv, **options):
+            return subprocess.CompletedProcess(argv, 3, json.dumps(report).encode(), b'')
+        direct = {'visible': True, 'access': True, 'handler': 'systemd-coredump'}
+        with tempfile.TemporaryDirectory() as temp:
+            status = Path(temp) / 'status.json'
+            os.environ['MIRA_QUALIFICATION_STATUS'] = str(status)
+            self.assertEqual(self.status(
+                journal, 'live-visibility', CONFIGURATIONS=journal.CONFIGURATIONS[:1],
+                independent_visibility=lambda absent, boot: direct,
+                subprocess=type('Run', (), {'run': staticmethod(mira)})), 0)
+            gaps = json.loads(status.read_text())['observation_gaps']
+        self.assertEqual(gaps, [{'source': 'journal/unit-failure',
+                                 'reason': unavailable['failure_reason']}])
+
+
 if __name__ == '__main__':
     unittest.main()

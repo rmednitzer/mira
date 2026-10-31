@@ -15,7 +15,7 @@ cargo build --locked
 
 To qualify an installed or packaged binary instead of the checkout build, add `--binary /usr/bin/mira`. The receipt records `binary_origin` as `checkout-build` for a binary under this checkout's `target/` directory and `installed` for any other binary, including an extracted package. It also records the binary's SHA-256.
 
-The runner refuses to run as root, refuses an existing receipt path and refuses a checkout with any modified or untracked file, so the receipt binds a known source commit and tree. It installs nothing, changes no configuration and writes only the receipt. It discards validator output; only exit statuses, fixed reasons and fixed gap identifiers reach the receipt.
+The runner refuses to run as root, refuses an existing receipt path and refuses a checkout with any modified or untracked file, so the receipt binds a known source commit and tree. It hashes the binary before the first group and refuses to write a receipt if the binary or the checkout changed by the end. It installs nothing, changes no configuration and writes only the receipt. It discards validator output; only exit statuses, fixed reasons and fixed gap identifiers reach the receipt.
 
 Exit status: 0 when every group passed or was expectedly not applicable with only expected gaps; 1 when any group failed; 2 on refusal or a usage error; 3 when nothing failed but the receipt deviates from the class's expected gaps. The runner prints one fixed line per group and per deviation.
 

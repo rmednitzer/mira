@@ -218,6 +218,31 @@ class RunnerTests(unittest.TestCase):
             qualify('vm', self.receipt, self.binary, root=self.root, probe=lambda: 1 / 0)
         self.assertEqual(self.receipt.read_text(), 'existing')
 
+    def test_binary_replaced_during_qualification_is_refused(self):
+        def replace():
+            self.binary.write_text('#!/bin/sh\nexit 1\n')
+            return dict(ALL), PLATFORM
+        (self.temp / 'plan.json').write_text(json.dumps({'one': {'codes': [0]}}))
+        env = {'FAKE_PLAN': str(self.temp / 'plan.json'), 'FAKE_STATE': str(self.state)}
+        with patch.dict(os.environ, env), self.assertRaises(Refused) as refusal:
+            qualify('vm', self.receipt, self.binary, root=self.root,
+                    validators=(('evidence', 'fake.py', {'one': ()}),), probe=replace, timeout=30)
+        self.assertEqual(str(refusal.exception), 'binary changed during qualification')
+        self.assertFalse(self.receipt.exists())
+
+    def test_source_changed_during_qualification_is_refused(self):
+        def change():
+            (self.root / 'scripts/fake.py').write_text(FAKE + '\n')
+            return dict(ALL), PLATFORM
+        (self.temp / 'plan.json').write_text(json.dumps({'one': {'codes': [0]}}))
+        env = {'FAKE_PLAN': str(self.temp / 'plan.json'), 'FAKE_STATE': str(self.state)}
+        with patch.dict(os.environ, env), self.assertRaises(Refused) as refusal:
+            qualify('vm', self.receipt, self.binary, root=self.root,
+                    validators=(('evidence', 'fake.py', {'one': ()}),), probe=change, timeout=30)
+        # A modified file is caught by the final cleanliness check; a new commit by identity.
+        self.assertEqual(str(refusal.exception), 'source checkout is not clean')
+        self.assertFalse(self.receipt.exists())
+
     def test_root_refusal_through_main(self):
         diagnostic = io.StringIO()
         with patch('qualify_host.os.geteuid', return_value=0), \
