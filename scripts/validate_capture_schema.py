@@ -2,6 +2,7 @@
 """Independent capture schema, exact-source-set and CLI checks."""
 import copy
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,42 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, ValidationError
 from capture_contract import ROOT, VALIDATOR_V2, check_capture
 from compare_evidence import load, compare, strict_json
+
+
+def direct_boot():
+    """Independent bounded reads of the boot ID and centisecond uptime."""
+    boot_id = Path('/proc/sys/kernel/random/boot_id').read_bytes()[:65].decode('ascii')
+    if re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\n', boot_id) is None:
+        raise ValueError('invalid direct boot ID sample')
+    uptime = Path('/proc/uptime').read_bytes()[:65537].decode('ascii')
+    match = re.fullmatch(r'([0-9]+)\.([0-9]{2})[ \t]+[0-9]+\.[0-9]{2}\n', uptime)
+    if match is None:
+        raise ValueError('invalid direct uptime sample')
+    return boot_id.removesuffix('\n'), int(match.group(1)) * 100 + int(match.group(2))
+
+
+def check_live_boot():
+    shapes = []
+    for options in (['--bind-boot'], ['--timeline', '--bind-boot'],
+                    ['--pressure', '--timeline', '--bind-boot']):
+        before_id, before_cs = direct_boot()
+        result = subprocess.run([str(ROOT / 'target/debug/mira'), 'capture', 'synthetic-ci',
+                                 *options], capture_output=True, timeout=15, check=False)
+        after_id, after_cs = direct_boot()
+        document = check_capture(strict_json(result.stdout))
+        if result.returncode != (0 if document['all_available'] else 1):
+            raise ValueError('boot-bound capture exit mismatch')
+        boot = document['collection']['boot']
+        if before_id != after_id or before_cs > after_cs:
+            raise ValueError('live boot changed during validation; comparison inconclusive')
+        if boot['binding'] != 'observed' or boot['boot_id'] != before_id:
+            raise ValueError('MIRA boot ID disagrees with direct procfs')
+        if not before_cs <= boot['started_uptime_cs'] <= boot['ended_uptime_cs'] <= after_cs:
+            raise ValueError('MIRA boot window outside direct uptime interval')
+        shapes.append((document['capture_version'], sorted(boot), len(document['timeline'])))
+    # --bind-boot implies --timeline: both spellings give the same shape.
+    if shapes[0] != shapes[1]:
+        raise ValueError('--bind-boot does not imply --timeline')
 
 
 def main():
@@ -111,17 +148,19 @@ def main():
             mixed = compare(load(path, validator), current)
             if mixed['comparison_version'] != 2 or len(mixed['changes']) != len(document['records']):
                 raise ValueError('mixed capture versions not compared by value')
-        for arguments in (['--timeline', '--pressure'], ['--timeline', '--timeline']):
+        check_live_boot()
+        for arguments in (['--timeline', '--pressure'], ['--timeline', '--timeline'],
+                          ['--bind-boot', '--timeline'], ['--bind-boot', '--pressure']):
             result = subprocess.run([str(ROOT / 'target/debug/mira'), 'capture', 'synthetic-ci',
                                      *arguments], capture_output=True, timeout=5, check=False)
             if result.returncode != 2 or result.stdout:
                 raise ValueError('malformed timeline invocation dispatched')
-        for label in ('', 'private path', 'x' * 65, 'x\x1b', '--pressure', '--timeline', '-', '.hidden'):
+        for label in ('', 'private path', 'x' * 65, 'x\x1b', '--pressure', '--timeline', '--bind-boot', '-', '.hidden'):
             result = subprocess.run([str(ROOT / 'target/debug/mira'), 'capture', label],
                                     capture_output=True, timeout=5, check=False)
             if result.returncode != 2 or result.stdout:
                 raise ValueError('invalid capture label dispatched')
-    print('capture-v1/v2 and evidence-v2 schema, semantic fixtures, timeline and CLI validated')
+    print('capture-v1/v2 and evidence-v2 schema, semantic fixtures, timeline, live boot binding and CLI validated')
 
 
 if __name__ == '__main__':

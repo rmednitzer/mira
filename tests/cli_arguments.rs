@@ -46,6 +46,7 @@ fn option_shaped_capture_labels_are_rejected_before_collection() {
     for label in [
         "--pressure",
         "--timeline",
+        "--bind-boot",
         "--json",
         "-",
         "-x",
@@ -58,6 +59,8 @@ fn option_shaped_capture_labels_are_rejected_before_collection() {
             vec!["capture", label, "--pressure"],
             vec!["capture", label, "--timeline"],
             vec!["capture", label, "--pressure", "--timeline"],
+            vec!["capture", label, "--bind-boot"],
+            vec!["capture", label, "--pressure", "--timeline", "--bind-boot"],
         ] {
             let output = Command::new(env!("CARGO_BIN_EXE_mira"))
                 .args(&arguments)
@@ -89,6 +92,21 @@ fn timeline_is_opt_in_and_order_fixed() {
             vec!["capture", "cli-fixture", "--pressure", "--timeline"],
             2,
         ),
+        (vec!["capture", "cli-fixture", "--bind-boot"], 2),
+        (
+            vec!["capture", "cli-fixture", "--timeline", "--bind-boot"],
+            2,
+        ),
+        (
+            vec![
+                "capture",
+                "cli-fixture",
+                "--pressure",
+                "--timeline",
+                "--bind-boot",
+            ],
+            2,
+        ),
     ] {
         let output = run(&arguments);
         assert!(matches!(output.status.code(), Some(0 | 1)), "{arguments:?}");
@@ -102,12 +120,22 @@ fn timeline_is_opt_in_and_order_fixed() {
             version == 2,
             "{arguments:?}"
         );
+        // The boot ID is read only when --bind-boot is given.
+        let bound = arguments.contains(&"--bind-boot");
+        assert_eq!(
+            stdout.contains("\"binding\":\"not_requested\""),
+            version == 2 && !bound,
+            "{arguments:?}"
+        );
     }
     for arguments in [
         vec!["capture", "cli-fixture", "--timeline", "--pressure"],
         vec!["capture", "cli-fixture", "--timeline", "--timeline"],
         vec!["capture", "cli-fixture", "--pressure", "--pressure"],
         vec!["capture", "cli-fixture", "--timeline", "--json"],
+        vec!["capture", "cli-fixture", "--bind-boot", "--timeline"],
+        vec!["capture", "cli-fixture", "--bind-boot", "--pressure"],
+        vec!["capture", "cli-fixture", "--bind-boot", "--bind-boot"],
     ] {
         let output = run(&arguments);
         assert_eq!(output.status.code(), Some(2), "{arguments:?}");

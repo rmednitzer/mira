@@ -125,17 +125,11 @@ fn main() {
             eprintln!("Usage: {KERNEL_USAGE}");
             std::process::exit(2);
         }
-        [_, command, label] if command == "capture" => capture(label, false, false),
-        [_, command, label, option] if command == "capture" && option == "--pressure" => {
-            capture(label, true, false)
-        }
-        [_, command, label, option] if command == "capture" && option == "--timeline" => {
-            capture(label, false, true)
-        }
-        [_, command, label, pressure, timeline]
-            if command == "capture" && pressure == "--pressure" && timeline == "--timeline" =>
-        {
-            capture(label, true, true)
+        [_, command, label, options @ ..] if command == "capture" => {
+            match CaptureOptions::parse(options) {
+                Some(options) => capture(label, options),
+                None => usage(),
+            }
         }
         [_, command] if command == "inspect" => inspect(),
         [_, command, format] if command == "inspect" && format == "--json" => inspect_json(),
@@ -150,13 +144,15 @@ fn main() {
         [_, command, unit, format] if command == "service" && format == "--json" => {
             service_json(unit)
         }
-        _ => {
-            eprintln!(
-                "Usage: mira capture LABEL [--pressure] [--timeline] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE}"
-            );
-            std::process::exit(2);
-        }
+        _ => usage(),
     }
+}
+
+fn usage() -> ! {
+    eprintln!(
+        "Usage: mira capture LABEL [--pressure] [--timeline] [--bind-boot] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE}"
+    );
+    std::process::exit(2);
 }
 
 const UPTIME_USAGE: &str = "mira investigate uptime-minimum --min-uptime-seconds N [--json]";
@@ -548,14 +544,48 @@ fn investigate(name: &str, unit: &str, json: bool) {
     std::process::exit(report.assessment().outcome().exit_code());
 }
 
-fn capture(label: &str, pressure: bool, timeline: bool) {
+/// Capture options in their one documented order: [--pressure] [--timeline] [--bind-boot].
+/// `--bind-boot` implies `--timeline` (ADR 0010).
+struct CaptureOptions {
+    pressure: bool,
+    timeline: bool,
+    bind_boot: bool,
+}
+
+impl CaptureOptions {
+    fn parse(options: &[String]) -> Option<Self> {
+        let mut rest = options;
+        let mut take = |flag: &str| match rest.split_first() {
+            Some((first, tail)) if first == flag => {
+                rest = tail;
+                true
+            }
+            _ => false,
+        };
+        let pressure = take("--pressure");
+        let timeline = take("--timeline");
+        let bind_boot = take("--bind-boot");
+        rest.is_empty().then_some(Self {
+            pressure,
+            timeline: timeline || bind_boot,
+            bind_boot,
+        })
+    }
+}
+
+fn capture(label: &str, options: CaptureOptions) {
     use mira::capture::{self, Profile};
-    let profile = if pressure {
+    let profile = if options.pressure {
         Profile::HostPressure
     } else {
         Profile::Host
     };
-    let report = match capture::collect(
+    let collect = if options.bind_boot {
+        capture::collect_with_boot
+    } else {
+        capture::collect
+    };
+    let report = match collect(
         label,
         profile,
         std::path::Path::new("/proc"),
@@ -568,7 +598,7 @@ fn capture(label: &str, pressure: bool, timeline: bool) {
         }
     };
     // capture-v1 stays the default; --timeline opts into capture-v2 (ADR 0010).
-    if timeline {
+    if options.timeline {
         println!("{}", report.to_timeline_json());
     } else {
         println!("{}", report.to_json());

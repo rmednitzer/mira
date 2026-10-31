@@ -1,6 +1,6 @@
 # ADR 0010: capture timeline, boot binding and freshness vocabulary
 
-Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day). Implementation is staged, each stage with its own review. **Stage 1 (timeline) is implemented**; stage 2 (boot binding) and stage 3 (comparison-v3) are not. Until stage 3, the comparator accepts capture-v2 for value comparison only (comparison-v2, timing unknown).
+Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day). Implementation is staged, each stage with its own review. **Stages 1 (timeline) and 2 (boot binding) are implemented**; stage 3 (comparison-v3) is not. Until stage 3, the comparator accepts capture-v2 for value comparison only (comparison-v2, timing unknown). The boot samples are taken inside the monotonic window, at its edges, and are not timeline entries.
 
 ## Context
 
