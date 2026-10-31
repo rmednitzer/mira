@@ -57,4 +57,18 @@ A key listed for that principal signed these exact bytes, for this document kind
 
 A compromised host can sign anything. A valid old document stays valid, because signatures add no freshness. The private key must be usable by the capturing user and protected from everyone else; a copied key signs as its principal. Principal names and key fingerprints identify operators or hosts, so treat `allowed_signers` and verification output accordingly.
 
-Verifying captures inside the offline comparator is a later stage of ADR 0011; until then, verify each capture with `mira verify` before comparing.
+## Verify while comparing
+
+`mira verify` reports on the bytes it read at that moment. Anything that later reopens the path, including the comparator, may read different bytes if someone else can write to that path. So **do not verify and then compare as two steps.** Let the comparator verify the exact bytes it compares:
+
+```sh
+.schema-venv/bin/python scripts/compare_evidence.py before.json after.json \
+  --allowed-signers allowed_signers --principal host-a [--revocations revoked.krl]
+```
+
+- It reads each capture once and verifies those in-memory bytes against `INPUT.sig` (for example `before.json.sig`) under the capture namespace, with the same fixed `ssh-keygen` command and no shell. Then it parses and compares the same bytes. Replacing a file after the check cannot change what is compared.
+- Both captures must verify as the given principal. The output gains `integrity: {"status": "verified", "principal": ..., "namespace": ...}`.
+- Any failure exits 2 with no output: a missing signature, a refusal, a missing `ssh-keygen`, an invalid principal, or a non-capture input such as legacy JSONL. `--allowed-signers` and `--principal` must be given together.
+- Without these options, comparison output is unchanged and carries no integrity claim.
+
+Keep captures in a directory only you can write to anyway: verification makes forgery detectable, but it cannot protect files you later open with other tools.

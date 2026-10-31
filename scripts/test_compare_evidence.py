@@ -9,7 +9,8 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 from jsonschema import Draft202012Validator
-from compare_evidence import compare, load, strict_json, MAX_BYTES, MAX_DEPTH
+import compare_evidence
+from compare_evidence import compare, load, strict_json, MAX_BYTES, MAX_DEPTH, Trust
 from capture_contract import check_capture
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -323,6 +324,116 @@ class TimelineComparisonTests(unittest.TestCase):
                 refused = run("--max-window-ms", bad)
                 self.assertEqual(refused.returncode, 2, bad)
                 self.assertEqual(refused.stdout, "", bad)
+
+
+INVESTIGATION_NAMESPACE = "mira-investigation-v1@rmednitzer.github.io"
+
+
+def canonical(document):
+    # MIRA writes compact JSON; the leading bytes select the namespace.
+    return (json.dumps(document, separators=(",", ":")) + "\n").encode()
+
+
+class SignedComparisonTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.temp.name)
+        self.key = self.dir / "host-a"
+        subprocess.run(["/usr/bin/ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "host-a",
+                        "-f", str(self.key)], check=True, stdin=subprocess.DEVNULL)
+        public = " ".join(self.key.with_suffix(".pub").read_text().split()[:2])
+        self.signers = self.dir / "signers"
+        self.signers.write_text(f'host-a namespaces="{compare_evidence.CAPTURE_NAMESPACE},'
+                                f'{INVESTIGATION_NAMESPACE}" {public}\n')
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def write_signed(self, name, document, namespace=compare_evidence.CAPTURE_NAMESPACE):
+        path = self.dir / name
+        data = canonical(document)
+        path.write_bytes(data)
+        result = subprocess.run(["/usr/bin/ssh-keygen", "-Y", "sign", "-f", str(self.key),
+                                 "-n", namespace], input=data, capture_output=True, check=True)
+        Path(f"{path}.sig").write_bytes(result.stdout)
+        return path
+
+    def trust(self, principal="host-a"):
+        return Trust(self.signers, principal)
+
+    def test_verified_captures_report_integrity(self):
+        before = self.write_signed("before.json", timeline_capture(bound(1, 2)))
+        after = self.write_signed("after.json", timeline_capture(bound(3, 4)))
+        result = compare(load(before, VALIDATOR, self.trust()), load(after, VALIDATOR, self.trust()))
+        self.assertEqual(result["integrity"], {"status": "verified", "principal": "host-a",
+                                               "namespace": compare_evidence.CAPTURE_NAMESPACE})
+        unsigned = compare(load(before, VALIDATOR), load(after, VALIDATOR))
+        self.assertNotIn("integrity", unsigned)
+        with self.assertRaisesRegex(ValueError, "one principal"):
+            compare(load(before, VALIDATOR, self.trust()), load(after, VALIDATOR))
+
+    def test_every_mismatch_refuses_comparison(self):
+        good = self.write_signed("good.json", timeline_capture(bound(1, 2)))
+        modified = self.dir / "modified.json"
+        data = bytearray(good.read_bytes())
+        data[-3] ^= 1
+        modified.write_bytes(bytes(data))
+        Path(f"{modified}.sig").write_bytes(Path(f"{good}.sig").read_bytes())
+        unsigned = self.dir / "unsigned.json"
+        unsigned.write_bytes(good.read_bytes())
+        foreign = self.write_signed("foreign.json", timeline_capture(bound(1, 2)),
+                                    INVESTIGATION_NAMESPACE)
+        for path, trust, message in [
+            (modified, self.trust(), "not verified"),
+            (unsigned, self.trust(), "not verified"),
+            (foreign, self.trust(), "not verified"),
+            (good, self.trust("host-b"), "not verified"),
+        ]:
+            with self.assertRaisesRegex(ValueError, message):
+                load(path, VALIDATOR, trust)
+        legacy = self.dir / "legacy.jsonl"
+        legacy.write_text(json.dumps(record()) + "\n")
+        with self.assertRaisesRegex(ValueError, "only captures"):
+            load(legacy, VALIDATOR, self.trust())
+        for principal in ("", "-I", "host a", "host;id"):
+            with self.assertRaisesRegex(ValueError, "invalid principal"):
+                Trust(self.signers, principal)
+        with patch.object(compare_evidence, "SSH_KEYGEN", str(self.dir / "absent")):
+            with self.assertRaisesRegex(ValueError, "unavailable"):
+                load(good, VALIDATOR, self.trust())
+
+    def test_replacing_the_file_after_verification_cannot_change_what_is_compared(self):
+        path = self.write_signed("capture.json", timeline_capture(bound(1, 2)))
+        forged = timeline_capture(bound(1, 2))
+        forged["capture_scope"] = "forged-scope"
+        real_run = subprocess.run
+
+        def verify_then_swap(argv, **kwargs):
+            result = real_run(argv, **kwargs)
+            # The attacker wins the race: the path now holds forged evidence.
+            path.write_bytes(canonical(forged))
+            return result
+
+        with patch.object(compare_evidence.subprocess, "run", verify_then_swap):
+            admitted = load(path, VALIDATOR, self.trust())
+        self.assertEqual(admitted.scope, TIMELINE["capture_scope"])
+        self.assertEqual(path.read_bytes(), canonical(forged))
+
+    def test_cli_requires_both_trust_options_and_fails_closed(self):
+        before = self.write_signed("before.json", timeline_capture(bound(1, 2)))
+        after = self.write_signed("after.json", timeline_capture(bound(3, 4)))
+        script = str(ROOT / "scripts/compare_evidence.py")
+        run = lambda *extra: subprocess.run([sys.executable, script, str(before), str(after), *extra],
+                                            capture_output=True, text=True, timeout=30, check=False)
+        ok = run("--allowed-signers", str(self.signers), "--principal", "host-a")
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertEqual(json.loads(ok.stdout)["integrity"]["principal"], "host-a")
+        for extra in (["--principal", "host-a"], ["--allowed-signers", str(self.signers)],
+                      ["--revocations", "krl"],
+                      ["--allowed-signers", str(self.signers), "--principal", "host-b"]):
+            refused = run(*extra)
+            self.assertEqual(refused.returncode, 2, extra)
+            self.assertEqual(refused.stdout, "", extra)
 
 
 if __name__ == "__main__":

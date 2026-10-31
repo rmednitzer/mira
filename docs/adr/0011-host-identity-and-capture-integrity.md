@@ -1,6 +1,6 @@
 # ADR 0011: host identity and document integrity
 
-Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day). **Stage 1 (CLI signing and `mira verify`) is implemented**; stage 2 (comparator verification) is not. User guide: [signatures](../signatures.md).
+Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day). **Stages 1 (CLI signing and `mira verify`) and 2 (comparator verification) are implemented.** Stage 2 was brought forward into the stage 1 PR: a security review showed that running `mira verify` and then the comparator lets anyone with write access to the path swap the file between the two steps. The comparator now verifies the exact bytes it compares. User guide: [signatures](../signatures.md).
 
 ## Context
 

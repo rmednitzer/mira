@@ -2,6 +2,8 @@
 """Offline, bounded comparison of two MIRA evidence JSONL captures."""
 import argparse
 import json
+import re
+import subprocess
 import sys
 import stat
 import os
@@ -16,16 +18,51 @@ MAX_RECORDS = 128
 
 
 MAX_DEPTH = 32
+# ADR 0011: the capture namespace and tool are fixed; there is no PATH lookup.
+SSH_KEYGEN = "/usr/bin/ssh-keygen"
+CAPTURE_NAMESPACE = "mira-capture-v1@rmednitzer.github.io"
+PRINCIPAL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}")
 
 
 class Capture(dict):
     """Legacy records have no completion or scope binding."""
-    def __init__(self, records=(), *, scope=None, profile=None, version=None, collection=None):
+    def __init__(self, records=(), *, scope=None, profile=None, version=None, collection=None,
+                 principal=None):
         super().__init__(records)
         self.scope = scope
         self.profile = profile
         self.version = version
         self.collection = collection
+        self.principal = principal
+
+
+class Trust:
+    """Operator trust inputs for verifying captures before they are compared."""
+    def __init__(self, allowed_signers, principal, revocations=None):
+        if PRINCIPAL.fullmatch(principal) is None:
+            raise ValueError("invalid principal")
+        self.allowed_signers = Path(allowed_signers)
+        self.principal = principal
+        self.revocations = None if revocations is None else Path(revocations)
+
+
+def verify_signature(data, path, trust):
+    """Verify the in-memory capture bytes against PATH.sig.
+
+    The same bytes are then parsed and compared, so replacing the file after
+    this check cannot change what is compared. Only the exit status is trusted.
+    """
+    argv = [SSH_KEYGEN, "-Y", "verify", "-f", str(trust.allowed_signers),
+            "-I", trust.principal, "-n", CAPTURE_NAMESPACE,
+            "-s", f"{path}.sig"]
+    if trust.revocations is not None:
+        argv += ["-r", str(trust.revocations)]
+    try:
+        result = subprocess.run(argv, input=data, capture_output=True, timeout=10, check=False)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ValueError("ssh-keygen unavailable") from error
+    if result.returncode != 0:
+        raise ValueError("capture signature not verified")
 
 
 def _unique_object(pairs):
@@ -101,8 +138,13 @@ def read_capture(path):
     return data
 
 
-def load(path, validator):
+def load(path, validator, trust=None):
     data = read_capture(path)
+    if trust is not None:
+        # Signed comparison admits only complete captures, verified as read.
+        if not data.startswith(b'{"capture_version":'):
+            raise ValueError("only captures can be verified for comparison")
+        verify_signature(data, path, trust)
     try:
         document = strict_json(data)
     except json.JSONDecodeError:
@@ -112,7 +154,8 @@ def load(path, validator):
         return Capture((((r["source"], r["scope"]), r) for r in document["records"]),
                        scope=document["capture_scope"], profile=document["profile"],
                        version=document["capture_version"],
-                       collection=document.get("collection"))
+                       collection=document.get("collection"),
+                       principal=None if trust is None else trust.principal)
     result = Capture()
     for line in data.split(b"\n"):
         if not line.strip():
@@ -201,6 +244,12 @@ def compare(before, after, max_window_ms=None):
                       timing=timing(before.collection, after.collection, max_window_ms))
     elif max_window_ms is not None:
         raise ValueError("window policy requires two timeline captures")
+    principals = (getattr(before, "principal", None), getattr(after, "principal", None))
+    if principals != (None, None):
+        if None in principals or principals[0] != principals[1]:
+            raise ValueError("captures not verified under one principal")
+        result["integrity"] = {"status": "verified", "principal": principals[0],
+                               "namespace": CAPTURE_NAMESPACE}
     return result
 
 
@@ -210,15 +259,25 @@ def main(argv=None):
     parser.add_argument("after", type=Path)
     parser.add_argument("--max-window-ms", type=int, default=None,
                         help="report whether each capture-v2 window is within N ms")
+    parser.add_argument("--allowed-signers", type=Path, default=None,
+                        help="verify both captures against INPUT.sig before comparing")
+    parser.add_argument("--principal", default=None)
+    parser.add_argument("--revocations", type=Path, default=None)
     args = parser.parse_args(argv)
     if args.max_window_ms is not None and args.max_window_ms < 0:
         raise ValueError("window policy must be nonnegative")
+    if (args.allowed_signers is None) != (args.principal is None):
+        raise ValueError("--allowed-signers and --principal must be given together")
+    if args.revocations is not None and args.allowed_signers is None:
+        raise ValueError("--revocations requires --allowed-signers")
+    trust = None if args.allowed_signers is None else Trust(
+        args.allowed_signers, args.principal, args.revocations)
     root = Path(__file__).resolve().parents[1]
     schema = json.loads((root / "schemas/evidence-v1.schema.json").read_text())
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema)
-    print(json.dumps(compare(load(args.before, validator), load(args.after, validator),
-                             args.max_window_ms),
+    print(json.dumps(compare(load(args.before, validator, trust),
+                             load(args.after, validator, trust), args.max_window_ms),
                      sort_keys=True, separators=(",", ":")))
 
 

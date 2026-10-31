@@ -10,7 +10,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator, ValidationError
 from capture_contract import ROOT, VALIDATOR_V2, check_capture
-from compare_evidence import load, compare, strict_json
+from compare_evidence import CAPTURE_NAMESPACE, Trust, load, compare, strict_json
 
 
 def direct_boot():
@@ -64,6 +64,42 @@ def check_live_boot():
     # --bind-boot implies --timeline: both spellings give the same shape.
     if shapes[0] != shapes[1]:
         raise ValueError('--bind-boot does not imply --timeline')
+
+
+def check_live_signed_comparison():
+    """mira signs two live captures; the comparator verifies the bytes it compares."""
+    with tempfile.TemporaryDirectory() as temp:
+        temp = Path(temp)
+        key = temp / 'host-a'
+        subprocess.run(['/usr/bin/ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'host-a',
+                        '-f', str(key)], check=True, stdin=subprocess.DEVNULL)
+        public = ' '.join(key.with_suffix('.pub').read_text().split()[:2])
+        signers = temp / 'signers'
+        signers.write_text(f'host-a namespaces="{CAPTURE_NAMESPACE}" {public}\n')
+        paths = []
+        for name in ('first.json', 'second.json'):
+            path = temp / name
+            result = subprocess.run([str(ROOT / 'target/debug/mira'), 'capture', 'synthetic-ci',
+                                     '--bind-boot', '--signature', f'{path}.sig',
+                                     '--sign-with', str(key)],
+                                    capture_output=True, timeout=30, check=False,
+                                    stdin=subprocess.DEVNULL)
+            if result.returncode not in (0, 1) or not result.stdout:
+                raise ValueError('signed live capture failed')
+            path.write_bytes(result.stdout)
+            paths.append(path)
+        legacy = Draft202012Validator(json.loads((ROOT / 'schemas/evidence-v1.schema.json').read_text()))
+        trust = Trust(signers, 'host-a')
+        report = compare(load(paths[0], legacy, trust), load(paths[1], legacy, trust))
+        if report.get('integrity', {}).get('principal') != 'host-a':
+            raise ValueError('signed live captures not verified by the comparator')
+        paths[1].write_bytes(paths[1].read_bytes().replace(b'synthetic-ci', b'synthetic-cj'))
+        try:
+            load(paths[1], legacy, trust)
+        except ValueError:
+            pass
+        else:
+            raise ValueError('modified signed capture admitted')
 
 
 def main():
@@ -166,6 +202,7 @@ def main():
             if mixed['comparison_version'] != 2 or len(mixed['changes']) != len(document['records']):
                 raise ValueError('mixed capture versions not compared by value')
         check_live_boot()
+        check_live_signed_comparison()
         for arguments in (['--timeline', '--pressure'], ['--timeline', '--timeline'],
                           ['--bind-boot', '--timeline'], ['--bind-boot', '--pressure']):
             result = subprocess.run([str(ROOT / 'target/debug/mira'), 'capture', 'synthetic-ci',
@@ -177,7 +214,7 @@ def main():
                                     capture_output=True, timeout=5, check=False)
             if result.returncode != 2 or result.stdout:
                 raise ValueError('invalid capture label dispatched')
-    print('capture-v1/v2 and evidence-v2 schema, semantic fixtures, timeline, live boot binding and CLI validated')
+    print('capture-v1/v2 and evidence-v2 schema, semantic fixtures, timeline, live boot binding, signed comparison and CLI validated')
 
 
 if __name__ == '__main__':
