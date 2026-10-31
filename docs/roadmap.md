@@ -12,7 +12,7 @@ Available: host memory/uptime/kernel/CPU-pressure observations, installed packag
 
 Complete capture-v1 profiles add operator-asserted labels, per-source timing/reasons and opt-in memory/IO PSI; labels are not authentication.
 
-Remaining: authenticated host identity, freshness policy, representative real-host validation, bounded journal sources where justified, and broader read-only investigation templates. The activation, memory-minimum, pressure-ceiling, package-installed, uptime-minimum and kernel-release templates do not establish a general diagnostic workflow. Exit: a representative Ubuntu 26.04 investigation works without elevation, external inference or system mutation, with reproducible fixtures and explicit evidence gaps. Controlled CI service/procfs comparisons do not satisfy this exit condition.
+Remaining: authenticated host identity, freshness policy (capture timeline and same-boot ordering design accepted in [ADR 0010](adr/0010-capture-timeline-and-freshness.md); trusted time for age at consumption is a separate decision), representative real-host validation, bounded journal sources where justified, and broader read-only investigation templates. The activation, memory-minimum, pressure-ceiling, package-installed, uptime-minimum and kernel-release templates do not establish a general diagnostic workflow. Exit: a representative Ubuntu 26.04 investigation works without elevation, external inference or system mutation, with reproducible fixtures and explicit evidence gaps. Controlled CI service/procfs comparisons do not satisfy this exit condition.
 
 ### Packaging and test foundation
 
