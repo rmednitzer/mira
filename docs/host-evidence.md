@@ -35,6 +35,10 @@ Both `/proc/uptime` fields must be unsigned decimal seconds with whole parts tha
 
 The [Linux producer](https://github.com/torvalds/linux/blob/v6.17/fs/proc/uptime.c) emits two decimal-second fields and sums idle across CPUs. This parser is not proof of source authenticity or freshness.
 
+## PSI and kernel release parsing
+
+PSI lines must be ASCII, as the kernel producer emits them, and are split only on ASCII whitespace. Any non-ASCII byte makes the source malformed before tokenization, so a Unicode separator cannot hide a field, such as a duplicate `avg10`, inside an otherwise ignored token. Each line must start with `some` or `full` and carry exactly one `avg10` with at most two decimal places within 0–100.00. A Unicode separator such as U+00A0 or U+2003 yields malformed evidence instead of being treated as a field boundary. The kernel release is trimmed of ASCII whitespace only and must then consist of ASCII letters, digits and `.-_+`; leading or trailing Unicode whitespace is rejected rather than silently removed. The meminfo, uptime, PSI and kernel-release parsers therefore all apply the same ASCII framing rule.
+
 The opt-in [capture command](captures.md) retains monotonic per-source elapsed time and fixed failure reasons in evidence-v2, and can add bounded memory/IO PSI through a closed profile. Existing inspect output stays evidence-v1.
 
 ## Validation

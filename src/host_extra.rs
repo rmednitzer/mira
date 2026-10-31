@@ -1,21 +1,8 @@
 //! Additional bounded Linux evidence. All fields are observations, not diagnoses.
-use std::{
-    fs::File,
-    io::{self, Read},
-    path::Path,
-};
+use crate::collector::read_bounded;
+use std::{io, path::Path};
 
 const LIMIT: u64 = 16 * 1024;
-
-fn bounded(path: &Path) -> io::Result<String> {
-    let mut bytes = Vec::new();
-    File::open(path)?.take(LIMIT + 1).read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > LIMIT {
-        return Err(crate::collector::limit_exceeded());
-    }
-    String::from_utf8(bytes)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "non-UTF8 source"))
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CpuPressure {
@@ -65,7 +52,16 @@ pub fn parse_cpu_pressure(input: &str) -> io::Result<CpuPressure> {
     let mut some = None;
     let mut full = None;
     for line in input.lines() {
-        let mut tokens = line.split_whitespace();
+        // The kernel emits ASCII-only PSI lines. Rejecting any other byte before
+        // tokenization keeps a Unicode separator from hiding a field, such as a
+        // duplicate avg10, inside a token that would otherwise be ignored.
+        if !line.is_ascii() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "non-ASCII PSI line",
+            ));
+        }
+        let mut tokens = line.split_ascii_whitespace();
         let kind = tokens
             .next()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty PSI line"))?;
@@ -106,7 +102,8 @@ pub fn parse_cpu_pressure(input: &str) -> io::Result<CpuPressure> {
 }
 
 pub fn parse_kernel_release(input: &str) -> io::Result<String> {
-    let trimmed = input.trim();
+    // Only the producer's ASCII newline is framing; Unicode whitespace is data.
+    let trimmed = input.trim_ascii();
     if trimmed.is_empty()
         || trimmed.len() > 256
         || !trimmed
@@ -119,65 +116,6 @@ pub fn parse_kernel_release(input: &str) -> io::Result<String> {
         ));
     }
     Ok(trimmed.to_owned())
-}
-
-#[derive(Debug)]
-pub struct Observation<T> {
-    pub source: &'static str,
-    pub result: io::Result<T>,
-}
-
-pub struct ExtendedReport {
-    pub kernel_release: Observation<String>,
-    pub cpu_pressure: Observation<CpuPressure>,
-}
-
-/// Only the two fixed files below are requested. The roots are injectable for fixtures.
-/// Callers must never treat a supplied root as a privilege boundary.
-pub fn inspect(proc_root: &Path) -> ExtendedReport {
-    ExtendedReport {
-        kernel_release: Observation {
-            source: "/proc/sys/kernel/osrelease",
-            result: bounded(&proc_root.join("sys/kernel/osrelease"))
-                .and_then(|v| parse_kernel_release(&v)),
-        },
-        cpu_pressure: Observation {
-            source: "/proc/pressure/cpu",
-            result: bounded(&proc_root.join("pressure/cpu")).and_then(|v| parse_cpu_pressure(&v)),
-        },
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn parses_cpu_psi() {
-        let p = parse_cpu_pressure("some avg10=0.25 avg60=1.00 avg300=2.00 total=100\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n").unwrap();
-        assert_eq!(p.some_avg10_basis_points, 25);
-        assert_eq!(p.full_avg10_basis_points, Some(0));
-    }
-    #[test]
-    fn rejects_invalid_psi() {
-        assert!(parse_cpu_pressure("some avg10=101.00\n").is_err());
-        assert!(parse_cpu_pressure("some avg10=1.\n").is_err());
-        assert!(parse_cpu_pressure("some avg10=1.00\nsome avg10=2.00\n").is_err());
-        assert!(parse_cpu_pressure("full avg10=0.00\n").is_err());
-    }
-    #[test]
-    fn validates_kernel_identity() {
-        assert_eq!(
-            parse_kernel_release("6.17.0-5-generic\n").unwrap(),
-            "6.17.0-5-generic"
-        );
-        assert!(parse_kernel_release("kernel\nother\n").is_err());
-    }
-    #[test]
-    fn reports_missing_sources_independently() {
-        let r = inspect(Path::new("/nonexistent-mira-extended-fixture"));
-        assert!(r.cpu_pressure.result.is_err());
-        assert!(r.kernel_release.result.is_err());
-    }
 }
 
 /// Closed resource selection; no caller-supplied path or trigger writes.
@@ -203,9 +141,79 @@ impl PressureResource {
         }
     }
 }
+
+/// Only the fixed files below are requested. The roots are injectable for fixtures;
+/// callers must never treat a supplied root as a privilege boundary.
 pub fn pressure(proc_root: &Path, resource: PressureResource) -> io::Result<CpuPressure> {
-    bounded(&proc_root.join(resource.relative())).and_then(|value| parse_cpu_pressure(&value))
+    read_bounded(&proc_root.join(resource.relative()), LIMIT)
+        .and_then(|value| parse_cpu_pressure(&value))
 }
 pub fn kernel_release(proc_root: &Path) -> io::Result<String> {
-    bounded(&proc_root.join("sys/kernel/osrelease")).and_then(|value| parse_kernel_release(&value))
+    read_bounded(&proc_root.join("sys/kernel/osrelease"), LIMIT)
+        .and_then(|value| parse_kernel_release(&value))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn parses_cpu_psi() {
+        let p = parse_cpu_pressure("some avg10=0.25 avg60=1.00 avg300=2.00 total=100\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n").unwrap();
+        assert_eq!(p.some_avg10_basis_points, 25);
+        assert_eq!(p.full_avg10_basis_points, Some(0));
+    }
+    #[test]
+    fn rejects_invalid_psi() {
+        assert!(parse_cpu_pressure("some avg10=101.00\n").is_err());
+        assert!(parse_cpu_pressure("some avg10=1.\n").is_err());
+        assert!(parse_cpu_pressure("some avg10=1.00\nsome avg10=2.00\n").is_err());
+        assert!(parse_cpu_pressure("full avg10=0.00\n").is_err());
+    }
+    #[test]
+    fn psi_requires_ascii_separators() {
+        assert!(parse_cpu_pressure("some\tavg10=0.25  avg60=1.00\n").is_ok());
+        for separator in ['\u{00a0}', '\u{2003}', '\u{3000}', '\u{0085}'] {
+            let input = format!("some{separator}avg10=0.25 avg60=1.00\n");
+            assert_eq!(
+                parse_cpu_pressure(&input).unwrap_err().kind(),
+                io::ErrorKind::InvalidData,
+                "{separator:?}"
+            );
+        }
+        // A Unicode separator before avg10 must not hide a malformed value.
+        assert!(parse_cpu_pressure("some avg60=1.00\u{2003}avg10=0.25\n").is_err());
+        // Nor may an ignored field hide a duplicate after a valid avg10.
+        for hidden in [
+            "some avg10=0.25 avg60=1.00\u{2003}avg10=99.00\n",
+            "some avg10=0.25\nfull avg10=0.00 avg60=0.00\u{00a0}avg10=50.00\n",
+            "some avg10=0.25 total=1\u{00e9}\n",
+        ] {
+            assert_eq!(
+                parse_cpu_pressure(hidden).unwrap_err().kind(),
+                io::ErrorKind::InvalidData,
+                "{hidden:?}"
+            );
+        }
+    }
+    #[test]
+    fn validates_kernel_identity() {
+        assert_eq!(
+            parse_kernel_release("6.17.0-5-generic\n").unwrap(),
+            "6.17.0-5-generic"
+        );
+        assert!(parse_kernel_release("kernel\nother\n").is_err());
+    }
+    #[test]
+    fn kernel_release_trims_only_ascii_whitespace() {
+        assert_eq!(parse_kernel_release(" 6.17.0\t\n").unwrap(), "6.17.0");
+        for invalid in ["6.17.0\u{00a0}\n", "\u{2003}6.17.0\n", "6.17.0\u{0085}"] {
+            assert!(parse_kernel_release(invalid).is_err(), "{invalid:?}");
+        }
+    }
+    #[test]
+    fn reports_missing_sources_independently() {
+        let root = Path::new("/nonexistent-mira-extended-fixture");
+        assert!(pressure(root, PressureResource::Cpu).is_err());
+        assert!(kernel_release(root).is_err());
+    }
 }

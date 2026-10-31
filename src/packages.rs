@@ -1,11 +1,7 @@
 //! Read-only Debian package database observations.
 //! Installed package metadata is not vulnerability applicability evidence.
-use std::{
-    collections::BTreeSet,
-    fs::File,
-    io::{self, Read},
-    path::Path,
-};
+use crate::collector::read_bounded;
+use std::{collections::BTreeSet, io, path::Path};
 
 pub const MAX_STATUS_BYTES: u64 = 32 * 1024 * 1024;
 
@@ -36,7 +32,8 @@ fn finish_entry(
     }
     let name = name.ok_or_else(|| invalid("missing package name"))?;
     let status = status.ok_or_else(|| invalid("missing package status"))?;
-    let status_fields: Vec<_> = status.split_whitespace().collect();
+    // dpkg writes ASCII-space-separated words; Unicode separators are invalid data.
+    let status_fields: Vec<_> = status.split_ascii_whitespace().collect();
     if status_fields.len() != 3
         || !["unknown", "install", "hold", "deinstall", "purge"].contains(&status_fields[0])
         || !["ok", "reinstreq"].contains(&status_fields[1])
@@ -106,15 +103,7 @@ pub fn parse_status(input: &str) -> io::Result<Vec<Package>> {
 
 /// Read a bounded status database. The root is injectable for fixtures, not a sandbox.
 pub fn collect(status_path: &Path) -> io::Result<Vec<Package>> {
-    let mut content = Vec::new();
-    File::open(status_path)?
-        .take(MAX_STATUS_BYTES + 1)
-        .read_to_end(&mut content)?;
-    if content.len() as u64 > MAX_STATUS_BYTES {
-        return Err(crate::collector::limit_exceeded());
-    }
-    let content = String::from_utf8(content).map_err(|_| invalid("invalid UTF-8"))?;
-    parse_status(&content)
+    parse_status(&read_bounded(status_path, MAX_STATUS_BYTES)?)
 }
 
 #[cfg(test)]
@@ -168,6 +157,20 @@ mod tests {
     fn incomplete_or_duplicate_records_fail() {
         assert!(parse_status("Package: alpha\nStatus: install ok installed\n").is_err());
         assert!(parse_status("Package: a\nPackage: b\n").is_err());
+    }
+
+    #[test]
+    fn status_words_require_ascii_separators() {
+        for separator in ['\u{00a0}', '\u{2003}', '\u{0085}'] {
+            let input = format!(
+                "Package: alpha\nVersion: 1\nArchitecture: all\nStatus: install{separator}ok installed\n"
+            );
+            assert_eq!(
+                parse_status(&input).unwrap_err().kind(),
+                io::ErrorKind::InvalidData,
+                "{separator:?}"
+            );
+        }
     }
 
     #[test]

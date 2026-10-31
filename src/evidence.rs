@@ -73,6 +73,18 @@ fn timestamp() -> Option<u128> {
         .map(|t| t.as_millis())
 }
 
+/// The wall-clock completion and monotonic duration surround only this acquisition.
+/// Duration is informational, not a deadline or a trusted freshness assertion.
+pub fn observe<T>(source: &'static str, collect: impl FnOnce() -> io::Result<T>) -> Evidence<T> {
+    let start = Instant::now();
+    let result = collect();
+    let at = timestamp();
+    let elapsed_ms = start.elapsed().as_millis();
+    let mut observation = Evidence::from_result(source, result, at);
+    observation.elapsed_ms = Some(elapsed_ms);
+    observation
+}
+
 /// Reads only the four registered procfs sources, without executing commands.
 /// An injectable root supports isolated fixture tests. The root is not a security boundary.
 pub fn collect(proc_root: &Path) -> Snapshot {
@@ -82,7 +94,7 @@ pub fn collect(proc_root: &Path) -> Snapshot {
         kernel_release: observe("/proc/sys/kernel/osrelease", || {
             host_extra::kernel_release(proc_root)
         }),
-        cpu_pressure: observe("/proc/pressure/cpu", || {
+        cpu_pressure: observe(host_extra::PressureResource::Cpu.source(), || {
             host_extra::pressure(proc_root, host_extra::PressureResource::Cpu)
         }),
     }
@@ -146,18 +158,6 @@ mod tests {
         assert!(!bad.is_available());
         assert_eq!(bad.collected_unix_ms, None);
     }
-}
-
-/// The wall-clock completion and monotonic duration surround only this acquisition.
-/// Duration is informational, not a deadline or a trusted freshness assertion.
-pub fn observe<T>(source: &'static str, collect: impl FnOnce() -> io::Result<T>) -> Evidence<T> {
-    let start = Instant::now();
-    let result = collect();
-    let at = timestamp();
-    let elapsed_ms = start.elapsed().as_millis();
-    let mut observation = Evidence::from_result(source, result, at);
-    observation.elapsed_ms = Some(elapsed_ms);
-    observation
 }
 
 #[cfg(test)]

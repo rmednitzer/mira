@@ -3,7 +3,7 @@
 //! No command execution, privilege escalation, network calls or mutation.
 //! Injectable roots support deterministic fixtures; CLI integration checks may
 //! inspect the runner's actual /proc.
-use std::fs;
+use crate::collector::read_bounded;
 use std::io;
 use std::path::Path;
 
@@ -13,24 +13,6 @@ pub const MAX_SOURCE_BYTES: u64 = 64 * 1024;
 pub struct MemoryEvidence {
     pub total_kib: u64,
     pub available_kib: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HostEvidence {
-    pub memory: MemoryEvidence,
-    pub uptime_seconds: u64,
-}
-
-pub(crate) fn read_bounded(path: &Path) -> io::Result<String> {
-    let file = fs::File::open(path)?;
-    let mut contents = Vec::new();
-    use std::io::Read;
-    file.take(MAX_SOURCE_BYTES + 1).read_to_end(&mut contents)?;
-    if contents.len() as u64 > MAX_SOURCE_BYTES {
-        return Err(crate::collector::limit_exceeded());
-    }
-    String::from_utf8(contents)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid UTF-8"))
 }
 
 pub fn parse_meminfo(text: &str) -> io::Result<MemoryEvidence> {
@@ -118,14 +100,14 @@ pub fn parse_uptime(text: &str) -> io::Result<u64> {
     Ok(uptime)
 }
 
-/// Read a narrow allowlist of procfs sources. Caller selects the procfs root.
-pub fn collect(proc_root: &Path) -> io::Result<HostEvidence> {
-    let memory = parse_meminfo(&read_bounded(&proc_root.join("meminfo"))?)?;
-    let uptime_seconds = parse_uptime(&read_bounded(&proc_root.join("uptime"))?)?;
-    Ok(HostEvidence {
-        memory,
-        uptime_seconds,
-    })
+/// Read one source so callers can timestamp it before starting the next.
+/// The procfs root is caller-selected for fixtures, not a confinement boundary.
+pub fn memory(proc_root: &Path) -> io::Result<MemoryEvidence> {
+    read_bounded(&proc_root.join("meminfo"), MAX_SOURCE_BYTES)
+        .and_then(|value| parse_meminfo(&value))
+}
+pub fn uptime(proc_root: &Path) -> io::Result<u64> {
+    read_bounded(&proc_root.join("uptime"), MAX_SOURCE_BYTES).and_then(|value| parse_uptime(&value))
 }
 
 #[cfg(test)]
@@ -200,57 +182,10 @@ mod tests {
     fn rejects_missing_uptime() {
         assert!(parse_uptime("").is_err());
     }
-}
-
-#[derive(Debug)]
-pub struct SourceResult<T> {
-    pub source: &'static str,
-    pub result: io::Result<T>,
-}
-
-#[derive(Debug)]
-pub struct HostReport {
-    pub memory: SourceResult<MemoryEvidence>,
-    pub uptime: SourceResult<u64>,
-}
-
-/// Collect each source independently. An unavailable or malformed source is
-/// reported as unknown instead of suppressing otherwise usable evidence.
-pub fn report(proc_root: &Path) -> HostReport {
-    HostReport {
-        memory: SourceResult {
-            source: "/proc/meminfo",
-            result: read_bounded(&proc_root.join("meminfo")).and_then(|s| parse_meminfo(&s)),
-        },
-        uptime: SourceResult {
-            source: "/proc/uptime",
-            result: read_bounded(&proc_root.join("uptime")).and_then(|s| parse_uptime(&s)),
-        },
-    }
-}
-
-#[cfg(test)]
-mod report_tests {
-    use super::*;
-
     #[test]
     fn missing_sources_are_independent_errors() {
-        let r = report(Path::new("/nonexistent-mira-proc-test-fixtures"));
-        assert!(r.memory.result.is_err());
-        assert!(r.uptime.result.is_err());
+        let root = Path::new("/nonexistent-mira-proc-test-fixtures");
+        assert_eq!(memory(root).unwrap_err().kind(), io::ErrorKind::NotFound);
+        assert_eq!(uptime(root).unwrap_err().kind(), io::ErrorKind::NotFound);
     }
-
-    #[test]
-    fn invalid_memory_does_not_hide_valid_uptime() {
-        assert!(parse_meminfo("MemTotal: 100 kB\nMemAvailable: 200 kB\n").is_err());
-        assert_eq!(parse_uptime("42.50 0.00\n").unwrap(), 42);
-    }
-}
-
-/// Read one source so callers can timestamp it before starting the next.
-pub fn memory(proc_root: &Path) -> io::Result<MemoryEvidence> {
-    read_bounded(&proc_root.join("meminfo")).and_then(|value| parse_meminfo(&value))
-}
-pub fn uptime(proc_root: &Path) -> io::Result<u64> {
-    read_bounded(&proc_root.join("uptime")).and_then(|value| parse_uptime(&value))
 }
