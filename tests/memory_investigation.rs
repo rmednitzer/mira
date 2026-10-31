@@ -108,3 +108,40 @@ fn invalid_memory_invocations_emit_no_report() {
         assert!(output.stdout.is_empty());
     }
 }
+
+#[test]
+fn malformed_memory_invocations_report_template_usage() {
+    for arguments in [
+        vec!["investigate", "memory-headroom"],
+        vec!["investigate", "memory-headroom", "--min-available-kib"],
+        vec!["investigate", "memory-headroom", "1048576"],
+        vec!["investigate", "memory-headroom", "1048576", "--json"],
+        vec![
+            "investigate",
+            "memory-headroom",
+            "--json",
+            "--min-available-kib",
+            "1",
+        ],
+        vec![
+            "investigate",
+            "memory-headroom",
+            "--min-available-kib",
+            "1",
+            "--json",
+            "x",
+        ],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_mira"))
+            .args(&arguments)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2), "{arguments:?}");
+        assert!(output.stdout.is_empty(), "{arguments:?}");
+        assert_eq!(
+            output.stderr,
+            b"Usage: mira investigate memory-headroom --min-available-kib N [--json]\n",
+            "{arguments:?}"
+        );
+    }
+}

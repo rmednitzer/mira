@@ -27,6 +27,12 @@ fn main() {
         {
             memory_headroom(minimum, true)
         }
+        // A registered template with a malformed invocation is a usage error for
+        // that template, never an unknown template or a service-name scope.
+        [_, command, template, ..] if command == "investigate" && template == "memory-headroom" => {
+            eprintln!("Usage: mira investigate memory-headroom --min-available-kib N [--json]");
+            std::process::exit(2);
+        }
         [_, command, label] if command == "capture" => capture(label, false),
         [_, command, label, option] if command == "capture" && option == "--pressure" => {
             capture(label, true)

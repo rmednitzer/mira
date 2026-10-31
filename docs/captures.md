@@ -7,7 +7,7 @@ mira capture incident-a --pressure > pressure.json
 
 The command emits one capture-v1 JSON document. `host/v1` requests memory, uptime, kernel release, CPU PSI and installed package count. Explicit `--pressure` selects `host-pressure/v1`, adding memory and IO PSI. The question is whether the kernel reports resource stalls alongside resource availability, not whether an application is healthy or why it failed. Only avg10 is projected in basis points; unprojected PSI fields are not interpreted. CPU full is undefined at system scope and its compatibility value is not an operational CPU-full metric. There are no threshold writes, trigger registration, discovery, model calls or background monitoring.
 
-LABEL must contain 1–64 ASCII letters, digits, dots, underscores or hyphens. It is an operator assertion for comparison scope, never authenticated host identity. Avoid secrets or identifying infrastructure names in public captures. No hostname, machine ID or boot ID is collected automatically.
+LABEL must contain 1–64 ASCII letters, digits, dots, underscores or hyphens and must begin with a letter or digit. The leading-character rule rejects option-shaped input such as `mira capture --pressure`, which would otherwise become the label of a `host/v1` capture without pressure sources; such invocations exit 2 without collection. Capture-v1 admission is unchanged, so documents produced earlier with other leading characters remain valid for comparison. It is an operator assertion for comparison scope, never authenticated host identity. Avoid secrets or identifying infrastructure names in public captures. No hostname, machine ID or boot ID is collected automatically.
 
 ## Contract
 

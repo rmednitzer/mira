@@ -39,9 +39,15 @@ impl Profile {
 
 /// Conservative printable labels avoid accidentally publishing host identifiers.
 /// Syntax cannot prevent an operator from placing sensitive text in a label.
+/// A leading letter or digit keeps an option such as `--pressure` from being
+/// admitted as the label of a different profile. Capture-v1 admission of
+/// previously produced documents is unchanged; only the producer is stricter.
 pub fn validate_label(label: &str) -> io::Result<()> {
-    if label.is_empty()
-        || label.len() > 64
+    if label.len() > 64
+        || !label
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
         || !label
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || b"._-".contains(&c))
@@ -143,7 +149,20 @@ mod tests {
     use super::*;
     #[test]
     fn invalid_labels_are_rejected_before_collection() {
-        for label in ["", "private name", "x\u{001b}", "a/b", &"a".repeat(65)] {
+        for label in [
+            "",
+            "private name",
+            "x\u{001b}",
+            "a/b",
+            &"a".repeat(65),
+            "--pressure",
+            "--json",
+            "-",
+            "-a",
+            ".",
+            ".hidden",
+            "_a",
+        ] {
             assert!(
                 collect(
                     label,
@@ -153,6 +172,12 @@ mod tests {
                 )
                 .is_err()
             );
+        }
+    }
+    #[test]
+    fn labels_starting_with_letters_or_digits_remain_admitted() {
+        for label in ["a", "0", "incident-a", "Z9._-", &"a".repeat(64)] {
+            assert!(validate_label(label).is_ok(), "{label}");
         }
     }
     #[test]
