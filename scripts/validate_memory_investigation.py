@@ -2,12 +2,13 @@
 """Independent explicit-memory expectation schema, semantics and CLI checks."""
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, ValidationError
 from referencing import Registry, Resource
 from compare_evidence import strict_json
+from validation_status import mira_binary, note_record
+import validation_status
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = json.loads((ROOT / 'schemas/evidence-v1.schema.json').read_text())
@@ -48,9 +49,8 @@ def check_fixtures():
             raise ValueError('invalid memory fixture admitted')
 
 
-def main():
-    check_fixtures()
-    binary = str(ROOT / 'target/debug/mira')
+def check_cli():
+    binary = mira_binary()
     for minimum in ('1', '18446744073709551615'):
         result = subprocess.run([binary, 'investigate', 'memory-headroom',
                                  '--min-available-kib', minimum, '--json'],
@@ -60,6 +60,7 @@ def main():
             raise ValueError('memory exit mismatch')
         if report['expectation']['minimum_available_kib'] != int(minimum):
             raise ValueError('memory criterion changed')
+        note_record(report['evidence'])
     for minimum in ('', '0', '-1', '+1', '1.0', '1e3', '18446744073709551616',
                     '000000000000000000001'):
         result = subprocess.run([binary, 'investigate', 'memory-headroom',
@@ -67,12 +68,13 @@ def main():
                                 capture_output=True, timeout=5, check=False)
         if result.returncode != 2 or result.stdout:
             raise ValueError('invalid memory criterion dispatched')
-    print('memory-headroom schema, semantic fixtures and CLI validated')
+
+
+def main(argv=None):
+    validation_status.run('memory investigation validation',
+                          {'fixtures': check_fixtures, 'cli': check_cli},
+                          'memory-headroom schema, semantic fixtures and CLI validated', argv)
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as error:
-        print(f'memory investigation validation failed: {type(error).__name__}', file=sys.stderr)
-        sys.exit(1)
+    main()

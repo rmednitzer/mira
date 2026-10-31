@@ -156,6 +156,30 @@ PSI, kernel-release and dpkg Status regressions apply the same rule: Unicode sep
 
 `scripts/validate_journal_investigation.py` checks the fixtures with its own outcome-precedence implementation. Its live check derives visibility, file access, per-class producer-valid counts and the crash handler with its own `journalctl` queries and parser, before and after MIRA. It requires agreement and fails as inconclusive if the journal changed in between.
 
-## Representative host qualification (design accepted)
+## Representative host qualification
 
-The live checks above run on two GitHub-hosted runners and the development host. [ADR 0013](adr/0013-host-qualification-protocol.md) specifies a runner that executes the same independent validators on real hosts against the checkout build or an installed binary. It would record passed, failed or not applicable per check (with fixed reasons such as `no_systemd`), and write a receipt free of host identifiers. That is the qualification the Phase 1 exit criterion requires and CI alone does not provide. It is not implemented.
+The live checks above run on two GitHub-hosted runners and the development host. [ADR 0013](adr/0013-host-qualification-protocol.md) and the [qualification guide](qualification.md) define how they run on real hosts. `scripts/qualify_host.py` runs every validator's check groups against the checkout build or an installed binary and records passed, failed or not applicable per group, with fixed reasons such as `no_systemd`. It writes a `qualification-receipt-v1` receipt free of host identifiers.
+
+All eight validators share the contract in `scripts/validation_status.py`:
+- the binary from `MIRA_BINARY`
+- exit 0 passed, 1 failed, 4 inconclusive
+- fixed groups through `--list-groups` and `--only`
+- observation gaps reported through `MIRA_QUALIFICATION_STATUS`
+
+Without `--only` each validator runs as before.
+
+`scripts/test_validation_contract.py` forces a mid-comparison change and a schema-valid wrong value into each live comparison: procfs, systemd evidence, the service investigation, dpkg, uptime and kernel release, journal visibility and counts, and boot binding. Each forced change exits 4 and each wrong value exits 1, with only the fixed exception type printed. It also checks that a default journal run without a visible journal still passes, while an explicit `--only live-counts` exits 4, and that a source unavailable only in a later timeline capture, a journal class unavailable only during `live-visibility`, or incomplete journal access seen only by `live-counts`, is still reported as a gap.
+
+`scripts/test_qualify_host.py` drives the runner with fake validators and probes. It covers:
+- passed, failed, inconclusive retried at most twice, runner errors (unknown exit, missing or malformed gap report, timeout), and every not-applicable reason without executing the group
+- a validator's descendants killed with its process group on timeout, after a normal exit and when the runner is interrupted
+- a container whose journal denial (`journal/system` gap, `live-counts` not applicable) qualifies without findings
+- a container without a boot ID, where `live-boot` is not applicable and `signed-compare` reports the boot-ID gap, qualifies without findings
+- refusal as root, of an existing receipt, of a non-executable binary, of an untracked or modified file, and of a binary replaced during the run
+- the denial path: with `journalctl` present and no visible sentinel, `live-visibility` runs and `live-counts` alone is `no_journal_access`; a `restricted-user` receipt without the confirmed `journal/system` gap is a finding
+- a missing `ssh-keygen` gating only `signed-compare`
+- a real pressure validator run against a wrapper binary with one unreadable PSI file, which passes and reports the gap; the runner flags it as unexpected for `physical-amd64`
+- the receipt schema, thirteen refused mutations, every committed receipt, and a run on the real host scanned for the host name, machine ID, boot ID, user name and full kernel release
+- every validator's `--list-groups` equal to the runner's table, and `--only` running exactly the selected groups
+
+CI runs the runner as `ci-runner` against the checkout build and against the extracted package binary, and keeps both receipts. These runner receipts are not representative-host qualification. The Phase 1 exit needs reviewed receipts from the required classes in the guide; none is committed yet.

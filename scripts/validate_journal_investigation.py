@@ -3,11 +3,12 @@
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, ValidationError
 from compare_evidence import strict_json
+from validation_status import Inconclusive, mira_binary, note_gap
+import validation_status
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ROOT / 'schemas/journal-events-v1.schema.json').read_text())
@@ -149,15 +150,17 @@ def check_crash_handler():
             raise ValueError('independent crash-handler rule is wrong')
 
 
-def independent(absent, boot):
-    """Derive the expected visibility, access, per-class counts and handler directly."""
+def visible(boot):
+    """A PID 1 entry for the boot is the visibility sentinel."""
     code, out = journalctl(['--boot', '-n', '1', '-o', 'export', '--output-fields=_PID', '_PID=1'])
-    visible = code == 0 and b'\n_PID=1\n' in b'\n' + out
-    if visible and boot == 'previous_retained':
+    seen = code == 0 and b'\n_PID=1\n' in b'\n' + out
+    if seen and boot == 'previous_retained':
         code, out = journalctl(['-b', '-1', '-n', '1', '-o', 'export', '--output-fields=_PID', '_PID=1'])
-        visible = code == 0 and b'\n_PID=1\n' in b'\n' + out
-    if not visible:
-        return {'visible': False, 'counts': None, 'access': None, 'handler': None}
+        seen = code == 0 and b'\n_PID=1\n' in b'\n' + out
+    return seen
+
+
+def access_complete():
     access, found = True, 0
     for root in ('/var/log/journal', '/run/log/journal'):
         if not os.path.isdir(root):
@@ -176,6 +179,22 @@ def independent(absent, boot):
                         pass
                     except OSError:
                         access = False
+    return access and found > 0
+
+
+def independent_visibility(absent, boot):
+    """Derive visibility, access and the crash handler directly, including denials."""
+    if not visible(boot):
+        return {'visible': False, 'access': None, 'handler': None}
+    handler = None
+    if 'coredump' in absent:
+        handler = ('unknown_for_boot' if boot == 'previous_retained'
+                   else crash_handler(Path('/proc/sys/kernel/core_pattern').read_text()))
+    return {'visible': True, 'access': access_complete(), 'handler': handler}
+
+
+def independent_counts(absent, boot):
+    """Per-class counts from direct journalctl queries; requires a visible journal."""
     counts = {}
     fields = ('--output-fields=MESSAGE_ID,UNIT,USER_UNIT,COREDUMP_UNIT,COREDUMP_USER_UNIT,'
               '_UID,_EXE,_SYSTEMD_UNIT,_SYSTEMD_SLICE')
@@ -194,57 +213,92 @@ def independent(absent, boot):
         kinds = dict(PRODUCERS[name])
         counts[name] = min(sum(1 for e in entries
                                if producer_valid(kinds.get(e.get('MESSAGE_ID')), e)), 1000)
-    handler = None
-    if 'coredump' in absent:
-        handler = ('unknown_for_boot' if boot == 'previous_retained'
-                   else crash_handler(Path('/proc/sys/kernel/core_pattern').read_text()))
-    return {'visible': True, 'counts': counts, 'access': access and found > 0, 'handler': handler}
+    return counts
 
 
-def check_live():
-    for absent, boot, flag in ((['oom-kill', 'unit-failure', 'coredump'], 'current', 'current'),
-                               (['oom-kill', 'unit-failure'], 'previous_retained', 'previous-retained')):
-        before = independent(absent, boot)
-        result = subprocess.run([str(ROOT / 'target/debug/mira'), 'investigate', 'journal-events',
-                                 '--absent', ','.join(absent), '--boot', flag, '--json'],
-                                capture_output=True, timeout=60, check=False)
-        report = strict_json(result.stdout)
-        after = independent(absent, boot)
-        if before != after:
-            raise ValueError('live journal changed during validation; comparison inconclusive')
-        if result.returncode != check_report(report):
-            raise ValueError('journal exit mismatch')
-        evidence = report['evidence']
-        if evidence['journal_visible'] != before['visible']:
+CONFIGURATIONS = ((['oom-kill', 'unit-failure', 'coredump'], 'current', 'current'),
+                  (['oom-kill', 'unit-failure'], 'previous_retained', 'previous-retained'))
+
+
+def investigate(absent, flag):
+    result = subprocess.run([mira_binary(), 'investigate', 'journal-events',
+                             '--absent', ','.join(absent), '--boot', flag, '--json'],
+                            capture_output=True, timeout=60, check=False)
+    report = strict_json(result.stdout)
+    if result.returncode != check_report(report):
+        raise ValueError('journal exit mismatch')
+    # Every accepted report contributes its gaps, whichever group ran it. A previous boot
+    # that is not retained is not a gap; the running boot not being visible is.
+    evidence = report['evidence']
+    if evidence['journal_visible'] is False and flag == 'current':
+        note_gap('journal/system', 'journal_not_visible')
+    if evidence['journal_access_complete'] is False:
+        note_gap('journal/system', 'journal_access_incomplete')
+    for entry in evidence['classes']:
+        if entry['status'] == 'unavailable':
+            note_gap(f"journal/{entry['class']}", entry['failure_reason'])
+    return report['evidence']
+
+
+def check_live_visibility():
+    """MIRA's visibility, access and handler answers equal the direct ones, false included."""
+    for absent, boot, flag in CONFIGURATIONS:
+        before = independent_visibility(absent, boot)
+        evidence = investigate(absent, flag)
+        if independent_visibility(absent, boot) != before:
+            raise Inconclusive('live journal visibility changed during validation')
+        if evidence['journal_visible'] is not before['visible']:
             raise ValueError('MIRA journal visibility disagrees with direct journalctl')
-        if before['visible']:
-            if evidence['journal_access_complete'] != before['access']:
-                raise ValueError('MIRA journal access disagrees with direct file checks')
-            if evidence['crash_handler'] != before['handler']:
-                raise ValueError('MIRA crash handler disagrees with direct core_pattern')
-            for entry in evidence['classes']:
-                expected = before['counts'][entry['class']]
-                if (entry['count'] or 0) != expected:
-                    raise ValueError('MIRA journal counts disagree with direct journalctl')
+        if not before['visible']:
+            continue
+        if evidence['journal_access_complete'] is not before['access']:
+            raise ValueError('MIRA journal access disagrees with direct file checks')
+        if evidence['crash_handler'] != before['handler']:
+            raise ValueError('MIRA crash handler disagrees with direct core_pattern')
+
+
+def check_live_counts():
+    for absent, boot, flag in CONFIGURATIONS:
+        seen = visible(boot)
+        if not seen and boot == 'previous_retained':
+            continue  # No retained previous boot: nothing to count.
+        if not seen:
+            if validation_status.explicitly_selected('live-counts'):
+                # The runner selected this group after probing a visible sentinel.
+                raise Inconclusive('current-boot journal not visible for count comparison')
+            return  # Default run: the denial path is checked by live-visibility.
+        before = independent_counts(absent, boot)
+        evidence = investigate(absent, flag)
+        if independent_counts(absent, boot) != before or not visible(boot):
+            raise Inconclusive('live journal changed during validation')
+        if evidence['journal_visible'] is not True:
+            raise ValueError('MIRA journal visibility disagrees with direct journalctl')
+        for entry in evidence['classes']:
+            if (entry['count'] or 0) != before[entry['class']]:
+                raise ValueError('MIRA journal counts disagree with direct journalctl')
+
+
+def check_cli():
     for args in (['--absent', 'watchdog'], ['--absent', 'oom-kill,oom-kill'],
                  ['--absent', 'oom-kill', '--boot', '-1'], ['--boot', 'current']):
-        result = subprocess.run([str(ROOT / 'target/debug/mira'), 'investigate', 'journal-events',
+        result = subprocess.run([mira_binary(), 'investigate', 'journal-events',
                                  *args, '--json'], capture_output=True, timeout=10, check=False)
         if result.returncode != 2 or result.stdout:
             raise ValueError('invalid journal invocation dispatched')
 
 
-def main():
+def fixtures():
     check_crash_handler()
     check_fixtures()
-    check_live()
-    print('journal-events schema, semantic fixtures and live journal comparison validated')
+
+
+def main(argv=None):
+    validation_status.run(
+        'journal investigation validation',
+        {'fixtures': fixtures, 'cli': check_cli, 'live-visibility': check_live_visibility,
+         'live-counts': check_live_counts},
+        'journal-events schema, semantic fixtures and live journal comparison validated', argv)
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as error:
-        # Reports and journal samples describe the host; print only the error type.
-        print(f'journal investigation validation failed: {type(error).__name__}', file=sys.stderr)
-        sys.exit(1)
+    main()

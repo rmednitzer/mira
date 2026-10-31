@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""Each live comparison exits 4 on a forced mid-comparison change and 1 on wrong evidence."""
+import contextlib
+import io
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+import validate_capture_schema as capture
+import validate_evidence_schema as evidence
+import validate_host_investigations as host
+import validate_investigation_schema as investigation
+import validate_journal_investigation as journal
+import validate_package_investigation as package
+
+ROOT = Path(__file__).resolve().parents[1]
+BUILT = (ROOT / 'target/debug/mira').is_file()
+SYSTEMD = os.path.isdir('/run/systemd/system') and shutil.which('systemctl') is not None
+JOURNAL = os.path.isfile('/usr/bin/journalctl')
+DPKG = os.access('/var/lib/dpkg/status', os.R_OK)
+
+
+def changing(real, mutate, at=2):
+    """Return the real value on every call except the at-th, which is mutated."""
+    calls = []
+
+    def sample(*args):
+        calls.append(None)
+        value = real(*args)
+        return mutate(value) if len(calls) == at else value
+    return sample
+
+
+@unittest.skipUnless(BUILT, 'requires the checkout build')
+class ContractTests(unittest.TestCase):
+    def setUp(self):
+        patcher = patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop('MIRA_BINARY', None)
+        os.environ.pop('MIRA_QUALIFICATION_STATUS', None)
+
+    def status(self, module, group, **patches):
+        with contextlib.ExitStack() as stack:
+            for name, value in patches.items():
+                stack.enter_context(patch.object(module, name, value))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            diagnostic = stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+            with self.assertRaises(SystemExit) as result:
+                module.main(['--only', group])
+        code = result.exception.code
+        # Wrong evidence must fail the comparison itself, not crash the validator.
+        if code:
+            endings = (': Inconclusive\n',) if code == 4 else (': ValueError\n', ': AssertionError\n')
+            self.assertTrue(diagnostic.getvalue().endswith(endings), diagnostic.getvalue())
+        return code
+
+    def test_procfs(self):
+        real = evidence.read_live_procfs
+        self.assertEqual(self.status(evidence, 'live-procfs', read_live_procfs=changing(
+            real, lambda s: {**s, 'total_kib': s['total_kib'] + 1})), 4)
+        sample = real()
+        self.assertEqual(self.status(evidence, 'live-procfs', read_live_procfs=lambda: {
+            **sample, 'kernel': 'mira-wrong-kernel'}), 1)
+
+    @unittest.skipUnless(SYSTEMD, 'requires systemd')
+    def test_systemd_evidence(self):
+        real = evidence.direct_unit
+        self.assertEqual(self.status(evidence, 'live-systemd', direct_unit=changing(
+            real, lambda d: {**d, 'SubState': 'mira-changed'})), 4)
+        self.assertEqual(self.status(evidence, 'live-systemd', direct_unit=lambda unit: {
+            **real(unit), 'SubState': 'mira-wrong'}), 1)
+
+    @unittest.skipUnless(SYSTEMD, 'requires systemd')
+    def test_systemd_investigation(self):
+        real = investigation.direct_unit
+        self.assertEqual(self.status(investigation, 'live-systemd', direct_unit=changing(
+            real, lambda d: {**d, 'SubState': 'mira-changed'})), 4)
+        self.assertEqual(self.status(investigation, 'live-systemd', direct_unit=lambda unit: {
+            **real(unit), 'SubState': 'mira-wrong'}), 1)
+
+    @unittest.skipUnless(DPKG, 'requires a readable dpkg database')
+    def test_dpkg(self):
+        real = package.read_status
+        self.assertEqual(self.status(package, 'live-dpkg', read_status=changing(
+            real, lambda r: (r[0] + b'\n', r[1]))), 4)
+
+        def wrong():
+            data, stanzas = real()
+            return data, [{**s, 'version': 'mira-wrong'} if s['package'] == 'dpkg' else s
+                          for s in stanzas]
+        self.assertEqual(self.status(package, 'live-dpkg', read_status=wrong), 1)
+
+    def test_uptime_and_kernel(self):
+        self.assertEqual(self.status(host, 'live', direct_uptime=changing(
+            host.direct_uptime, lambda u: u - 1_000_000)), 4)
+        self.assertEqual(self.status(host, 'live', direct_kernel=changing(
+            host.direct_kernel, lambda k: k + '-changed')), 4)
+        self.assertEqual(self.status(host, 'live', direct_kernel=lambda: 'mira-wrong-kernel'), 1)
+
+    @unittest.skipUnless(JOURNAL, 'requires journalctl')
+    def test_journal_visibility(self):
+        real = journal.independent_visibility
+        self.assertEqual(self.status(journal, 'live-visibility', independent_visibility=changing(
+            real, lambda v: {**v, 'visible': not v['visible']})), 4)
+
+        def flipped(absent, boot):
+            value = real(absent, boot)
+            if value['visible']:
+                return {'visible': False, 'access': None, 'handler': None}
+            return {'visible': True, 'access': True, 'handler': None}
+        self.assertEqual(self.status(journal, 'live-visibility',
+                                     independent_visibility=flipped), 1)
+
+    @unittest.skipUnless(JOURNAL and journal.visible('current'), 'requires a visible journal')
+    def test_journal_counts(self):
+        real = journal.independent_counts
+        self.assertEqual(self.status(journal, 'live-counts', independent_counts=changing(
+            real, lambda c: {k: v + 1 for k, v in c.items()})), 4)
+        self.assertEqual(self.status(journal, 'live-counts', independent_counts=lambda a, b: {
+            k: v + 1 for k, v in real(a, b).items()}), 1)
+
+    @unittest.skipUnless(os.path.isfile('/proc/sys/kernel/random/boot_id'), 'requires a boot ID')
+    def test_boot_binding(self):
+        real = capture.direct_boot
+        self.assertEqual(self.status(capture, 'live-boot', direct_boot=changing(
+            real, lambda b: ('00000000-0000-0000-0000-000000000000', b[1]))), 4)
+        self.assertEqual(self.status(capture, 'live-boot', direct_boot=lambda: (
+            '00000000-0000-0000-0000-000000000000', real()[1])), 1)
+
+
+    def test_default_journal_run_keeps_the_denial_path_passing(self):
+        # Standalone default runs on a host without a visible journal still pass; only a
+        # runner that selected live-counts after probing a visible sentinel gets exit 4.
+        quiet = {'visible': lambda boot: False, 'check_live_visibility': lambda: None}
+        with contextlib.ExitStack() as stack:
+            for name, value in quiet.items():
+                stack.enter_context(patch.object(journal, name, value))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            with self.assertRaises(SystemExit) as result:
+                journal.main([])
+        self.assertEqual(result.exception.code, 0)
+        self.assertEqual(self.status(journal, 'live-counts', visible=lambda boot: False), 4)
+
+    def test_every_capture_invocation_reports_its_gaps(self):
+        real = capture.capture
+
+        def partial(*arguments, **options):
+            result = real(*arguments, **options)
+            if '--timeline' not in arguments or result.returncode == 2:
+                return result
+            document = json.loads(result.stdout)
+            record = next(r for r in document['records'] if r['source'] == '/proc/uptime')
+            record.update(status='unavailable', value=None, error_kind='PermissionDenied',
+                          failure_reason='permission_denied')
+            document['all_available'] = False
+            return subprocess.CompletedProcess(result.args, 1, json.dumps(document).encode(), b'')
+        with tempfile.TemporaryDirectory() as temp:
+            status = Path(temp) / 'status.json'
+            os.environ['MIRA_QUALIFICATION_STATUS'] = str(status)
+            self.assertEqual(self.status(capture, 'cli', capture=partial), 0)
+            gaps = json.loads(status.read_text())['observation_gaps']
+        self.assertIn({'source': '/proc/uptime', 'reason': 'permission_denied'}, gaps)
+
+
+    def test_every_journal_invocation_reports_unavailable_classes(self):
+        cases = json.loads((ROOT / 'tests/fixtures/journal-events-v1.json').read_text())
+        report = cases['valid'][0]
+        unavailable = cases['valid'][5]['evidence']['classes'][0]
+        report['evidence']['classes'][1] = unavailable
+        report['assessment'].update(outcome='indeterminate', reason='evidence_unavailable')
+        journal.check_report(report)
+
+        def mira(argv, **options):
+            return subprocess.CompletedProcess(argv, 3, json.dumps(report).encode(), b'')
+        direct = {'visible': True, 'access': True, 'handler': 'systemd-coredump'}
+        with tempfile.TemporaryDirectory() as temp:
+            status = Path(temp) / 'status.json'
+            os.environ['MIRA_QUALIFICATION_STATUS'] = str(status)
+            self.assertEqual(self.status(
+                journal, 'live-visibility', CONFIGURATIONS=journal.CONFIGURATIONS[:1],
+                independent_visibility=lambda absent, boot: direct,
+                subprocess=type('Run', (), {'run': staticmethod(mira)})), 0)
+            gaps = json.loads(status.read_text())['observation_gaps']
+        self.assertEqual(gaps, [{'source': 'journal/unit-failure',
+                                 'reason': unavailable['failure_reason']}])
+
+
+    def test_count_invocations_report_journal_access_gaps(self):
+        report = json.loads((ROOT / 'tests/fixtures/journal-events-v1.json').read_text())['valid'][9]
+        self.assertIs(report['evidence']['journal_access_complete'], False)
+        counts = {entry['class']: entry['count'] or 0 for entry in report['evidence']['classes']}
+
+        def mira(argv, **options):
+            return subprocess.CompletedProcess(argv, 3, json.dumps(report).encode(), b'')
+        with tempfile.TemporaryDirectory() as temp:
+            status = Path(temp) / 'status.json'
+            os.environ['MIRA_QUALIFICATION_STATUS'] = str(status)
+            self.assertEqual(self.status(
+                journal, 'live-counts', CONFIGURATIONS=((['unit-failure'], 'current', 'current'),),
+                visible=lambda boot: True, independent_counts=lambda absent, boot: counts,
+                subprocess=type('Run', (), {'run': staticmethod(mira)})), 0)
+            gaps = json.loads(status.read_text())['observation_gaps']
+        self.assertEqual(gaps, [{'source': 'journal/system', 'reason': 'journal_access_incomplete'}])
+
+
+if __name__ == '__main__':
+    unittest.main()

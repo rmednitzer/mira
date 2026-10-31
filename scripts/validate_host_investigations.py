@@ -3,12 +3,13 @@
 import json
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, ValidationError
 from referencing import Registry, Resource
 from compare_evidence import strict_json
+from validation_status import Inconclusive, mira_binary
+import validation_status
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = json.loads((ROOT / 'schemas/evidence-v2.schema.json').read_text())
@@ -99,7 +100,7 @@ def direct_kernel():
 
 
 def run(arguments, timeout=10):
-    return subprocess.run([str(ROOT / 'target/debug/mira'), 'investigate', *arguments],
+    return subprocess.run([mira_binary(), 'investigate', *arguments],
                           capture_output=True, timeout=timeout, check=False)
 
 
@@ -116,7 +117,7 @@ def check_live():
         reports.append(report)
     after = direct_uptime()
     if before > after:
-        raise ValueError('live uptime went backwards; comparison inconclusive')
+        raise Inconclusive('live uptime went backwards')
     for report in reports:
         if report['evidence']['status'] != 'observed':
             raise ValueError('live uptime evidence unavailable')
@@ -136,7 +137,10 @@ def check_live():
         if report['evidence'].get('value') != kernel or report['assessment']['outcome'] != outcome:
             raise ValueError('MIRA kernel release disagrees with direct procfs')
     if direct_kernel() != kernel:
-        raise ValueError('live kernel release changed; comparison inconclusive')
+        raise Inconclusive('live kernel release changed')
+
+
+def check_cli():
 
     for minimum in ('', '0', '-1', '1.0', '18446744073709551616'):
         result = run(['uptime-minimum', '--min-uptime-seconds', minimum, '--json'], 5)
@@ -148,17 +152,18 @@ def check_live():
             raise ValueError('invalid kernel release dispatched')
 
 
-def main():
+def fixtures():
     check_fixtures('uptime-minimum-v1', UPTIME, check_uptime)
     check_fixtures('kernel-release-v1', KERNEL, check_kernel)
-    check_live()
-    print('uptime-minimum and kernel-release schemas, semantic fixtures and live procfs validated')
+
+
+def main(argv=None):
+    validation_status.run(
+        'host investigation validation',
+        {'fixtures': fixtures, 'cli': check_cli, 'live': check_live},
+        'uptime-minimum and kernel-release schemas, semantic fixtures and live procfs validated',
+        argv)
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as error:
-        # Reports contain sampled host values; print only the error type.
-        print(f'host investigation validation failed: {type(error).__name__}', file=sys.stderr)
-        sys.exit(1)
+    main()

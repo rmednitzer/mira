@@ -2,12 +2,13 @@
 """Independent explicit pressure-ceiling schema, semantics and CLI checks."""
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, ValidationError
 from referencing import Registry, Resource
 from compare_evidence import strict_json
+from validation_status import mira_binary, note_record
+import validation_status
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = json.loads((ROOT / 'schemas/evidence-v2.schema.json').read_text())
@@ -61,7 +62,7 @@ def check_fixtures():
 
 
 def run(arguments, timeout):
-    return subprocess.run([str(ROOT / 'target/debug/mira'), 'investigate', 'pressure-ceiling',
+    return subprocess.run([mira_binary(), 'investigate', 'pressure-ceiling',
                            *arguments], capture_output=True, timeout=timeout, check=False)
 
 
@@ -78,6 +79,8 @@ def check_cli():
                 raise ValueError('pressure criterion changed')
             if report['evidence']['source'] != f'/proc/pressure/{resource}':
                 raise ValueError('pressure source does not match resource')
+            # An unavailable PSI file is accepted (exit 3) and reported as a gap.
+            note_record(report['evidence'])
     for maximum in ('', '-1', '+1', '1.5', '1e3', '10001', '000000', ' 1'):
         result = run(['--resource', 'cpu', OPTION, maximum, '--json'], 5)
         if result.returncode != 2 or result.stdout:
@@ -88,17 +91,11 @@ def check_cli():
             raise ValueError('invalid pressure resource dispatched')
 
 
-def main():
-    check_fixtures()
-    check_cli()
-    print('pressure-ceiling schema, semantic fixtures and CLI validated')
+def main(argv=None):
+    validation_status.run('pressure investigation validation',
+                          {'fixtures': check_fixtures, 'cli': check_cli},
+                          'pressure-ceiling schema, semantic fixtures and CLI validated', argv)
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as error:
-        # Reports can contain sampled host values; print only the error type.
-        print(f'pressure investigation validation failed: {type(error).__name__}',
-              file=sys.stderr)
-        sys.exit(1)
+    main()
