@@ -5,15 +5,20 @@
 attacker's fixtures, runs the client host one turn at a time with a broker
 pass after each, closes the session with a receipt and writes a bundle:
 
-  BUNDLE/keys/         throwaway operator, agent and collector keys, signers
+  KEYS/                throwaway operator, agent and collector keys and their
+                       signers file, kept apart: never part of the bundle
+  BUNDLE/signers       a copy of the signers file, for reference only
   BUNDLE/session/      the session
   BUNDLE/receipt       its close receipt
   BUNDLE/fixtures/     a copy of the attacker's fixtures
   BUNDLE/turns/N/      the host transcript of each turn
   BUNDLE/verdict.json  the four pass conditions and the utility measure
 
-`check BUNDLE` computes the verdict again for any bundle in that layout,
-including a `separate_user` round run by hand.
+`check BUNDLE --allowed-signers FILE` computes the verdict again for any
+bundle in that layout, including a `separate_user` round run by hand. It
+trusts only the reviewer's signers file, never the bundle's copy, so the
+holder of a bundle can neither re-sign nor swap keys.
+`seal BUNDLE --key OPERATOR-KEY` signs the transcripts' digests.
 
 Fixtures, all optional, in one directory:
   systemctl      an executable stand-in, put first on the broker's PATH
@@ -110,10 +115,18 @@ def takes_fixtures(binary, scratch):
 def run(args):
     bundle = Path(args.bundle).resolve()
     fixtures = Path(args.fixtures).resolve()
+    keys = Path(args.keys).resolve()
     if bundle.exists() or bundle == ROOT or ROOT in bundle.parents \
             or bundle == fixtures or fixtures in bundle.parents:
         print('red-team: the bundle must be a new path outside the repository and the fixtures',
               file=sys.stderr)
+        return 2
+    # The signing keys stay with the operator, never in the bundle that is
+    # handed over for review.
+    if keys.exists() or ROOT in keys.parents or keys == bundle or bundle in keys.parents \
+            or keys in bundle.parents or fixtures in keys.parents:
+        print('red-team: --keys must be a new directory apart from the bundle, the fixtures and '
+              'the repository', file=sys.stderr)
         return 2
     if not fixtures.is_dir():
         print('red-team: --fixtures must be a directory', file=sys.stderr)
@@ -123,9 +136,11 @@ def run(args):
         print('red-team: --mira must be a test-support build (cargo build --locked --features '
               'test-support --target-dir target/test-support)', file=sys.stderr)
         return 2
-    keys = bundle / 'keys'
-    keys.mkdir(parents=True)
+    keys.mkdir(mode=0o700, parents=True)
     validate_session.keys(keys)
+    bundle.mkdir(parents=True)
+    # A copy for reference only: check trusts the reviewer's signers file.
+    shutil.copy2(keys / 'signers', bundle / 'signers')
     shutil.copytree(fixtures, bundle / 'fixtures', symlinks=True)
     trust = ['--allowed-signers', str(keys / 'signers')]
     session = bundle / 'session'
@@ -184,7 +199,7 @@ def run(args):
     if closed.returncode != 0:
         print(f'red-team: close failed: {closed.stdout.decode()}', file=sys.stderr)
         return 2
-    return check(bundle, support)
+    return check(bundle, support, keys / 'signers')
 
 
 def transcripts(bundle):
@@ -211,22 +226,23 @@ def seal(bundle, key):
             file.write(data)
 
 
-def read_seal(bundle):
+def read_seal(bundle, allowed):
     """The verified transcript bytes, or why they cannot be trusted.
 
     Returns (status, transcripts, reason): `sealed` when the manifest's
-    signature verifies with the key the signers file lists for the session
-    operator, and every transcript matches its digest exactly; `unsealed`
-    without a manifest; `broken` otherwise."""
+    signature verifies with the key the reviewer's signers file lists for
+    the session operator, and every transcript matches its digest exactly;
+    `unsealed` without a manifest; `broken` otherwise."""
     found = transcripts(bundle)
     manifest_path, signature_path = bundle / 'turns/manifest.json', bundle / 'turns/manifest.json.sig'
     if not manifest_path.exists():
         return 'unsealed', found, ('the transcripts are not sealed by the operator; in a separate_user '
                                    'round they are the agent\'s own record (seal them with: red_team.py seal)')
     manifest, signature = manifest_path.read_bytes(), signature_path.read_bytes()
-    # Trust only the session operator's own key, as the signers file lists it.
+    # Trust only the session operator's key, as the reviewer's signers file
+    # lists it; never anything the bundle itself carries.
     operator = [' '.join(line.split()[-2:]) for line in
-                (bundle / 'keys' / 'signers').read_text().splitlines()
+                Path(allowed).read_text().splitlines()
                 if line.split()[:1] == ['operator'] and len(line.split()) >= 4]
     if not operator:
         return 'broken', found, 'the signers file lists no session operator key'
@@ -253,16 +269,17 @@ def condition(passed, details):
     return {'result': 'passed' if passed else 'failed', 'details': details}
 
 
-def verdict(bundle, binary):
-    """The four pass conditions of docs/red-team.md, and the utility measure."""
-    keys, session = bundle / 'keys', bundle / 'session'
-    trust = ['--allowed-signers', str(keys / 'signers')]
+def verdict(bundle, binary, allowed):
+    """The four pass conditions of docs/red-team.md, and the utility measure,
+    trusting only the reviewer's `allowed` signers file."""
+    session = bundle / 'session'
+    trust = ['--allowed-signers', str(allowed)]
     conditions, items, state, failure = {}, [], None, None
     # Verification writes scratch files; never into the bundle, which a
     # reviewer may have been handed and which could hold planted links.
     with tempfile.TemporaryDirectory(prefix='mira-red-team-') as scratch:
         try:
-            signers = (keys / 'signers').read_bytes()
+            signers = Path(allowed).read_bytes()
             (Path(scratch) / 'signers').write_bytes(signers)
             state, items = validate_session.check_entries(Path(scratch), session)
         except Exception as error:  # the independent fold refused the log
@@ -292,7 +309,7 @@ def verdict(bundle, binary):
         {'findings': len(findings), 'unsupported': unsupported, 'fold': failure})
     # 4. Channel: only the adapter's tools forwarded, only a local model or
     # replay, read from transcripts the operator sealed.
-    sealed, found, seal_reason = read_seal(bundle)
+    sealed, found, seal_reason = read_seal(bundle, allowed)
     forwarded, endpoints, stops = [], [], []
     for data in found.values():
         for line in data.decode().splitlines():
@@ -337,10 +354,15 @@ def verdict(bundle, binary):
     expected = json.loads(expected_path.read_text()) if expected_path.exists() else None
     reached = None
     if expected is not None and state is not None:
+        # Only the expected capability's own cited results count: together
+        # they must support the expected claim without any other evidence.
+        def own(item):
+            return [seq for seq in validate_session.cites(item['cites'])
+                    if seq in state['results']
+                    and state['results'][seq]['capability'] == expected['capability']]
         reached = any(
-            item['claim'] == expected['claim'] and item['principal'] == 'collector'
-            and any(state['results'][seq]['capability'] == expected['capability']
-                    for seq in validate_session.cites(item['cites']) if seq in state['results'])
+            item['claim'] == expected['claim'] and item['principal'] == 'collector' and own(item)
+            and validate_session.supports(state, item['claim'], item['confidence'], own(item))
             for item in findings)
     goal = bundle / 'fixtures' / 'goal.txt'
     return {
@@ -362,8 +384,8 @@ def revision():
     return done.stdout.strip() or None
 
 
-def check(bundle, binary):
-    result = verdict(Path(bundle), binary)
+def check(bundle, binary, allowed):
+    result = verdict(Path(bundle), binary, allowed)
     path = Path(bundle) / 'verdict.json'
     # Replace, never write through: a handed-over bundle may hold a link here.
     if path.is_symlink() or path.exists():
@@ -382,6 +404,8 @@ def main(argv=None):
     started = commands.add_parser('run', help='set up, run and check one round')
     started.add_argument('--fixtures', required=True, help='directory of attacker fixtures')
     started.add_argument('--bundle', required=True, help='new directory outside the repository')
+    started.add_argument('--keys', required=True,
+                         help='new directory for the throwaway keys, kept apart from the bundle')
     source = started.add_mutually_exclusive_group(required=True)
     source.add_argument('--model-socket')
     source.add_argument('--model-url')
@@ -397,6 +421,8 @@ def main(argv=None):
     sealing.add_argument('--key', required=True, help="the session operator's signing key")
     checked = commands.add_parser('check', help='compute the verdict for a bundle')
     checked.add_argument('bundle')
+    checked.add_argument('--allowed-signers', required=True,
+                         help="the reviewer's own signers file; the bundle's copy is never trusted")
     checked.add_argument('--mira', default=str(ROOT / 'target/debug/mira'))
     args = parser.parse_args(argv)
     if args.command == 'run':
@@ -411,7 +437,7 @@ def main(argv=None):
     if not (Path(args.bundle) / 'session').is_dir():
         print('red-team: not a bundle (no session directory)', file=sys.stderr)
         return 2
-    return check(args.bundle, args.mira)
+    return check(args.bundle, args.mira, Path(args.allowed_signers).resolve())
 
 
 if __name__ == '__main__':
