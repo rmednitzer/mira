@@ -73,11 +73,35 @@ MIRA rule: the workspace sets autonomy separately for each function. The agent m
 
 MIRA rule: the agent's autonomy level is an explicit, operator-signed setting that is recorded in the session and checked on every action, not a property inferred from the model.
 
+**Onnasch, Wickens, Li and Manzey, *Human Performance Consequences of Stages and Levels of Automation: An Integrated Meta-Analysis*, Human Factors 56(3), 2014, pp. 476–488, doi:10.1177/0018720813501549** ([open copy](https://depositonce.tu-berlin.de/items/7df9879f-d77b-4f2b-8760-f0e3d174ca67/full)) (*empirical*, meta-analysis of 18 experiments). As the degree of automation (DOA) rises, routine performance improves and workload falls somewhat. Performance when the automation fails gets worse, and so does situation awareness. The abstract states that "negative consequences of automation seem to be most likely when DOA moved across a critical boundary … between automation supporting information analysis and automation supporting action selection". The studies used laboratory tasks rather than real operators.
+
+MIRA rule: the agent's autonomy stops at that boundary. It may acquire and analyse evidence. Decision and action selection are never automated, at any autonomy level.
+
+**Jiang and Arkin, *Mixed-Initiative Human-Robot Interaction: Definition, Taxonomy, and Survey*, IEEE SMC 2015, pp. 954–961, doi:10.1109/SMC.2015.174** ([paper](https://sites.cc.gatech.edu/ai/robot-lab/online-publications/Jiang_Arkin_SMC2015_Mixed-Initiative_HRI_Taxonomy.pdf)). Definition and taxonomy: mixed initiative is a collaboration strategy in which humans and agents take or give up initiative as opportunities arise. The paper traces the concept in human–robot teams to Kortenkamp et al. (1997) and traded control.
+
+MIRA rule: initiative is per entry. Either party may start an action, finding or question. Authority over decisions is not traded.
+
+**Chen and Barnes, *Human-Agent Teaming for Multirobot Control: A Review of Human Factors Issues*, IEEE Transactions on Human-Machine Systems 44(1), 2014, pp. 13–29, doi:10.1109/THMS.2013.2293535.** Review. Trust, situation awareness, individual differences and the allocation of decision authority are the central human-factors issues when a person supervises agents.
+
+**Chen et al., *Situation Awareness-Based Agent Transparency and Human-Autonomy Teaming Effectiveness*, Theoretical Issues in Ergonomics Science 19(3), 2018, doi:10.1080/1463922X.2017.1315750** ([article](https://www.tandfonline.com/doi/full/10.1080/1463922X.2017.1315750)) (review of the authors' experiments). The SAT model sets out three levels of agent transparency: (1) current actions and plans, (2) reasoning, (3) projected outcomes. In their studies, more transparency improved team performance and trust calibration. Teammate agents need *bidirectional* transparency: the agent must also understand the human's intent.
+
+MIRA rule:
+- SAT level 1 is the intent entry, level 2 is the finding with its citations, and level 3 is the proposal with its expected effect.
+- In the other direction, the agent reads the operator's directives, decisions and question answers in the same log.
+
+**Miller and Parasuraman, *Designing for Flexible Interaction Between Humans and Automation: Delegation Interfaces for Supervisory Control*, Human Factors 49(1), 2007, pp. 57–75, doi:10.1518/001872007779598037.** Architecture with empirical follow-ups. In *adaptable* automation the human delegates through a "playbook" of bounded tasks. It keeps flexibility while holding workload manageable, though a related study found the benefit disappeared as the number of supervised agents grew.
+
+**Inagaki, *Situation-adaptive degree of automation for system safety*, IEEE RO-MAN 1993, doi:10.1109/ROMAN.1993.367716; and *Smart collaboration between humans and machines based on mutual understanding*, Cognition, Technology & Work 14, 2012, pp. 29–37.** Framework. In time-critical control, *machine-initiated* trading of authority, from the human to the automation, can improve safety.
+
+MIRA rule: autonomy is *adaptable*, never *adaptive*. Only an operator directive changes it, and a directive is a bounded play with a budget and an expiry. Machine-initiated trading is rejected for MIRA: read-only investigation is not time-critical, and any authority the agent could seize would cross the Onnasch boundary.
+
 ## What goes wrong when automation takes over
 
 **Bainbridge, *Ironies of Automation*, Automatica 19(6), 1983, pp. 775–779** ([paper](https://gwern.net/doc/sociology/technology/1983-bainbridge.pdf)). Analysis drawing on process-control and vigilance research. Automating most of a task leaves people with the hardest parts while their skills decay. People cannot sustain monitoring of rare abnormalities, and taking over in an emergency needs both manual and diagnostic skill.
 
 MIRA rule: the operator stays the one who reaches the conclusion, working from the same evidence the agent sees. The agent does not reduce the operator to approving its summary.
+
+**Strauch, *Ironies of Automation: Still Unresolved After All These Years*, IEEE Transactions on Human-Machine Systems 48(5), 2018, pp. 419–433, doi:10.1109/THMS.2017.2732506.** Review linking Bainbridge's ironies to automation-related accidents since 1983. It argues that the ironies remain unresolved despite the research they inspired, and identifies new ones.
 
 **Endsley and Kiris, *The Out-of-the-Loop Performance Problem and Level of Control in Automation*, Human Factors 37(2), 1995, pp. 381–394** (*empirical*). Higher automation lowered situation awareness through passive processing, and slowed decisions after the automation failed. The level of operator control moderated the loss. Intermediate levels are often cited as preserving awareness, although findings vary.
 
@@ -104,6 +128,30 @@ MIRA rules:
 
 MIRA rule: a stop, an override and a rejection are first-class entries.
 
+## Security operations
+
+**Alahmadi, Axon and Martinovic, *99% False Positives: A Qualitative Study of SOC Analysts' Perspectives on Security Alarms*, USENIX Security 2022, pp. 2783–2800** ([paper](https://www.usenix.org/conference/usenixsecurity22/presentation/alahmadi)) (*empirical*: a survey of 20 practitioners and a qualitative study of 21). Tools produce high false-positive rates that need manual validation, which leads to alarm burnout and desensitization. Most perceived false positives are "benign triggers", true alarms explained by legitimate local activity. Analysts want alarms that are reliable, explainable, analytical, contextual and transferable.
+
+MIRA rule:
+- Agent output is budgeted. Findings and questions consume the same per-session budget as actions, so the agent cannot flood the operator.
+- Every finding carries its context as cited evidence, and a checked claim states exactly which result supports it.
+
+**Sundaramurthy et al., *A Human Capital Model for Mitigating Security Analyst Burnout*, SOUPS 2015, pp. 347–359** ([paper](https://usenix.org/conference/soups2015/proceedings/presentation/sundaramurthy)) (*empirical*, anthropological fieldwork in SOCs). Burnout arises from a cycle in which analysts' skills, empowerment, creativity and growth go unused or unsupported.
+
+MIRA rule, with Bainbridge: the agent supports the operator's investigation and does not take it over. The operator keeps the analytical work and the conclusion.
+
+**Tilbury and Flowerday, *Automation Bias and Complacency in Security Operation Centers*, Computers 13(7), 2024, article 165, doi:10.3390/computers13070165** (scoping review of 48 articles), and ***Human-Automation Preferences in Security Operations Centers*, MWAIS 2025** ([abstract](https://aisel.aisnet.org/mwais2025/10)) (*empirical*, survey of 720 analysts). The review finds that SOC automation amplifies automation bias and complacency, so that analysts stop seeking confirming or contradicting information, and that human-in-the-loop support remains essential. The survey found preferences polarized: analysts "favored entirely human-driven or fully automated processes", with little desire for intermediate collaboration.
+
+MIRA reading: this is evidence that operators may *prefer* the extremes. It does not show that the extremes *perform* better; the Onnasch meta-analysis points the other way on failure performance. MIRA lets the operator pick `manual`, or broad acquisition autonomy, but keeps decisions with the operator at every level. The stage 3 evaluation records preference separately from performance.
+
+**Edelman et al., *Randomized Controlled Trials for Microsoft Copilot for Security*, SSRN 4648700, 2023–2024** ([paper](https://papers.ssrn.com/abstract=4648700)) (*empirical*, RCTs with about 150 novices and about 150 professionals; vendor-authored). With the assistant, novices produced more accurate and faster incident summaries, and professionals finished about 22% faster. These are a vendor's own measurements, with no independent replication found.
+
+MIRA reading: assistance can help, and the effect may differ between novices and experts. The evaluation must stratify by expertise and must not rely on vendor figures.
+
+**NIST SP 800-61 Rev. 3, *Incident Response Recommendations and Considerations for Cybersecurity Risk Management: A CSF 2.0 Community Profile*, April 2025** ([publication](https://csrc.nist.gov/pubs/sp/800/61/r3/final)). Guidance that maps incident response onto the six CSF 2.0 functions (Govern, Identify, Protect, Detect, Respond, Recover) instead of the earlier linear cycle.
+
+MIRA scope: a session supports detection and analysis on one host. Containment, eradication and recovery are state-changing and stay in Phase 5.
+
 ## AI-agent security
 
 **Greshake et al., *Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection*, arXiv:2302.12173, 2023** ([paper](https://arxiv.org/abs/2302.12173)) (*empirical attacks on deployed systems*). Content that the model retrieves can carry instructions, so the line between data and instructions disappears.
@@ -127,6 +175,16 @@ For MIRA, the agent always has the first two: it reads untrusted host evidence, 
 
 MIRA rule: the agent's whole action set is the closed list of read-only templates, with validated arguments, run by `mira` under the operator's account. There is no shell, no fetch, and no way for the agent to add capabilities.
 
+**Debenedetti et al., *AgentDojo: A Dynamic Environment to Evaluate Prompt Injection Attacks and Defenses for LLM Agents*, NeurIPS 2024 Datasets and Benchmarks** ([paper](https://arxiv.org/abs/2406.13352)) (*empirical*). An extensible environment with 97 tasks and 629 security test cases that measures an agent's utility and its security together. State-of-the-art models fail many tasks even without an attack.
+
+**Nasr, Carlini et al., *The Attacker Moves Second: Stronger Adaptive Attacks Bypass Defenses Against LLM Jailbreaks and Prompt Injections*, arXiv:2510.09023, 2025** ([paper](https://arxiv.org/abs/2510.09023)) (*empirical*). Adaptive attacks, including human-guided ones, bypassed 12 recent defenses with attack success above 90% for most, although the defenses had originally reported near-zero success.
+
+**NIST AI 100-2 E2025, *Adversarial Machine Learning: A Taxonomy and Terminology of Attacks and Mitigations*, March 2025** ([publication](https://csrc.nist.gov/pubs/ai/100/2/e2025/final)). The standard taxonomy, including direct and indirect prompt injection and the security of AI agents, and the limits of each mitigation.
+
+MIRA rules:
+- No detector, filter or "guardrail" is part of MIRA's security argument. Containment is architectural: the closed capability set, a broker the agent does not control, and a collector key the agent cannot use.
+- Stage 2 measures utility and security together, AgentDojo-style. It tests with adaptive, human-red-team attacks, not only static injection strings.
+
 **Debenedetti et al., *Defeating Prompt Injections by Design (CaMeL)*, arXiv:2503.18813, 2025** ([paper](https://arxiv.org/abs/2503.18813)), and **Beurer-Kellner et al., *Design Patterns for Securing LLM Agents against Prompt Injections*, arXiv:2506.08837, 2025** ([paper](https://arxiv.org/abs/2506.08837)) (*empirical*, AgentDojo). Separate control flow from untrusted data. Attach provenance and capabilities to values and enforce policy outside the model. Patterns such as action-selector (untrusted results handled only by reference), dual LLM, map-reduce and context minimization, and CaMeL's code-then-execute, keep injected content from choosing consequential actions. CaMeL solved 77% of AgentDojo tasks with provable security, against 84% undefended.
 
 MIRA rules:
@@ -144,4 +202,5 @@ MIRA reading: model diagnoses are useful but fallible. They must stay checkable 
 
 - The empirical studies used decision tasks such as classification, mazes and quizzes, and cloud incidents. None studied a shared Linux investigation workspace, so effect sizes do not transfer.
 - The design rules are hypotheses until MIRA's own matched-task evaluation (ADR 0015 stage 3) measures correctness, time, evidence access and over-reliance against an operator-only baseline.
-- Two sources (Feng et al., Beurer-Kellner et al.) were preprints when checked. The practitioner frameworks (Willison, Meta, OWASP) are not peer-reviewed.
+- Several sources were preprints when checked: Feng et al., Beurer-Kellner et al., CaMeL and Nasr et al. Edelman et al. is vendor-authored. The practitioner frameworks (Willison, Meta, OWASP) are not peer-reviewed.
+- Some evidence pulls against the design. Analysts may prefer the extremes of autonomy (Tilbury and Flowerday 2025), and adaptive automation can help in time-critical control (Inagaki). Both are recorded, along with the reasons the design differs.

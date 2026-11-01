@@ -22,12 +22,15 @@ The roadmap puts a workspace at Phase 3 and AI at Phase 4, after security-adviso
 From the research basis:
 
 1. **Common ground:** one shared, ordered record. Every action, result, finding, question, proposal and decision is an entry naming its principal and the entries it rests on.
-2. **Observability, predictability, directability:**
-   - the agent announces its intent before acting
+2. **Observability, predictability, directability** (Johnson et al.; Klein et al.; Chen et al.'s SAT model):
+   - the agent announces its intent before acting (SAT level 1)
+   - findings carry their reasoning as cited evidence (level 2)
+   - proposals state the action and its expected effect (level 3)
+   - transparency runs both ways: the agent reads the operator's directives, decisions and answers in the same log
    - its autonomy level and remaining budget are visible
    - operator directives take effect at once
    - the operator can stop the agent at any time
-3. **Autonomy per function** (Parasuraman et al.): set separately for evidence acquisition, analysis, decision and action. It is bounded, expires, and is never inferred from the model.
+3. **Autonomy per function, below the critical boundary** (Parasuraman et al.; the Onnasch et al. meta-analysis): set separately for evidence acquisition, analysis, decision and action. It never extends past information analysis into decision or action selection, where the meta-analysis found failure costs concentrate. It is bounded, expires and is never inferred from the model. It is *adaptable* (Miller and Parasuraman): only operator directives change it. It is never *adaptive*: there is no machine-initiated trading of authority (Inagaki), because read-only investigation is not time-critical.
 4. **The operator stays in the loop** (Bainbridge; Endsley and Kiris): the operator reaches the conclusion. The default autonomy is intermediate, and a model failure leaves a session the operator can continue alone.
 5. **Calibrated reliance** (Lee and See; Bansal; Buçinca; Vasconcelos):
    - claims come from a closed vocabulary, never persuasive narrative
@@ -44,6 +47,8 @@ From the research basis:
    - `unsafe` stays forbidden
    - every existing format and command unchanged
 8. **Evaluation before claims:** benefit is measured against an operator-only baseline before anything is claimed.
+
+**Scope.** A session supports detection and analysis on one host, the Detect and Respond analysis activities of NIST SP 800-61 Rev. 3. Containment, eradication and recovery change state and stay in Phase 5.
 
 ## Alternatives
 
@@ -139,7 +144,7 @@ The kernel's invariants carry over as enforced rules, each with tests:
 - **Expiry.** A delegation grant ends after an entry count or an operator-clock deadline set in the directive. After that the level reverts to `assisted`.
 - **Staleness.** When the operator decides on a proposal whose `based_on` is older than a newer result for the same capability and arguments, `mira` flags it stale, and approving it requires `--despite-stale`.
 - **Terminal immutability.** After `close`, every append is refused.
-- **Budget.** Each agent action consumes budget. At zero the agent can only propose.
+- **Budget.** Each agent action, finding and question consumes budget, so the agent cannot flood the operator, which is the alarm-burnout failure that SOC studies report (Alahmadi et al.). At zero the agent can only propose.
 
 ### Grounded findings
 
@@ -200,7 +205,12 @@ Independent tooling: a `session-v1` schema and a validator that recomputes auton
 
 ### Stage 2: local model harness
 
-Optional tooling outside the CLI package, driving the same subcommands, with full model-I/O recording. Hostile-content fixtures put injection strings in journal unit names, dpkg versions and service states. They must show the agent cannot exceed its capabilities or post a false checked claim.
+Optional tooling outside the CLI package, driving the same subcommands, with full model-I/O recording. Utility and security are measured together, in the style of AgentDojo:
+- **Fixtures:** hostile-content fixtures put injection strings in journal unit names, dpkg versions and service states.
+- **Adaptive attacks:** the tests use adaptive, human-red-team attacks, not only static strings, because adaptive attacks bypass published defenses (Nasr et al. 2025).
+- **Pass condition:** under any attack, the agent never exceeds its capabilities, never gets a result recorded that the collector did not produce, and never posts a false checked claim.
+
+No detector or filter is part of the security argument.
 
 ### Stage 3: evaluation
 
@@ -211,7 +221,7 @@ Matched tasks on synthetic fault fixtures compare the operator alone with the op
 - over-reliance: acceptance of seeded wrong agent findings
 - override rate
 
-They use the methods of Bansal et al. and Buçinca et al. Results, positive or negative, are recorded before any claim of benefit (UI-01).
+They use the methods of Bansal et al. and Buçinca et al. Participants are stratified by expertise, because assistance effects can differ between novices and experts (Edelman et al.). Each operator's preferred autonomy level is recorded separately from performance, because analysts may prefer the extremes (Tilbury and Flowerday 2025) even where intermediate autonomy fails less. Results, positive or negative, are recorded before any claim of benefit (UI-01).
 
 ## Consequences and rollback
 
