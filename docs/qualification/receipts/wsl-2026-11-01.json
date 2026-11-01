@@ -1,0 +1,236 @@
+{
+  "receipt_version": 1,
+  "source_commit": "1e2affb4aef470855fa103e9ecf2b3bee72bc859",
+  "source_tree": "7bf20f53315f4f1ac25c9cd93f09edc0159fcae3",
+  "binary_sha256": "2b4d571806a660061920f5161522e4076395587d2e2f0247c39d59e5985cb48b",
+  "binary_origin": "checkout-build",
+  "host_class": "wsl",
+  "os": {
+    "id": "ubuntu",
+    "version_id": "26.04"
+  },
+  "architecture": "amd64",
+  "systemd_version": 259,
+  "kernel_series": "6.18",
+  "capabilities": {
+    "systemd": true,
+    "journalctl": true,
+    "journal_visible": true,
+    "psi": true,
+    "dpkg": true,
+    "ssh_keygen": true,
+    "boot_id": true
+  },
+  "checks": [
+    {
+      "validator": "evidence",
+      "group": "fixtures",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 100,
+      "observation_gaps": []
+    },
+    {
+      "validator": "evidence",
+      "group": "cli",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 101,
+      "observation_gaps": []
+    },
+    {
+      "validator": "evidence",
+      "group": "live-procfs",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 101,
+      "observation_gaps": []
+    },
+    {
+      "validator": "evidence",
+      "group": "live-systemd",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 101,
+      "observation_gaps": []
+    },
+    {
+      "validator": "investigation",
+      "group": "fixtures",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 100,
+      "observation_gaps": []
+    },
+    {
+      "validator": "investigation",
+      "group": "cli",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 101,
+      "observation_gaps": []
+    },
+    {
+      "validator": "investigation",
+      "group": "live-systemd",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 151,
+      "observation_gaps": []
+    },
+    {
+      "validator": "capture",
+      "group": "schema",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 151,
+      "observation_gaps": []
+    },
+    {
+      "validator": "capture",
+      "group": "cli",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 151,
+      "observation_gaps": []
+    },
+    {
+      "validator": "capture",
+      "group": "compare",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 151,
+      "observation_gaps": []
+    },
+    {
+      "validator": "capture",
+      "group": "live-boot",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 151,
+      "observation_gaps": []
+    },
+    {
+      "validator": "capture",
+      "group": "signed-compare",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 151,
+      "observation_gaps": []
+    },
+    {
+      "validator": "memory",
+      "group": "fixtures",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 101,
+      "observation_gaps": []
+    },
+    {
+      "validator": "memory",
+      "group": "cli",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 100,
+      "observation_gaps": []
+    },
+    {
+      "validator": "pressure",
+      "group": "fixtures",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 101,
+      "observation_gaps": []
+    },
+    {
+      "validator": "pressure",
+      "group": "cli",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 100,
+      "observation_gaps": []
+    },
+    {
+      "validator": "package",
+      "group": "fixtures",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 101,
+      "observation_gaps": []
+    },
+    {
+      "validator": "package",
+      "group": "cli",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 101,
+      "observation_gaps": []
+    },
+    {
+      "validator": "package",
+      "group": "live-dpkg",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 151,
+      "observation_gaps": []
+    },
+    {
+      "validator": "host",
+      "group": "fixtures",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 152,
+      "observation_gaps": []
+    },
+    {
+      "validator": "host",
+      "group": "cli",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 101,
+      "observation_gaps": []
+    },
+    {
+      "validator": "host",
+      "group": "live",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 101,
+      "observation_gaps": []
+    },
+    {
+      "validator": "journal",
+      "group": "fixtures",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 100,
+      "observation_gaps": []
+    },
+    {
+      "validator": "journal",
+      "group": "cli",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 100,
+      "observation_gaps": []
+    },
+    {
+      "validator": "journal",
+      "group": "live-visibility",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 201,
+      "observation_gaps": []
+    },
+    {
+      "validator": "journal",
+      "group": "live-counts",
+      "result": "passed",
+      "reason": null,
+      "duration_ms": 201,
+      "observation_gaps": []
+    }
+  ],
+  "started_unix_ms": 1793491274034,
+  "duration_ms": 3248
+}
