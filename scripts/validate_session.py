@@ -293,9 +293,12 @@ def fold(state, entry):
         target = entry['target_seq']
         labelled = {'hypothesis': entry['confidence'] is not None,
                     'no_finding': entry['confidence'] is None}.get(entry['claim'], True)
-        if state['open'].get(target) != ('finding',) or target in state['assessed'] or not labelled:
+        # Target 0, the session question, may be assessed again and again.
+        if not labelled or (target != 0 and (state['open'].get(target) != ('finding',)
+                                             or target in state['assessed'])):
             raise ValueError('assessment of nothing open, twice, or without its labels')
-        state['assessed'].add(target)
+        if target != 0:
+            state['assessed'].add(target)
     elif kind == 'abandon' and operator:
         if state['pending'].pop(entry['action_seq'], None) is None:
             raise ValueError('abandoned action is not pending')
@@ -469,6 +472,8 @@ def check_fixtures():
     refused(lambda e: fold(assessed, e), entry('assessment', 3, target_seq=1, claim='no_finding',
                                                confidence=None))
     fold(assessed, entry('decision', 3, target_seq=1, verdict='reject'))
+    fold(fold(assessed, entry('assessment', 3, target_seq=0, claim='no_finding', confidence=None)),
+         entry('assessment', 4, target_seq=0, claim='hypothesis', confidence='low'))
     timed = entry('directive', 1, directive='delegate', level=None, budget=None, until_seq=4096,
                   until_unix_ms=1800000000000)
     timed['note'] = timed.pop('note')

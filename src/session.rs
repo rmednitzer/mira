@@ -1438,19 +1438,24 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
             claim,
             confidence,
         } if operator => {
-            // Once per open agent finding, with the same labels as a finding.
+            // Once per open agent finding, with the same labels as a finding;
+            // target 0, the session question, may be assessed again and again.
             let labelled = match claim {
                 Claim::Hypothesis => confidence.is_some(),
                 Claim::NoFinding => confidence.is_none(),
                 _ => true,
             };
-            if !matches!(state.open.get(target_seq), Some(Open::Finding))
-                || state.assessed.contains_key(target_seq)
-                || !labelled
-            {
+            if !labelled {
                 return Err(Problem::Malformed(seq));
             }
-            state.assessed.insert(*target_seq, seq);
+            if *target_seq != 0 {
+                if !matches!(state.open.get(target_seq), Some(Open::Finding))
+                    || state.assessed.contains_key(target_seq)
+                {
+                    return Err(Problem::Malformed(seq));
+                }
+                state.assessed.insert(*target_seq, seq);
+            }
         }
         Body::Refusal { request_id, .. } if collector => {
             // A refusal is still agent activity in the log: it costs budget.
@@ -1866,17 +1871,28 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
     // of relayed actions and proposals): any of them could otherwise carry
     // the conclusion the hidden finding states. What remains is fixed
     // vocabulary: kinds, capability names, outcomes and reasons.
-    let withhold_notes = state.header.require_own_assessment
-        && log.iter().any(|stored| {
-            matches!(
-                stored.entry.body,
-                Body::Finding {
-                    request_id: Some(_),
-                    ..
-                }
-            ) && !assessments.contains_key(&stored.entry.seq)
-        });
+    //
+    // Agent text is shown only once the operator has recorded an assessment
+    // after it was written (of a finding, or of the session question at
+    // target 0), so a conclusion can never reach the operator ahead of
+    // their own view, whether it comes before or after a finding.
+    let unassessed = log.iter().any(|stored| {
+        matches!(
+            stored.entry.body,
+            Body::Finding {
+                request_id: Some(_),
+                ..
+            }
+        ) && !assessments.contains_key(&stored.entry.seq)
+    });
+    let last_assessment = log
+        .iter()
+        .filter(|stored| matches!(stored.entry.body, Body::Assessment { .. }))
+        .map(|stored| stored.entry.seq)
+        .max();
     for Stored { entry, .. } in log {
+        let withhold_notes = state.header.require_own_assessment
+            && (unassessed || last_assessment.is_none_or(|last| last < entry.seq));
         // Under the forcing flag an agent finding is withheld, note and all,
         // until the operator has assessed it. This is a display rule: the log
         // itself stays readable.
@@ -1896,7 +1912,7 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
             ));
             continue;
         }
-        let withheld = "(withheld until your own assessment of every agent finding)";
+        let withheld = "(withheld until your own assessment: mira session assess --target 0, or of each open finding)";
         let relayed_arguments = match &entry.body {
             Body::Action {
                 request_id: Some(_),
@@ -1989,7 +2005,12 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
                 claim,
                 confidence,
             } => format!(
-                "assessment of {target_seq:06}: {} confidence {} (your own view)",
+                "assessment of {}: {} confidence {} (your own view)",
+                if *target_seq == 0 {
+                    "the session question".to_owned()
+                } else {
+                    format!("{target_seq:06}")
+                },
                 claim.as_str(),
                 confidence.map_or("none", Confidence::as_str)
             ),
@@ -3431,10 +3452,24 @@ mod tests {
         // Once per finding, only on an open agent finding, by the operator,
         // with the finding labels.
         assert!(fold(Some(assessed), &assessment(3, 1, Claim::NoFinding, None)).is_err());
+        // The session question (target 0) may be assessed again and again;
+        // anything else that is not an open agent finding may not.
+        let session_view = fold(
+            Some(forced.clone()),
+            &assessment(2, 0, Claim::NoFinding, None),
+        )
+        .unwrap();
+        assert!(
+            fold(
+                Some(session_view),
+                &assessment(3, 0, Claim::NoFinding, None)
+            )
+            .is_ok()
+        );
         assert!(
             fold(
                 Some(forced.clone()),
-                &assessment(2, 0, Claim::NoFinding, None)
+                &assessment(2, 7, Claim::NoFinding, None)
             )
             .is_err()
         );

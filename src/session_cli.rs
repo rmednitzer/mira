@@ -264,8 +264,10 @@ fn assess(dir: &Path, rest: &[String]) {
     }
     let note = options.get("--text").map(text).unwrap_or_default();
     let entry = as_operator(dir, &options, |state| {
-        if !matches!(state.open.get(&target), Some(Open::Finding))
-            || state.assessed.contains_key(&target)
+        // Target 0 is the session question, which may be assessed again.
+        if target != 0
+            && (!matches!(state.open.get(&target), Some(Open::Finding))
+                || state.assessed.contains_key(&target))
         {
             return Err(Problem::NotOpen);
         }

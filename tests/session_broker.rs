@@ -1743,7 +1743,7 @@ fn findings_stay_hidden_until_the_operators_own_assessment() {
     let hidden = show();
     assert!(
         hidden.contains(
-            "000004 collector question (agent request): note (withheld until your own assessment of every agent finding)\n"
+            "000004 collector question (agent request): note (withheld until your own assessment: mira session assess --target 0, or of each open finding)\n"
         ),
         "{hidden}"
     );
@@ -1751,7 +1751,7 @@ fn findings_stay_hidden_until_the_operators_own_assessment() {
     assert!(!hidden.contains("any?"), "{hidden}");
     assert!(
         hidden.contains(
-            "000001 collector action memory-headroom arguments (withheld until your own assessment of every agent finding) (agent request): note (withheld until your own assessment of every agent finding)\n"
+            "000001 collector action memory-headroom arguments (withheld until your own assessment: mira session assess --target 0, or of each open finding) (agent request): note (withheld until your own assessment: mira session assess --target 0, or of each open finding)\n"
         ),
         "{hidden}"
     );
@@ -1858,5 +1858,69 @@ fn a_timed_delegation_lapses_at_the_brokers_clock() {
     assert_eq!(
         stdout(&dir.verify()),
         "MIRA session: verified entries 3 open\n"
+    );
+}
+
+#[test]
+fn agent_text_before_any_finding_waits_for_an_own_assessment() {
+    let dir = Dir::new();
+    assert!(dir.start(&["--require-own-assessment"]).status.success());
+    let show = || stdout(&dir.mira(&["session", "show", dir.session().to_str().unwrap()]));
+    // A conclusion stated before any finding exists is still withheld.
+    assert!(
+        dir.request(&["--question", "--text", "It is memory, trust me"])
+            .status
+            .success()
+    );
+    assert_eq!(run(&dir), "MIRA session: admitted request as 000001\n");
+    let shown = show();
+    assert!(!shown.contains("trust me"), "{shown}");
+    // Your view of the session question, recorded first, releases the text
+    // written before it, and may be recorded again later.
+    assert_eq!(
+        stdout(&dir.command(
+            "assess",
+            "operator",
+            &[
+                "--target",
+                "0",
+                "--claim",
+                "hypothesis",
+                "--confidence",
+                "medium",
+                "--text",
+                "disk?"
+            ]
+        )),
+        "MIRA session: assessment 000002 of 000000\n"
+    );
+    let shown = show();
+    for line in [
+        "000001 collector question (agent request): [unchecked agent note] It is memory, trust me\n",
+        "000002 operator assessment of the session question: hypothesis confidence medium (your own view): disk?\n",
+    ] {
+        assert!(shown.contains(line), "{line}\n{shown}");
+    }
+    // Text after your latest assessment waits for the next one.
+    assert!(
+        dir.request(&["--question", "--text", "Still memory"])
+            .status
+            .success()
+    );
+    run(&dir);
+    assert!(!show().contains("Still memory"));
+    assert!(
+        dir.command(
+            "assess",
+            "operator",
+            &["--target", "0", "--claim", "no_finding"]
+        )
+        .status
+        .success()
+    );
+    assert!(show().contains("Still memory"));
+    assert_eq!(
+        stdout(&dir.verify()),
+        "MIRA session: verified entries 5 open\n"
     );
 }

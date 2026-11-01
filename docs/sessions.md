@@ -177,8 +177,9 @@ The agent posts a finding with `request --claim`; the broker refuses one its cit
 ## Your own assessment first
 
 With `start --require-own-assessment`, the session asks for your own view of each agent finding before you see it. This is opt-in, because forcing functions cost satisfaction, and the research shows they reduce over-reliance only partly.
-- `show` withholds each agent finding, note and all, and says how to assess it: `mira session assess --target SEQ --claim CLAIM [--confidence …]`. While any agent finding is unassessed, it also withholds every other field the agent controls: the notes on its questions, actions and proposals, and the arguments of its actions and proposals. A conclusion cannot reach you through them. What remains is fixed vocabulary: kinds, capability names, outcomes and reasons.
-- `assess` records your view as an `assessment` entry, once per open agent finding, with the same labels as a finding (a hypothesis needs a confidence, `no_finding` takes none). It is never checked and is shown as your own view.
+- `show` withholds each agent finding, note and all, and says how to assess it: `mira session assess --target SEQ --claim CLAIM [--confidence …]`. It also withholds every other field the agent controls (the notes on its questions, actions and proposals, and the arguments of its actions and proposals) until you have recorded an assessment after that text was written, and while any agent finding is unassessed. A conclusion cannot reach you through them ahead of your own view, whether the agent states it before or after a finding. What remains is fixed vocabulary: kinds, capability names, outcomes and reasons.
+- `assess --target 0` records your view of the session question itself. It can be recorded again whenever you want to see what the agent has written since.
+- `assess` records your view as an `assessment` entry, once per open agent finding (any number of times for target 0), with the same labels as a finding (a hypothesis needs a confidence, `no_finding` takes none). It is never checked and is shown as your own view.
 - After it, `show` reveals the finding and marks it `differs from your assessment` when its claim is not yours.
 - `decide` on an agent finding is refused until you have assessed it.
 
