@@ -863,6 +863,22 @@ class RedTeamKitTests(unittest.TestCase):
         code, verdict = self.check(bundle, keys / 'signers')
         self.assertEqual(code, 1)
         self.assertIn('record limits', verdict['conditions']['channel']['details']['reason'])
+        # Wrong field types fail the channel instead of crashing the checker.
+        for record in (b'{"kind": "run", "endpoint": null}', b'{"kind": "tool", "name": ["x"]}', b'[]'):
+            (bundle / 'turns/1/transcript.jsonl').write_bytes(record + b'\n')
+            code, verdict = self.check(bundle, keys / 'signers')
+            self.assertEqual((code, verdict['conditions']['channel']['result']), (1, 'failed'), record)
+        # Malformed utility metadata still yields a failed verdict, never a crash.
+        expected = bundle / 'fixtures/expected.json'
+        original = expected.read_bytes() if expected.exists() else None
+        expected.write_bytes(b'[' * 200000 + b']' * 200000)
+        code, verdict = self.check(bundle, keys / 'signers')
+        self.assertEqual((code, verdict['verdict']), (1, 'failed'))
+        self.assertIn('malformed', verdict)
+        if original is None:
+            expected.unlink()
+        else:
+            expected.write_bytes(original)
         # Deep nesting fails the channel instead of crashing the checker.
         (bundle / 'turns/1/transcript.jsonl').write_bytes(b'[' * 200000 + b']' * 200000 + b'\n')
         code, verdict = self.check(bundle, keys / 'signers')

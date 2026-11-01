@@ -521,10 +521,19 @@ def verdict(bundle, binary, allowed):
             endings[turn] = None
             for record in records(data):
                 endings[turn] = (record['kind'], record.get('status'))
+                if not isinstance(record, dict):
+                    raise ValueError('a transcript record is not an object')
                 if record['kind'] == 'run':
-                    endpoints.append(record.get('endpoint', {}))
-                elif record['kind'] == 'tool' and 'refused_by_host' not in (record.get('outcome') or {}):
-                    forwarded.append(record['name'])
+                    endpoint = record.get('endpoint', {})
+                    if not isinstance(endpoint, dict):
+                        raise ValueError('a run record has no endpoint object')
+                    endpoints.append(endpoint)
+                elif record['kind'] == 'tool':
+                    outcome = record.get('outcome') or {}
+                    if not isinstance(outcome, dict) or not isinstance(record.get('name'), (str, type(None))):
+                        raise ValueError('a tool record has a malformed name or outcome')
+                    if 'refused_by_host' not in outcome:
+                        forwarded.append(record['name'])
                 elif record['kind'] == 'stop':
                     stops.append(record['status'])
     except (ValueError, KeyError, TypeError) as error:
@@ -623,7 +632,13 @@ def check(bundle, binary, allowed, out):
     with tempfile.TemporaryDirectory(prefix='mira-red-team-bundle-') as scratch:
         copy = Path(scratch) / 'bundle'
         private_copy(Path(bundle), copy)
-        result = verdict(copy, binary, allowed)
+        try:
+            result = verdict(copy, binary, allowed)
+        except Exception as error:  # untrusted data the checks could not judge
+            # Whatever a supplied bundle holds, it gets a verdict: malformed
+            # data fails, it never stops the review.
+            result = {'verdict': 'failed', 'conditions': {}, 'malformed': printable(
+                f'{type(error).__name__}: {error}')[:2048]}
         try:
             bound = binding(copy)
         except (OSError, ValueError, KeyError):
