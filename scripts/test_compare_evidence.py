@@ -334,7 +334,8 @@ def canonical(document):
     return (json.dumps(document, separators=(",", ":")) + "\n").encode()
 
 
-class SignedComparisonTests(unittest.TestCase):
+class SignedFixture(unittest.TestCase):
+    """A throwaway key and allowed_signers file per test."""
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.dir = Path(self.temp.name)
@@ -361,6 +362,8 @@ class SignedComparisonTests(unittest.TestCase):
     def trust(self, principal="host-a"):
         return Trust(self.signers, principal)
 
+
+class SignedComparisonTests(SignedFixture):
     def test_verified_captures_report_integrity(self):
         before = self.write_signed("before.json", timeline_capture(bound(1, 2)))
         after = self.write_signed("after.json", timeline_capture(bound(3, 4)))
@@ -431,6 +434,151 @@ class SignedComparisonTests(unittest.TestCase):
         for extra in (["--principal", "host-a"], ["--allowed-signers", str(self.signers)],
                       ["--revocations", "krl"],
                       ["--allowed-signers", str(self.signers), "--principal", "host-b"]):
+            refused = run(*extra)
+            self.assertEqual(refused.returncode, 2, extra)
+            self.assertEqual(refused.stdout, "", extra)
+
+
+HEX_A = "0123456789abcdef" * 4
+HEX_B = "fedcba9876543210" * 4
+
+
+def challenged(document, challenge):
+    """capture-v3 exactly as MIRA writes it: the challenge right after the version."""
+    rest = {key: value for key, value in document.items() if key != "capture_version"}
+    return {"capture_version": 3, "challenge": challenge, **rest}
+
+
+def issued_bytes(challenge, at):
+    return (f'{{"challenge_version":1,"challenge":"{challenge}","issued_unix_ms":{at}}}\n'
+            .encode())
+
+
+class ChallengeComparisonTests(SignedFixture):
+    """ADR 0014 stage 2: capture-v3 admission and per-side freshness."""
+
+    def challenge(self, name, challenge, at):
+        path = self.dir / name
+        path.write_bytes(issued_bytes(challenge, at))
+        return compare_evidence.read_challenge(path)
+
+    def pair(self):
+        before = self.write_signed("before.json", challenged(timeline_capture(bound(1, 2)), HEX_A))
+        after = self.write_signed("after.json", challenged(timeline_capture(bound(3, 4)), HEX_B))
+        return before, after
+
+    def test_capture_v3_compares_like_capture_v2(self):
+        before, after = self.pair()
+        result = compare(load(before, VALIDATOR), load(after, VALIDATOR))
+        self.assertEqual(result["comparison_version"], 3)
+        self.assertEqual(result["timing"]["order"], "before_precedes_after")
+        self.assertNotIn("freshness", result)
+        v2 = self.dir / "v2.json"
+        v2.write_bytes(canonical(timeline_capture(bound(3, 4))))
+        mixed = compare(load(before, VALIDATOR), load(v2, VALIDATOR))
+        self.assertEqual(mixed["comparison_version"], 3)
+        self.assertEqual(mixed["timing"]["order"], "before_precedes_after")
+
+    def test_answered_challenges_report_age_bounds(self):
+        before, after = self.pair()
+        issued = (self.challenge("a", HEX_A, 1000), self.challenge("b", HEX_B, 1500))
+        result = compare(load(before, VALIDATOR, self.trust(), issued[0]),
+                         load(after, VALIDATOR, self.trust(), issued[1]),
+                         max_age_ms=1000, now_ms=2000)
+        self.assertEqual(result["freshness"], {"status": "within_policy", "max_age_ms": 1000,
+                                               "before_age_bound_ms": 1000,
+                                               "after_age_bound_ms": 500})
+        self.assertEqual(result["integrity"]["principal"], "host-a")
+
+    def test_every_freshness_failure_refuses_comparison(self):
+        before, after = self.pair()
+        a, b = self.challenge("a", HEX_A, 1000), self.challenge("b", HEX_B, 1000)
+        load_pair = lambda first, second: (load(before, VALIDATOR, self.trust(), first),
+                                           load(after, VALIDATOR, self.trust(), second))
+        for now, message in ((999, "future"), (2001, "older than policy")):
+            with self.assertRaisesRegex(ValueError, message):
+                compare(*load_pair(a, b), max_age_ms=1000, now_ms=now)
+        with self.assertRaisesRegex(ValueError, "does not answer"):
+            load(before, VALIDATOR, self.trust(), b)
+        same = self.write_signed("same.json", challenged(timeline_capture(bound(3, 4)), HEX_A))
+        with self.assertRaisesRegex(ValueError, "one challenge"):
+            compare(load(before, VALIDATOR, self.trust(), a), load(same, VALIDATOR, self.trust(), a),
+                    max_age_ms=1000, now_ms=1000)
+        with self.assertRaisesRegex(ValueError, "both captures"):
+            compare(load(before, VALIDATOR, self.trust(), a), load(after, VALIDATOR, self.trust()),
+                    max_age_ms=1000, now_ms=1000)
+        with self.assertRaisesRegex(ValueError, "verified"):
+            load(before, VALIDATOR, None, a)
+        with self.assertRaisesRegex(ValueError, "verified captures"):
+            compare(load(before, VALIDATOR), load(after, VALIDATOR), max_age_ms=1000)
+        # capture-v2, and capture-v3 with the challenge anywhere but the fixed prefix.
+        v2 = self.write_signed("v2.json", timeline_capture(bound(1, 2)))
+        moved = challenged(timeline_capture(bound(1, 2)), HEX_A)
+        moved = {"capture_version": 3, **{k: v for k, v in moved.items() if k != "capture_version"}}
+        moved["challenge"] = moved.pop("challenge")
+        moved = self.write_signed("moved.json", moved)
+        for path in (v2, moved):
+            with self.assertRaisesRegex(ValueError, "does not answer"):
+                load(path, VALIDATOR, self.trust(), a)
+
+    def test_a_duplicate_challenge_key_is_refused(self):
+        document = canonical(challenged(timeline_capture(bound(1, 2)), HEX_A))
+        document = document.replace(b'"records":', f'"challenge":"{HEX_B}","records":'.encode())
+        path = self.dir / "duplicate.json"
+        path.write_bytes(document)
+        result = subprocess.run(["/usr/bin/ssh-keygen", "-Y", "sign", "-f", str(self.key), "-n",
+                                 compare_evidence.CAPTURE_NAMESPACE], input=document,
+                                capture_output=True, check=True)
+        Path(f"{path}.sig").write_bytes(result.stdout)
+        with self.assertRaisesRegex(ValueError, "duplicate JSON key"):
+            load(path, VALIDATOR, self.trust(), self.challenge("a", HEX_A, 1))
+
+    def test_challenge_files_have_one_exact_layout(self):
+        self.assertEqual(self.challenge("ok", HEX_A, 0).issued_unix_ms, 0)
+        good = issued_bytes(HEX_A, 1793520000000)
+        for name, data in (("no-newline", good[:-1]), ("two-newlines", good + b"\n"),
+                           ("space", good.replace(b",", b", ", 1)),
+                           ("upper", good.replace(b"abcdef", b"ABCDEF")),
+                           ("leading-zero", good.replace(b":1793", b":01793")),
+                           ("negative", good.replace(b":1793", b":-1793")),
+                           ("seventeen-digits", issued_bytes(HEX_A, 10 ** 16)),
+                           ("extra", good.replace(b"}", b',"x":1}')),
+                           ("version", good.replace(b'"challenge_version":1', b'"challenge_version":2')),
+                           ("oversized", good + b" " * 4096)):
+            path = self.dir / name
+            path.write_bytes(data)
+            with self.assertRaises(ValueError, msg=name):
+                compare_evidence.read_challenge(path)
+        fifo = self.dir / "fifo"
+        os.mkfifo(fifo)
+        with self.assertRaisesRegex(ValueError, "regular file"):
+            compare_evidence.read_challenge(fifo)
+
+    def test_cli_checks_freshness_and_requires_its_options_together(self):
+        before, after = self.pair()
+        now = __import__("time").time_ns() // 1_000_000
+        a, b = self.dir / "a.json", self.dir / "b.json"
+        a.write_bytes(issued_bytes(HEX_A, now))
+        b.write_bytes(issued_bytes(HEX_B, now))
+        script = str(ROOT / "scripts/compare_evidence.py")
+        trust = ["--allowed-signers", str(self.signers), "--principal", "host-a"]
+        run = lambda *extra: subprocess.run([sys.executable, script, str(before), str(after), *extra],
+                                            capture_output=True, text=True, timeout=30, check=False)
+        ok = run(*trust, "--before-challenge", str(a), "--after-challenge", str(b),
+                 "--max-age-ms", "600000")
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertEqual(json.loads(ok.stdout)["freshness"]["status"], "within_policy")
+        for extra in (["--before-challenge", str(a), "--after-challenge", str(b), "--max-age-ms", "1"],
+                      [*trust, "--before-challenge", str(a), "--max-age-ms", "600000"],
+                      [*trust, "--before-challenge", str(a), "--after-challenge", str(b)],
+                      [*trust, "--before-challenge", str(a), "--after-challenge", str(b),
+                       "--max-age-ms", "-1"],
+                      [*trust, "--before-challenge", str(a), "--after-challenge", str(b),
+                       "--max-age-ms", str(10 ** 16)],
+                      [*trust, "--before-challenge", str(b), "--after-challenge", str(a),
+                       "--max-age-ms", "600000"],
+                      [*trust, "--before-challenge", str(a), "--after-challenge", str(a),
+                       "--max-age-ms", "600000"]):
             refused = run(*extra)
             self.assertEqual(refused.returncode, 2, extra)
             self.assertEqual(refused.stdout, "", extra)

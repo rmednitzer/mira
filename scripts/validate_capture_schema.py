@@ -9,12 +9,29 @@ import tempfile
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, ValidationError
-from capture_contract import ROOT, VALIDATOR_V2, check_capture
-from compare_evidence import CAPTURE_NAMESPACE, Trust, load, compare, strict_json
+from capture_contract import ROOT, VALIDATOR_V2, VALIDATOR_V3, check_capture
+from compare_evidence import (CAPTURE_NAMESPACE, CHALLENGE_DOCUMENT, Trust, load, compare,
+                              read_challenge, strict_json)
 from validation_status import Inconclusive, mira_binary, note_gap, note_record
 import validation_status
 
 LEGACY = Draft202012Validator(json.loads((ROOT / 'schemas/evidence-v1.schema.json').read_text()))
+CHALLENGE = Draft202012Validator(
+    json.loads((ROOT / 'schemas/challenge-v1.schema.json').read_text()))
+HEX = '0123456789abcdef' * 4
+
+
+def challenged(document, challenge=HEX):
+    rest = {key: value for key, value in document.items() if key != 'capture_version'}
+    return {'capture_version': 3, 'challenge': challenge, **rest}
+
+
+def refused(check, document):
+    try:
+        check(document)
+    except (ValueError, ValidationError):
+        return
+    raise ValueError('invalid document admitted')
 
 
 def capture(*arguments, timeout=15, **options):
@@ -117,6 +134,65 @@ def check_live_signed_comparison():
             raise ValueError('modified signed capture admitted')
 
 
+def check_live_challenge():
+    """mira answers two challenges; the comparator and mira verify bound their age."""
+    with tempfile.TemporaryDirectory() as temp:
+        temp = Path(temp)
+        key = temp / 'host-a'
+        subprocess.run(['/usr/bin/ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'host-a',
+                        '-f', str(key)], check=True, stdin=subprocess.DEVNULL)
+        public = ' '.join(key.with_suffix('.pub').read_text().split()[:2])
+        signers = temp / 'signers'
+        signers.write_text(f'host-a namespaces="{CAPTURE_NAMESPACE}" {public}\n')
+        issued, paths = [], []
+        for name in ('first', 'second'):
+            result = subprocess.run([mira_binary(), 'challenge'], capture_output=True,
+                                    timeout=5, check=False)
+            match = CHALLENGE_DOCUMENT.fullmatch(result.stdout)
+            if result.returncode != 0 or match is None:
+                raise ValueError('mira challenge output is not challenge-v1')
+            CHALLENGE.validate(strict_json(result.stdout))
+            challenge_file = temp / f'{name}.challenge'
+            challenge_file.write_bytes(result.stdout)
+            issued.append(read_challenge(challenge_file))
+            path = temp / f'{name}.json'
+            result = capture('synthetic-ci', '--challenge', match[1].decode(), '--signature',
+                             f'{path}.sig', '--sign-with', str(key), timeout=30,
+                             stdin=subprocess.DEVNULL)
+            if result.returncode not in (0, 1) or not result.stdout:
+                raise ValueError('challenged live capture failed')
+            document = admit(result)
+            if document['capture_version'] != 3 or document['challenge'] != match[1].decode():
+                raise ValueError('challenged capture is not capture-v3 with the challenge')
+            path.write_bytes(result.stdout)
+            paths.append(path)
+        if issued[0].challenge == issued[1].challenge:
+            raise ValueError('mira challenge repeated a value')
+        trust = Trust(signers, 'host-a')
+        report = compare(load(paths[0], LEGACY, trust, issued[0]),
+                         load(paths[1], LEGACY, trust, issued[1]), max_age_ms=600000)
+        if report.get('freshness', {}).get('status') != 'within_policy':
+            raise ValueError('answered challenges not within policy')
+        try:
+            load(paths[0], LEGACY, trust, issued[1])
+        except ValueError:
+            pass
+        else:
+            raise ValueError('capture admitted for another challenge')
+        base = [mira_binary(), 'verify', str(paths[0]), '--signature', f'{paths[0]}.sig',
+                '--allowed-signers', str(signers), '--principal', 'host-a', '--challenge-file']
+        for challenge_file, code, reason in ((temp / 'first.challenge', 0, b'age_bound_ms='),
+                                             (temp / 'second.challenge', 1,
+                                              b'(challenge_mismatch)')):
+            result = subprocess.run([*base, str(challenge_file), '--max-age-ms', '600000'],
+                                    capture_output=True, timeout=15, check=False)
+            if result.returncode != code or reason not in result.stdout:
+                raise ValueError('mira verify freshness result mismatch')
+        result = capture('synthetic-ci', '--challenge', issued[0].challenge, timeout=5)
+        if result.returncode != 2 or result.stdout:
+            raise ValueError('unsigned challenge dispatched')
+
+
 def check_schema():
     fixtures = json.loads((ROOT / 'tests/fixtures/capture-v1.json').read_text())
     for case in fixtures['valid']:
@@ -150,6 +226,29 @@ def check_schema():
         raise ValueError('invalid capture-v2 admitted')
     if semantic_only != timeline['semantic_only']:
         raise ValueError('unexpected number of schema-valid invalid capture-v2 fixtures')
+    # capture-v3 (ADR 0014) is capture-v2 plus the challenge, with the same semantics.
+    for case in timeline['valid']:
+        check_capture(challenged(case))
+        missing = challenged(case)
+        del missing['challenge']
+        extra = dict(case, challenge=HEX)
+        for bad in (missing, challenged(case, HEX.upper()), challenged(case, HEX[:63]),
+                    challenged(case, HEX + '\n'), challenged(case, 7), extra):
+            refused(check_capture, bad)
+    for case in timeline['invalid']:
+        try:
+            VALIDATOR_V2.validate(case)
+        except ValidationError:
+            continue
+        refused(check_capture, challenged(case))
+    VALIDATOR_V3.validate(challenged(timeline['valid'][0]))
+    document = {'challenge_version': 1, 'challenge': HEX, 'issued_unix_ms': 1793520000000}
+    CHALLENGE.validate(document)
+    for bad in (dict(document, challenge_version=2), dict(document, challenge=HEX.upper()),
+                dict(document, issued_unix_ms=-1), dict(document, issued_unix_ms=10 ** 16),
+                dict(document, issued_unix_ms='1'), dict(document, extra=1),
+                {'challenge_version': 1, 'challenge': HEX}):
+        refused(CHALLENGE.validate, bad)
 
 
 def check_cli():
@@ -235,9 +334,10 @@ def main(argv=None):
     validation_status.run(
         'capture validation',
         {'schema': check_schema, 'cli': check_cli, 'compare': check_compare,
-         'live-boot': check_live_boot, 'signed-compare': check_live_signed_comparison},
-        'capture-v1/v2 and evidence-v2 schema, semantic fixtures, timeline, live boot binding, '
-        'signed comparison and CLI validated', argv)
+         'live-boot': check_live_boot, 'signed-compare': check_live_signed_comparison,
+         'challenge': check_live_challenge},
+        'capture-v1/v2/v3, challenge-v1 and evidence-v2 schema, semantic fixtures, timeline, '
+        'live boot binding, signed comparison, challenge freshness and CLI validated', argv)
 
 
 if __name__ == '__main__':

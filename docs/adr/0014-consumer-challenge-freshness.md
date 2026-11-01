@@ -1,6 +1,6 @@
 # ADR 0014: consumer-challenge freshness for signed captures
 
-Status: **Accepted**, 2026-11-01 (proposed and reviewed the same day). **Stage 1 (Rust CLI) is implemented**; guide: [signatures](../signatures.md#freshness-answer-a-challenge). Stage 2 (comparator, schemas and validators) is outstanding.
+Status: **Accepted**, 2026-11-01 (proposed and reviewed the same day). **Implemented** (stage 1, Rust CLI; stage 2, comparator, schemas and validators); guide: [signatures](../signatures.md#freshness-answer-a-challenge). The comparator's `freshness` member also echoes `max_age_ms`, as `timing` echoes `max_window_ms`.
 
 ## Context
 

@@ -27,7 +27,7 @@ Each validator declares fixed check groups (`--list-groups`) and runs a selectio
 |---|---|---|
 | evidence | `fixtures`, `cli`, `live-procfs`, `live-systemd` | `live-systemd`: systemd as init and `systemctl` (`no_systemd`) |
 | investigation | `fixtures`, `cli`, `live-systemd` | `live-systemd`: `no_systemd` |
-| capture | `schema`, `cli`, `compare`, `live-boot`, `signed-compare` | `live-boot`: the boot ID file (`no_boot_id`); `signed-compare`: `/usr/bin/ssh-keygen` (`no_ssh_keygen`) |
+| capture | `schema`, `cli`, `compare`, `live-boot`, `signed-compare`, `challenge` | `live-boot`: the boot ID file (`no_boot_id`); `signed-compare` and `challenge`: `/usr/bin/ssh-keygen` (`no_ssh_keygen`) |
 | memory | `fixtures`, `cli` | none |
 | pressure | `fixtures`, `cli` | none; an unavailable PSI file is accepted and reported as a gap |
 | package | `fixtures`, `cli`, `live-dpkg` | `live-dpkg`: a readable dpkg status file (`no_dpkg`) |
