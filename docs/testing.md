@@ -235,6 +235,16 @@ Stage 1c (findings, proposals, decisions):
 - **`tests/session_broker.rs`** (real `ssh-keygen`): agent findings admitted or refused (`claim`) against real results, operator findings checked the same way, decisions once each, the timeline labels, and `verify` refusing an altered stored finding; proposals admitted at zero budget under `advisory`, approval running the action, a wrong collector key writing nothing, and a stale proposal approved only with `--despite-stale`; a stop superseding pending findings and proposals
 - **`scripts/validate_session.py`:** restates claims, verdicts, staleness and result reasons; its `scripted-agent` group runs `scripts/scripted_agent.py` against the real broker, recomputes the agent's claim from the signed report alone, decides, closes and verifies with the receipt. The `session` validator is a qualification group, gated on `ssh-keygen`.
 
+Stage 2 (agent harness), `agent/test_agent_harness.py` against a real session, broker and `ssh-keygen`:
+- the adapter refuses an unpinned session, and its tool definitions hash to the header's pin
+- every request must declare protocol revision 2026-07-28, or follow a legacy `initialize`; malformed input is a parse error
+- unknown tools, option-shaped, extra or missing arguments and control characters are refused with nothing submitted; resource names outside the fixed forms are refused
+- the client host refuses other MCP servers, an altered adapter entry and non-loopback model URLs
+- a poisoned adapter is refused at start, and a rug pull stops the run before any tool call
+- a red-team replay (shell call, option injection, operator-only capture, findings citing the header or without confidence, an injected question) runs nothing, records no result or finding, and the session verifies
+- a loopback HTTP model is called with the adapter's tools, and every exchange is in the transcript
+- review regressions: a redirect from the model is never followed; a Unix-socket model must be owned by the agent's user in a directory nobody else can write; tool arguments that are not a JSON string are refused without ending the run; the latest result documents reach the model; a socket peer of another user is refused before anything is sent; NUL in tool text is refused and the adapter keeps serving; an agent key in `ssh-agent` still signs
+
 ## Representative host qualification
 
 The live checks above run on two GitHub-hosted runners and the development host. [ADR 0013](adr/0013-host-qualification-protocol.md) and the [qualification guide](qualification.md) define how they run on real hosts. `scripts/qualify_host.py` runs every validator's check groups against the checkout build or an installed binary and records passed, failed or not applicable per group, with fixed reasons such as `no_systemd`. It writes a `qualification-receipt-v1` receipt free of host identifiers.

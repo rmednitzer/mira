@@ -77,8 +77,13 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 18446744073709551615
+        },
+        "agent_tools": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
-      }
+      },
+      "$comment": "agent_tools, when present, is the SHA-256 of the agent adapter's tool definitions that the operator pinned; headers without it stay valid."
     },
     {
       "type": "object",

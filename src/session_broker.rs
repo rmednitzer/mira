@@ -415,7 +415,7 @@ pub enum Discard {
 /// The broker's result for one inbox file.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Handled {
-    Admitted(Entry),
+    Admitted(Box<Entry>),
     Refused(Refusal),
     Discarded(Discard),
 }
@@ -744,9 +744,9 @@ fn handle(
                 arguments,
                 &mut |log| checked(log),
             )?;
-            Ok(Handled::Admitted(entry))
+            Ok(Handled::Admitted(Box::new(entry)))
         }
-        _ => Ok(Handled::Admitted(entry)),
+        _ => Ok(Handled::Admitted(Box::new(entry))),
     }
 }
 
@@ -1029,6 +1029,7 @@ mod tests {
             separation: Separation::SameUser,
             autonomy: Level::Assisted,
             budget,
+            agent_tools: None,
         };
         State {
             session_id: "ab".repeat(32),
