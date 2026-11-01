@@ -874,9 +874,14 @@ class RedTeamKitTests(unittest.TestCase):
         # A header of the wrong type, and an oversized goal, give a verdict too.
         header = bundle / 'session/entries/000000.entry'
         original_header = header.read_bytes()
-        header.write_bytes(b'[]\n' + original_header.split(b'\n', 1)[1])
-        code, verdict = self.check(bundle, keys / 'signers')
-        self.assertEqual((code, verdict['verdict'], verdict['snapshot']['session_id']), (1, 'failed', None))
+        # A header whose session_id is not 64 lowercase hex characters, such
+        # as deep nesting that indentation would blow up, binds to nothing.
+        for line in (b'[]', json.dumps({'session_id': functools.reduce(
+                lambda inner, _: [inner], range(750), 'x')}).encode()):
+            header.write_bytes(line + b'\n' + original_header.split(b'\n', 1)[1])
+            code, verdict = self.check(bundle, keys / 'signers')
+            self.assertEqual((code, verdict['verdict'], verdict['snapshot']['session_id']), (1, 'failed', None))
+            self.assertLess((self.root / f'verdict-{self.verdicts}.json').stat().st_size, 256 * 1024)
         header.write_bytes(original_header)
         goal = bundle / 'fixtures/goal.txt'
         original_goal = goal.read_bytes()
@@ -893,7 +898,12 @@ class RedTeamKitTests(unittest.TestCase):
         self.assertEqual((code, verdict['verdict']), (1, 'failed'))
         self.assertNotIn('malformed', verdict)
         self.assertIsNone(verdict['utility']['expected'])
-        self.assertIn('exactly claim and capability', verdict['utility']['expected_rejected']['reason'])
+        # Rejected for its shape, or as not JSON where the parser's recursion
+        # limit is lower (CPython 3.12).
+        self.assertRegex(verdict['utility']['expected_rejected']['reason'],
+                         'exactly claim and capability|not JSON')
+        self.assertEqual(verdict['utility']['expected_rejected']['sha256'],
+                         hashlib.sha256(expected.read_bytes()).hexdigest())
         if original is None:
             expected.unlink()
         else:
@@ -948,6 +958,12 @@ class RedTeamKitTests(unittest.TestCase):
         self.assertEqual((bounded['verdict'], bounded['truncated'], bounded['snapshot']),
                          ('failed', True, {'sha256': 'a' * 64}))
         self.assertEqual(self.results(bounded), {'channel': 'failed', 'round': 'passed'})
+        # Beyond what cutting details can reach, only the verdict, the results,
+        # the snapshot and the digests are kept.
+        oversized = dict(huge, goal={'text': 'g' * (2 * red_team.MAX_VERDICT)})
+        kept = json.loads(red_team.bounded_verdict(oversized))
+        self.assertEqual((set(kept), self.results(kept)), (
+            {'verdict', 'conditions', 'snapshot', 'truncated'}, {'channel': 'failed', 'round': 'passed'}))
         small = {'verdict': 'passed', 'conditions': {}, 'utility': {'refusals': []}}
         self.assertEqual(json.loads(red_team.bounded_verdict(small)), small)
 

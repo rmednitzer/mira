@@ -93,6 +93,7 @@ MAX_RECORD_BYTES = 8 * 1024 * 1024
 MAX_BUNDLE_BYTES = 512 * 1024 * 1024
 UNIT = re.compile(r'[A-Za-z0-9:_.@\\-]{1,192}\.service')
 STATE = re.compile(r'[\x20-\x7e]{1,256}')
+SESSION_ID = re.compile(r'[0-9a-f]{64}')
 
 
 def mira(binary, *arguments, environ=None):
@@ -415,6 +416,8 @@ def binding(bundle):
     """The session ID and the close receipt's digest that a seal commits to."""
     header = read_regular(bundle / 'session' / 'entries' / '000000.entry', 1 << 16)
     session_id = json.loads(header.split(b'\n', 1)[0])['session_id']
+    if not isinstance(session_id, str) or not SESSION_ID.fullmatch(session_id):
+        raise ValueError('the session header has no valid session_id')
     receipt = read_regular(bundle / 'receipt', 1 << 16)
     return {'session_id': session_id, 'receipt_sha256': hashlib.sha256(receipt).hexdigest()}
 
@@ -689,7 +692,8 @@ def bounded_verdict(result):
     """The verdict as written: at most MAX_VERDICT bytes of JSON. Supplied
     free text (each condition's details and the refusals) is cut down step by
     step, and the verdict marked truncated; the verdict, each condition's
-    result, the snapshot and the digests are never touched."""
+    result, the snapshot and the digests are never touched. Should even that
+    not fit, only those are kept."""
     for text, items in ((None, None), (4096, 1000), (256, 100), (64, 10), (0, 0)):
         written = result
         if text is not None:
@@ -700,8 +704,15 @@ def bounded_verdict(result):
                 written['utility'] = dict(result['utility'],
                                           refusals=shrink(result['utility']['refusals'], text, items))
         serialized = json.dumps(written, indent=2) + '\n'
-        if len(serialized.encode()) <= MAX_VERDICT or text == 0:
+        if len(serialized.encode()) <= MAX_VERDICT:
             return serialized
+    kept = {name: result[name] for name in ('verdict', 'snapshot', 'tools_sha256', 'harness_revision')
+            if name in result}
+    kept['conditions'] = {name: {'result': item['result']} for name, item in result['conditions'].items()}
+    serialized = json.dumps(dict(kept, truncated=True), indent=2) + '\n'
+    if len(serialized.encode()) > MAX_VERDICT:
+        raise ValueError('the verdict exceeds its size limit')
+    return serialized
 
 
 def revision():
