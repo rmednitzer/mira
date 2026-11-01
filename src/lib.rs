@@ -17,6 +17,7 @@ pub mod package_investigation;
 pub mod packages;
 pub mod pressure_investigation;
 mod process;
+pub mod session;
 pub mod signature;
 pub mod systemd;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

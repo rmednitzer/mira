@@ -73,6 +73,10 @@ Each template answers one narrow, explicit question and reports satisfied (exit 
 
 `--signature PATH --sign-with KEY` signs a capture or `investigate ... --json` report through `/usr/bin/ssh-keygen`, and `mira verify` checks it against an `allowed_signers` file. A signature shows that a listed key signed the exact bytes, not that the evidence is true. `mira challenge` issues a random challenge, `capture --challenge` answers it in a signed capture-v3, and `mira verify --challenge-file C --max-age-ms N` bounds the capture's age on the verifier's own clock. See [signatures](docs/signatures.md).
 
+### Shared sessions
+
+`mira session` records an investigation as a signed, append-only log of entries, each naming its principal ([sessions](docs/sessions.md)). Stage 1a provides the operator's side: `start`, `ask`, `direct`, `close` with an external receipt, `show` and `verify`. The broker that runs agent requests, and the agent itself, come next.
+
 ### Qualification
 
 `scripts/qualify_host.py` runs the independent validators against one binary as an unprivileged user and writes a receipt that records passed, failed and not-applicable checks with explicit evidence gaps, without host identifiers. See [host qualification](docs/qualification.md) and the [committed receipts](docs/qualification/receipts/README.md).

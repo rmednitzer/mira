@@ -15,17 +15,19 @@ use std::{
 const SSH_KEYGEN: &str = "/usr/bin/ssh-keygen";
 /// Documents MIRA signs or verifies are small; this matches the comparator bound.
 pub const MAX_DOCUMENT_BYTES: u64 = 1024 * 1024;
-const MAX_SIGNATURE_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_SIGNATURE_BYTES: usize = 64 * 1024;
 /// Signing may wait for a passphrase or a FIDO2 touch; checks never prompt.
 const SIGN_TIMEOUT: Duration = Duration::from_secs(120);
 const CHECK_TIMEOUT: Duration = Duration::from_secs(10);
-const ARMOR: &[u8] = b"-----BEGIN SSH SIGNATURE-----\n";
+pub(crate) const ARMOR: &[u8] = b"-----BEGIN SSH SIGNATURE-----\n";
 
 /// One namespace per document kind, so a signature never crosses kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Capture,
     Investigation,
+    /// A shared-workspace session entry (ADR 0015).
+    Session,
 }
 
 impl Kind {
@@ -33,6 +35,7 @@ impl Kind {
         match self {
             Self::Capture => "mira-capture-v1@rmednitzer.github.io",
             Self::Investigation => "mira-investigation-v1@rmednitzer.github.io",
+            Self::Session => "mira-session-v1@rmednitzer.github.io",
         }
     }
 
@@ -42,6 +45,8 @@ impl Kind {
             Some(Self::Capture)
         } else if document.starts_with(b"{\"investigation_version\":") {
             Some(Self::Investigation)
+        } else if document.starts_with(b"{\"session_version\":") {
+            Some(Self::Session)
         } else {
             None
         }
@@ -146,6 +151,19 @@ pub fn sign(document: &[u8], key: &Path, signature_path: &Path) -> Result<(), Fa
 /// Self-check the signature from a fresh directory only this process can
 /// write to (mode 0700, created exclusively), then remove the staged copy.
 fn check_staged(document: &[u8], kind: Kind, signature: &[u8]) -> Result<(), Failure> {
+    with_staged(signature, |staged| check(document, kind, staged))
+}
+
+/// Verify signature bytes held in memory, staged the same private way,
+/// because `ssh-keygen -Y verify` reads the signature only from a file.
+pub fn verify_staged(document: &[u8], signature: &[u8], trust: &Trust) -> Result<Kind, Failure> {
+    with_staged(signature, |staged| verify(document, staged, trust))
+}
+
+fn with_staged<T>(
+    signature: &[u8],
+    run: impl FnOnce(&Path) -> Result<T, Failure>,
+) -> Result<T, Failure> {
     use std::os::unix::fs::DirBuilderExt;
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let base = std::env::temp_dir();
@@ -174,7 +192,7 @@ fn check_staged(document: &[u8], kind: Kind, signature: &[u8]) -> Result<(), Fai
         .open(&staged)
         .and_then(|mut file| file.write_all(signature))
         .map_err(|_| Failure::Tool)
-        .and_then(|()| check(document, kind, &staged));
+        .and_then(|()| run(&staged));
     let _ = fs::remove_file(&staged);
     let _ = fs::remove_dir(&staging);
     result

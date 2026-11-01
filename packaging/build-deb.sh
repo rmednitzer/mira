@@ -74,6 +74,8 @@ mira \- read-only Linux evidence CLI
 .br
 .B mira challenge
 .br
+.B mira session start|ask|direct|close|show|verify DIR ...
+.br
 .B mira demo
 .SH DESCRIPTION
 Experimental read-only host evidence inspection, complete captures and explicit
@@ -92,6 +94,8 @@ Signing (--signature PATH --sign-with KEY, last, on capture or investigate --jso
 Verify: 0 verified, 1 not verified, 2 usage, 4 ssh-keygen or the challenge file
 unavailable.
 Challenge: 0 issued, 4 random source or clock unavailable.
+Session: 0 done or verified, 1 refused or not verified, 2 usage, 4 signing,
+ssh-keygen or I/O failure.
 .PP
 service-active and service-active/v1 emit the unchanged v1 report.
 service-active/v2 additionally reports reason unit_not_found (exit 1) when systemd
@@ -145,6 +149,8 @@ install -Dm644 docs/host-investigations.md "$stage/usr/share/doc/mira/host-inves
 install -Dm644 docs/signatures.md "$stage/usr/share/doc/mira/signatures.md"
 install -Dm644 schemas/journal-events-v1.schema.json "$stage/usr/share/mira/schemas/journal-events-v1.schema.json"
 install -Dm644 docs/journal-investigation.md "$stage/usr/share/doc/mira/journal-investigation.md"
+install -Dm644 schemas/session-v1.schema.json "$stage/usr/share/mira/schemas/session-v1.schema.json"
+install -Dm644 docs/sessions.md "$stage/usr/share/doc/mira/sessions.md"
 # Derive versioned ABI dependencies from the native binary and distro metadata.
 printf 'Source: mira\nSection: admin\nPriority: optional\nMaintainer: MIRA Project <noreply@github.com>\n\nPackage: mira\nArchitecture: any\nDescription: Read-only Linux evidence CLI\n' > "$build_root/debian/control"
 depends="$(cd "$build_root" && dpkg-shlibdeps -O -edebian/mira/usr/bin/mira)"

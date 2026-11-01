@@ -53,6 +53,7 @@ jobs:
           .schema-venv/bin/python scripts/validate_package_investigation.py
           .schema-venv/bin/python scripts/validate_host_investigations.py
           .schema-venv/bin/python scripts/validate_journal_investigation.py
+          .schema-venv/bin/python scripts/validate_session.py
           .schema-venv/bin/python scripts/test_validation_contract.py
           .schema-venv/bin/python scripts/test_qualify_host.py
       - name: Qualify the runner with the checkout build
@@ -100,6 +101,8 @@ jobs:
           test -f package-extract/usr/share/doc/mira/signatures.md
           test -f package-extract/usr/share/mira/schemas/journal-events-v1.schema.json
           test -f package-extract/usr/share/doc/mira/journal-investigation.md
+          test -f package-extract/usr/share/mira/schemas/session-v1.schema.json
+          test -f package-extract/usr/share/doc/mira/sessions.md
           test -f package-extract/usr/share/doc/mira/captures.md
           test -f package-extract/usr/share/doc/mira/investigations.md
           if dpkg-deb --contents "$deb" | grep -E '/(systemd/system|systemd/user)/'; then

@@ -1,0 +1,359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/session-v1.schema.json",
+  "title": "MIRA shared-workspace session entry v1 (ADR 0015, stage 1a kinds)",
+  "$comment": "One entry per file, signed under mira-session-v1@rmednitzer.github.io by the principal it names. Consumers must also check the canonical byte layout, contiguous sequence numbers, one session_id, roles from the header and the state rules, as scripts/validate_session.py does.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_version",
+        "session_id",
+        "seq",
+        "principal",
+        "based_on",
+        "note",
+        "kind",
+        "operator",
+        "agent",
+        "collector",
+        "separation",
+        "autonomy",
+        "budget"
+      ],
+      "properties": {
+        "session_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+        },
+        "seq": {
+          "const": 0
+        },
+        "principal": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "based_on": {
+          "const": null
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069])"
+        },
+        "kind": {
+          "const": "header"
+        },
+        "operator": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "agent": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "collector": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "separation": {
+          "enum": [
+            "same_user",
+            "separate_user"
+          ]
+        },
+        "autonomy": {
+          "enum": [
+            "manual",
+            "advisory",
+            "assisted"
+          ]
+        },
+        "budget": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_version",
+        "session_id",
+        "seq",
+        "principal",
+        "based_on",
+        "note",
+        "kind"
+      ],
+      "properties": {
+        "session_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "principal": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "based_on": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069])"
+        },
+        "kind": {
+          "const": "question"
+        }
+      }
+    },
+    {
+      "allOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "session_version",
+            "session_id",
+            "seq",
+            "principal",
+            "based_on",
+            "note",
+            "kind",
+            "directive",
+            "level",
+            "budget",
+            "until_seq"
+          ],
+          "properties": {
+            "session_version": {
+              "const": 1
+            },
+            "session_id": {
+              "type": "string",
+              "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+            },
+            "seq": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4095
+            },
+            "principal": {
+              "type": "string",
+              "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+            },
+            "based_on": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 4095
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 1024,
+              "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069])"
+            },
+            "kind": {
+              "const": "directive"
+            },
+            "directive": {
+              "enum": [
+                "stop",
+                "set_level",
+                "set_budget",
+                "delegate"
+              ]
+            },
+            "level": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "manual",
+                    "advisory",
+                    "assisted"
+                  ]
+                },
+                {
+                  "const": null
+                }
+              ]
+            },
+            "budget": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 18446744073709551615
+                },
+                {
+                  "const": null
+                }
+              ]
+            },
+            "until_seq": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 18446744073709551615
+                },
+                {
+                  "const": null
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "directive": {
+              "const": "stop"
+            },
+            "level": {
+              "const": null
+            },
+            "budget": {
+              "const": null
+            },
+            "until_seq": {
+              "const": null
+            }
+          }
+        },
+        {
+          "properties": {
+            "directive": {
+              "const": "set_level"
+            },
+            "level": {
+              "enum": [
+                "manual",
+                "advisory",
+                "assisted"
+              ]
+            },
+            "budget": {
+              "const": null
+            },
+            "until_seq": {
+              "const": null
+            }
+          }
+        },
+        {
+          "properties": {
+            "directive": {
+              "const": "set_budget"
+            },
+            "level": {
+              "const": null
+            },
+            "budget": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "until_seq": {
+              "const": null
+            }
+          }
+        },
+        {
+          "properties": {
+            "directive": {
+              "const": "delegate"
+            },
+            "level": {
+              "const": null
+            },
+            "budget": {
+              "const": null
+            },
+            "until_seq": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_version",
+        "session_id",
+        "seq",
+        "principal",
+        "based_on",
+        "note",
+        "kind",
+        "entry_count"
+      ],
+      "properties": {
+        "session_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "principal": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "based_on": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069])"
+        },
+        "kind": {
+          "const": "close"
+        },
+        "entry_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        }
+      }
+    }
+  ]
+}

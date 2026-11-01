@@ -86,7 +86,18 @@ Implemented ([ADR 0012](adr/0012-bounded-journal-events.md)): MIRA reads journal
 
 ### Planned shared workspace boundary
 
-Status: design accepted ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.md)); no session, agent or model harness is implemented. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.
+Status: design accepted ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.md)). Stage 1a is implemented ([guide](sessions.md)):
+- a signed, append-only log under the namespace `mira-session-v1@rmednitzer.github.io`
+- entries accepted only in their exact canonical bytes, by a strict flat parser
+- roles taken from the operator-signed header
+- each entry and its signature published together as one record by an exclusive hard link, after the pending signature has verified for the writing principal, so readers never see partial entries
+- notes with no control or bidirectional characters
+- a close receipt, which must be outside the session (resolved through links), that `verify --expect-close` checks
+- no session ID in any command output
+- `verify` takes the expected operator from the verifier (`--operator`), never from the header, so a listed agent or collector key cannot pass off a counterfeit session in which it names itself operator
+- without a receipt, `verify` cannot tell an older genuine session by the same operator from the current one
+
+Only operator-side writers exist so far, so no agent containment is claimed yet. The broker, the collector key and agent requests are stage 1b. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.
 
 | Plausible threat | Planned control and verification |
 |---|---|

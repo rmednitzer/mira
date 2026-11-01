@@ -46,6 +46,7 @@ cargo build --locked
 .schema-venv/bin/python scripts/validate_package_investigation.py
 .schema-venv/bin/python scripts/validate_host_investigations.py
 .schema-venv/bin/python scripts/validate_journal_investigation.py
+.schema-venv/bin/python scripts/validate_session.py
 .schema-venv/bin/python scripts/test_validation_contract.py
 .schema-venv/bin/python scripts/test_qualify_host.py
 ```
@@ -58,7 +59,7 @@ The direct uptime parser uses integer whole seconds, including values above 2^53
 
 ## Packaging checks
 
-Native Ubuntu 26.04 amd64/arm64 CI builds and inspects the package, checks checksums, executes the extracted CLI, exercises isolated dpkg install/reinstall/remove/purge, and runs lintian. It checks evidence-v1/v2, investigation-v1/v2, memory-headroom-v1, pressure-ceiling-v1, package-installed-v1, uptime-minimum-v1, kernel-release-v1, journal-events-v1, capture-v1/v2/v3 and challenge-v1 schemas and their packaged guides, rejects systemd units, maintainer scripts and the native test helper in the package, and asserts package-root/document permissions. Archive metadata must advertise exactly `Suggests: systemd, default-dbus-system-bus | dbus-system-bus, openssh-client` and no `Recommends`; native ELF requirements remain generated in `Depends`. See the [runtime relationship rationale](debian-packaging.md#runtime-package-relationships).
+Native Ubuntu 26.04 amd64/arm64 CI builds and inspects the package, checks checksums, executes the extracted CLI, exercises isolated dpkg install/reinstall/remove/purge, and runs lintian. It checks evidence-v1/v2, investigation-v1/v2, memory-headroom-v1, pressure-ceiling-v1, package-installed-v1, uptime-minimum-v1, kernel-release-v1, journal-events-v1, capture-v1/v2/v3, challenge-v1 and session-v1 schemas and their packaged guides, rejects systemd units, maintainer scripts and the native test helper in the package, and asserts package-root/document permissions. Archive metadata must advertise exactly `Suggests: systemd, default-dbus-system-bus | dbus-system-bus, openssh-client` and no `Recommends`; native ELF requirements remain generated in `Depends`. See the [runtime relationship rationale](debian-packaging.md#runtime-package-relationships).
 
 Repeated assembly compares the same binary under ordinary and restrictive (`077`) invoking umasks. The builder normalizes its own umask to `022`; source timestamps use exported `SOURCE_DATE_EPOCH`. This verifies archive assembly under those conditions. A separate fresh-build test compiles twice from independent git archives and target directories, varies source/target paths, timezone and umask, and compares raw binaries and full packages against the selected artifacts. Its scope is one native runner/compiler/system dependency environment, not independent-host or hermetic compilation. The isolated dpkg root bypasses dependency enforcement. A separate native disposable Ubuntu 26.04 container installs the exact package through apt without bypassing dependencies, checks installed binary bytes and runs the installed demo/capture contract. Its receipt binds source commit/tree, package/binary digests and container image identity. This is container loader/dependency evidence; clean physical-host behavior, genuine upgrades/downgrades and signed release provenance remain release gates.
 
@@ -160,6 +161,37 @@ PSI, kernel-release and dpkg Status regressions apply the same rule: Unicode sep
 - eleven refused invocations that never start `journalctl`
 
 `scripts/validate_journal_investigation.py` checks the fixtures with its own outcome-precedence implementation. Its live check derives visibility, file access, per-class producer-valid counts and the crash handler with its own `journalctl` queries and parser, before and after MIRA. It requires agreement and fails as inconclusive if the journal changed in between.
+
+## Session acceptance (ADR 0015 stage 1a)
+
+Unit tests in `src/session.rs`:
+- every entry kind round-trips through its canonical bytes
+- the parser refuses non-canonical input: spacing, a missing newline, leading zeros, signs, exponents and fractions, quoted numbers, another version, an uppercase session ID, duplicate or extra keys, nested values, `\u` escapes above C0, `\/`, and missing fields
+- invalid directive field combinations are refused
+- notes refuse C0, DEL, C1, bidirectional characters and more than 1 KiB, also when reading a canonically encoded entry
+- records split into the entry line and an armored signature, refusing a missing or malformed signature
+- the state machine covers every directive, delegation expiry at its last covered entry, `stop`, roles (an agent directive or a collector question is refused), close counts, nothing after the close, the header only at entry 0 with three distinct valid principals, and `based_on` earlier than the entry in the same session
+
+`tests/session.rs` runs the real `ssh-keygen` with throwaway operator, agent and collector keys and an unlisted stranger key:
+- **Valid sessions:** a full session verifies, and each entry also verifies independently with `ssh-keygen`.
+- **State:** `show` and its JSON state follow directives, delegation lapses, and `stop` takes precedence.
+- **Closing:** a closed session refuses every append. Removing its close entry passes plain `verify` but fails against the receipt, and another session's receipt never matches.
+- **Detection:** `verify` reports each of these with its fixed reason:
+  - a changed byte
+  - an entry re-signed by an unlisted key
+  - an agent-signed operator directive
+  - a missing entry, or a record without its signature
+  - a renamed entry
+  - an unexpected file
+  - a validly signed entry copied from another session
+- **Forgery:** an agent that signs a complete session naming itself operator verifies only for a verifier who expects that agent as operator. It fails for the real operator, and the operator's key cannot append to it.
+- **Concurrency:** while six writers append, repeated `show` calls always see a complete log. The writers get distinct, contiguous sequence numbers and leave no pending files, and files left by an interrupted writer block nothing.
+- **Receipts and output:** receipts are refused inside the session, directly or through a symbolic link, over an existing file, or in a missing directory, and the session stays open. No command prints the session ID.
+- **Refusals that write nothing:** a start with an unlisted key (nothing left behind); an existing directory, never reused or removed; the agent's key writing as the operator; and malformed invocations.
+
+`scripts/validate_session.py`:
+- checks the closed `session-v1` schema, canonical layout and state rules with its own implementation
+- builds a real session through the CLI, re-admits each entry, recomputes the state, compares it with `show --json`, verifies each signature with `ssh-keygen` directly, checks the receipt, and requires both a changed byte and a verifier expecting another operator to fail
 
 ## Representative host qualification
 

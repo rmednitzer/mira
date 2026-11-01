@@ -1,3 +1,5 @@
+mod session_cli;
+
 use mira::{Actor, Engine, Mode, Move, Outcome, Proposal, demo_scenario};
 
 fn main() {
@@ -187,6 +189,7 @@ fn main() {
             }
         },
         [_, command] if command == "challenge" => challenge(),
+        [_, command, rest @ ..] if command == "session" => session_cli::run(rest),
         [_, command, ..] if command == "verify" => {
             eprintln!("Usage: {VERIFY_USAGE}");
             std::process::exit(2);
@@ -409,7 +412,8 @@ fn challenge() {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage: mira capture LABEL [--pressure] [--timeline] [--bind-boot] [--challenge HEX] [--signature PATH --sign-with KEY] | mira challenge | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE} | {JOURNAL_USAGE} | {VERIFY_USAGE} (investigate --json also accepts --signature PATH --sign-with KEY)"
+        "Usage: mira capture LABEL [--pressure] [--timeline] [--bind-boot] [--challenge HEX] [--signature PATH --sign-with KEY] | mira challenge | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE} | {JOURNAL_USAGE} | {VERIFY_USAGE} | {} (investigate --json also accepts --signature PATH --sign-with KEY)",
+        session_cli::USAGE
     );
     std::process::exit(2);
 }
