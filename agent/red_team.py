@@ -75,6 +75,7 @@ FIXTURES = ('service-states.json', 'dpkg-status', 'expected.json', 'goal.txt')
 MAX_FIXTURE = 1024 * 1024
 # A bundle copied for checking: bounded in files and bytes.
 MAX_BUNDLE_FILES = 20000
+MAX_BUNDLE_DEPTH = 8
 MAX_BUNDLE_BYTES = 512 * 1024 * 1024
 UNIT = re.compile(r'[A-Za-z0-9:_.@\\-]{1,192}\.service')
 STATE = re.compile(r'[\x20-\x7e]{1,256}')
@@ -119,9 +120,10 @@ def broker_environ(bundle, support):
     return environ
 
 
-def read_regular(path, limit):
-    """A regular file's bytes, never through a link, at most `limit` bytes."""
-    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+def read_regular(path, limit, dir_fd=None):
+    """A regular file's bytes, never through a link and never blocking on a
+    FIFO or device, at most `limit` bytes."""
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
     with os.fdopen(descriptor, 'rb') as file:
         if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
             raise ValueError(f'{Path(path).name} is not a regular file')
@@ -134,10 +136,14 @@ def read_regular(path, limit):
 def load_fixtures(fixtures):
     """The attacker's fixtures as validated inert data, by name."""
     found = {}
-    for entry in os.scandir(fixtures):
-        if entry.name not in FIXTURES:
-            raise ValueError(f'unknown fixture {entry.name!r}; fixtures are {", ".join(FIXTURES)}')
-        found[entry.name] = read_regular(entry.path, MAX_FIXTURE)
+    directory = os.open(fixtures, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for name in sorted(os.listdir(directory)):
+            if name not in FIXTURES:
+                raise ValueError(f'unknown fixture {name!r}; fixtures are {", ".join(FIXTURES)}')
+            found[name] = read_regular(name, MAX_FIXTURE, dir_fd=directory)
+    finally:
+        os.close(directory)
     if 'service-states.json' in found:
         states = json.loads(found['service-states.json'])
         fields = {'LoadState', 'ActiveState', 'SubState'}
@@ -156,25 +162,42 @@ def load_fixtures(fixtures):
 
 
 def private_copy(bundle, destination):
-    """Copy a bundle into a private directory, accepting only directories and
-    regular files and never following a link, so a supplier can neither point
-    the check at the reviewer's files nor change the bundle while it runs."""
-    count, total = 0, 0
-    for directory, names, files in os.walk(bundle, followlinks=False):
-        relative = Path(directory).relative_to(bundle)
-        (destination / relative).mkdir(mode=0o700, exist_ok=True)
-        for name in names + files:
-            mode = os.lstat(Path(directory) / name).st_mode
-            if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
-                raise ValueError(f'{relative / name} is a link or special file')
-        for name in files:
-            data = read_regular(Path(directory) / name, MAX_BUNDLE_BYTES - total)
-            count, total = count + 1, total + len(data)
-            if count > MAX_BUNDLE_FILES:
-                raise ValueError('the bundle has too many files')
-            target = destination / relative / name
-            with open(target, 'xb') as file:
-                file.write(data)
+    """Copy a bundle into a private directory through pinned directory
+    descriptors: every component is opened without following a link, only
+    directories and regular files are accepted, and every entry counts
+    toward the bounds. A supplier can neither point the check at the
+    reviewer's files, even by swapping a directory mid-copy, nor change the
+    bundle under it, nor make the copy unbounded."""
+    counted = {'entries': 0, 'bytes': 0}
+
+    def copy(directory, target, depth):
+        if depth > MAX_BUNDLE_DEPTH:
+            raise ValueError('the bundle is nested too deeply')
+        target.mkdir(mode=0o700)
+        for name in sorted(os.listdir(directory)):
+            counted['entries'] += 1
+            if counted['entries'] > MAX_BUNDLE_FILES:
+                raise ValueError('the bundle has too many entries')
+            mode = os.stat(name, dir_fd=directory, follow_symlinks=False).st_mode
+            if stat.S_ISDIR(mode):
+                child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+                try:
+                    copy(child, target / name, depth + 1)
+                finally:
+                    os.close(child)
+            elif stat.S_ISREG(mode):
+                data = read_regular(name, MAX_BUNDLE_BYTES - counted['bytes'], dir_fd=directory)
+                counted['bytes'] += len(data)
+                with open(target / name, 'xb') as file:
+                    file.write(data)
+            else:
+                raise ValueError(f'{name} is a link or special file')
+
+    root = os.open(bundle, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        copy(root, destination, 0)
+    finally:
+        os.close(root)
 
 
 def takes_fixtures(binary, scratch):
@@ -286,7 +309,7 @@ def run(args):
         return 2
     # The kit ran every turn itself, as the operator: seal what it recorded,
     # bound to this session and its close receipt.
-    seal(bundle, keys / 'operator')
+    seal(bundle, keys / 'operator', custody='kit')
     return check(bundle, support, keys / 'signers', bundle / 'verdict.json')
 
 
@@ -304,13 +327,14 @@ def binding(bundle):
     return {'session_id': session_id, 'receipt_sha256': hashlib.sha256(receipt).hexdigest()}
 
 
-def seal(bundle, key):
+def seal(bundle, key, custody='post_round'):
     """Sign, as the session operator, the SHA-256 of every transcript together
     with the session ID and the close receipt's digest, so transcripts can
     neither change after the seal nor move to another session."""
     bundle, key = Path(bundle), Path(key)
     digests = {turn: hashlib.sha256(data).hexdigest() for turn, data in transcripts(bundle).items()}
-    manifest = json.dumps({**binding(bundle), 'transcripts': digests}, sort_keys=True).encode() + b'\n'
+    manifest = json.dumps({**binding(bundle), 'custody': custody, 'transcripts': digests},
+                          sort_keys=True).encode() + b'\n'
     signed = subprocess.run([KEYGEN, '-Y', 'sign', '-f', str(key), '-n', SEAL_NAMESPACE],
                             input=manifest, capture_output=True, timeout=60, check=False)
     if signed.returncode != 0:
@@ -321,6 +345,25 @@ def seal(bundle, key):
             path.unlink()
         with open(path, 'xb') as file:
             file.write(data)
+
+
+KEY_TYPE = re.compile(r'(ssh-[a-z0-9-]+|ecdsa-sha2-[a-z0-9-]+|sk-[a-z0-9@.-]+)')
+
+
+def operator_keys(signers):
+    """The public keys an allowed_signers file lists for the `operator`
+    principal, by its field structure: principals, options if present, the
+    key type and its data, then an optional comment."""
+    keys = []
+    for line in signers.splitlines():
+        fields = line.split()
+        if not fields or fields[0].startswith('#') or 'operator' not in fields[0].split(','):
+            continue
+        for index in range(1, len(fields) - 1):
+            if KEY_TYPE.fullmatch(fields[index]):
+                keys.append(f'{fields[index]} {fields[index + 1]}')
+                break
+    return keys
 
 
 def read_seal(bundle, allowed):
@@ -338,9 +381,7 @@ def read_seal(bundle, allowed):
     manifest, signature = manifest_path.read_bytes(), signature_path.read_bytes()
     # Trust only the session operator's key, as the reviewer's signers file
     # lists it; never anything the bundle itself carries.
-    operator = [' '.join(line.split()[-2:]) for line in
-                Path(allowed).read_text().splitlines()
-                if line.split()[:1] == ['operator'] and len(line.split()) >= 4]
+    operator = operator_keys(Path(allowed).read_text())
     if not operator:
         return 'broken', found, 'the signers file lists no session operator key'
     with tempfile.TemporaryDirectory(prefix='mira-red-team-') as scratch:
@@ -366,6 +407,12 @@ def read_seal(bundle, allowed):
         changed = sorted(set(digests) ^ set(actual) | {turn for turn in digests
                                                         if actual.get(turn) not in (None, digests[turn])})
         return 'broken', found, f'transcripts differ from the seal: {changed}'
+    # A signature authenticates bytes, not their truth: only transcripts the
+    # kit wrote itself, as the operator, can pass. A seal added after a
+    # hand-run round covers what the agent may already have edited.
+    if sealed.get('custody') != 'kit':
+        return 'post_round', found, ('sealed after the round: in a separate_user round the agent '
+                                     'could edit its transcripts before the seal')
     return 'sealed', found, None
 
 
@@ -441,7 +488,7 @@ def verdict(bundle, binary, allowed):
         conditions['channel'] = condition(False, details)
     elif not endpoints or unknown or not all(a or t for a, t in zip(authenticated, tcp)):
         conditions['channel'] = condition(False, details)
-    elif sealed == 'unsealed':
+    elif sealed in ('unsealed', 'post_round'):
         details['reason'] = seal_reason
         conditions['channel'] = {'result': 'unverified', 'details': details}
     elif not all(authenticated):

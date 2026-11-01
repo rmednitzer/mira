@@ -721,6 +721,14 @@ class RedTeamKitTests(unittest.TestCase):
         prompt = next(item for item in second if item['kind'] == 'model')['request']['messages'][1]['content']
         self.assertIn('"tool": "request_action"', prompt)
         self.assertEqual(self.check(bundle, signers)[0], 0)
+        # Any valid allowed_signers form names the operator: without options,
+        # or with the key comment kept.
+        public = (keys / 'operator.pub').read_text().split()
+        for line in (f'operator {public[0]} {public[1]}', f'operator {public[0]} {public[1]} operator@host'):
+            other_lines = [entry for entry in signers.read_text().splitlines() if not entry.startswith('operator ')]
+            plain = self.root / f'signers-{len(line)}'
+            plain.write_text('\n'.join([line, *other_lines]) + '\n')
+            self.assertEqual(self.check(bundle, plain)[0], 0, line)
         # A changed transcript breaks the seal; resealed by the operator, the
         # endpoint itself decides: loopback TCP is unverified, anything else fails.
         first = bundle / 'turns/1/transcript.jsonl'
@@ -745,8 +753,11 @@ class RedTeamKitTests(unittest.TestCase):
         self.assertEqual(self.check(bundle, signers)[0], 3)
         self.assertEqual(self.kit('seal', str(bundle), '--key', str(keys / 'agent')).returncode, 0)
         self.assertEqual(self.check(bundle, signers)[0], 1)
+        # A seal added after the round by the operator can only make it
+        # unverified: the agent could have edited the transcripts before it.
         self.assertEqual(self.kit('seal', str(bundle), '--key', str(keys / 'operator')).returncode, 0)
-        self.assertEqual(self.check(bundle, signers)[0], 0)
+        code_after, after = self.check(bundle, signers)
+        self.assertEqual((code_after, after['conditions']['channel']['details']['seal']), (3, 'post_round'))
         # A reviewer with other keys trusts nothing in the bundle.
         other = self.root / 'other'
         other.mkdir()
@@ -835,8 +846,29 @@ class RedTeamKitTests(unittest.TestCase):
             refused = run(fixtures, self.root / f'bundle-{name}', self.root / f'keys-{name}')
             self.assertEqual(refused.returncode, 2, (name, refused))
             self.assertFalse((self.root / f'bundle-{name}').exists())
+        # A FIFO fixture is refused without blocking.
+        fifo = self.root / 'fixtures-fifo'
+        fifo.mkdir()
+        os.mkfifo(fifo / 'dpkg-status')
+        refused = run(fifo, self.root / 'bundle-fifo', self.root / 'keys-fifo')
+        self.assertEqual(refused.returncode, 2, refused)
         self.assertEqual(self.kit('check', str(self.root), '--allowed-signers', '/dev/null',
                                   '--verdict', str(self.root / 'v.json')).returncode, 2)
+
+    def test_checking_copies_within_bounds_and_never_through_links(self):
+        sys.path.insert(0, str(HERE))
+        import red_team
+        for name, make in (
+            ('entries', lambda root: [(root / f'd{index}').mkdir() for index in range(red_team.MAX_BUNDLE_FILES + 1)]),
+            ('depth', lambda root: (root / '/'.join(['n'] * (red_team.MAX_BUNDLE_DEPTH + 2))).mkdir(parents=True)),
+            ('link', lambda root: (root / 'fixtures').symlink_to(self.root)),
+            ('fifo', lambda root: os.mkfifo(root / 'turns')),
+        ):
+            source = self.root / f'source-{name}'
+            source.mkdir()
+            make(source)
+            with self.assertRaises(ValueError, msg=name):
+                red_team.private_copy(source, self.root / f'copy-{name}')
 
 if __name__ == '__main__':
     unittest.main()
