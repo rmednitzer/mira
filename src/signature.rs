@@ -217,6 +217,11 @@ pub(crate) const O_NONBLOCK: i32 = 0o4000;
 /// device substituted for the path is refused instead of blocking forever.
 /// Symlinks to regular files remain admitted, as in the offline comparator.
 pub fn read_document(path: &Path) -> io::Result<Vec<u8>> {
+    read_regular(path, MAX_DOCUMENT_BYTES)
+}
+
+/// As [`read_document`], with a caller-chosen bound.
+pub fn read_regular(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
     use std::os::unix::fs::OpenOptionsExt;
     let file = OpenOptions::new()
         .read(true)
@@ -229,8 +234,8 @@ pub fn read_document(path: &Path) -> io::Result<Vec<u8>> {
         ));
     }
     let mut bytes = Vec::new();
-    file.take(MAX_DOCUMENT_BYTES + 1).read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
+    file.take(limit + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > limit {
         return Err(crate::collector::limit_exceeded());
     }
     Ok(bytes)

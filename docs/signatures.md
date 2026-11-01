@@ -25,7 +25,7 @@ Each document kind has its own namespace, so a signature for one kind is never a
 
 | Document | Namespace |
 |---|---|
-| capture-v1 and capture-v2 | `mira-capture-v1@rmednitzer.github.io` |
+| capture-v1, capture-v2 and capture-v3 | `mira-capture-v1@rmednitzer.github.io` |
 | every investigation report | `mira-investigation-v1@rmednitzer.github.io` |
 
 ## Verify
@@ -55,7 +55,29 @@ A key listed for that principal signed these exact bytes, for this document kind
 - that the evidence is fresh
 - that the key lives on the machine its principal names
 
-A compromised host can sign anything. A valid old document stays valid, because signatures add no freshness. The private key must be usable by the capturing user and protected from everyone else; a copied key signs as its principal. Principal names and key fingerprints identify operators or hosts, so treat `allowed_signers` and verification output accordingly.
+A compromised host can sign anything. A valid old document stays valid, because signatures add no freshness on their own; [answer a challenge](#freshness-answer-a-challenge) for that. The private key must be usable by the capturing user and protected from everyone else; a copied key signs as its principal. Principal names and key fingerprints identify operators or hosts, so treat `allowed_signers` and verification output accordingly.
+
+## Freshness: answer a challenge
+
+A signature shows who signed a capture, not when. To bound its age without trusting the host's clock ([ADR 0014](adr/0014-consumer-challenge-freshness.md)), the consumer issues a challenge, the host answers it in a signed capture, and the consumer checks the answer on its own clock:
+
+```sh
+# consumer
+mira challenge > challenge.json
+# host, given the 64-hex "challenge" value from challenge.json
+mira capture incident-a --challenge HEX --signature incident-a.json.sig --sign-with ~/.ssh/mira_ed25519 > incident-a.json
+# consumer, on the machine that issued the challenge
+mira verify incident-a.json --signature incident-a.json.sig --allowed-signers allowed_signers --principal host-a \
+  --challenge-file challenge.json --max-age-ms 600000
+```
+
+- `mira challenge` prints `{"challenge_version":1,"challenge":"<64 hex>","issued_unix_ms":N}`: 32 bytes from `/dev/urandom` and the issuing machine's wall clock. A failed read exits 4 with no output. Keep `challenge.json` where only you can write it: anyone who can edit it can widen the bound. Only the challenge value goes to the host, never the issue time. Issue one challenge per capture.
+- `--challenge` requires signing and emits [capture-v3](captures.md#challenged-captures-capture-v3). MIRA reads the challenge before collecting anything, so every source was read after the host received it.
+- `--challenge-file` and `--max-age-ms` (1–16 digits) come together, after any `--revocations`. The signature is checked first. Then MIRA requires the challenge file's exact layout (a regular file of at most 4 KiB, opened nonblocking), checks that the capture begins `{"capture_version":3,"challenge":"` followed by the same value, and computes `age_bound_ms = now - issued_unix_ms` on its own clock.
+- Exit **0** prints the usual line plus `age_bound_ms=N`. Exit **1** prints `not verified (REASON)` with one reason: `signature` for any signature-stage refusal, `challenge_mismatch`, `not_challenged` (capture-v1 or v2), `issued_in_future` (the verifier clock is earlier than the issue time) or `older_than_policy`. A malformed, oversized or non-regular challenge file, or a bad `--max-age-ms`, exits 2; an unreadable challenge file exits 4.
+- Without these options capture-v3 verifies like any other capture.
+
+A pass means a key listed for the principal signed a capture answering your challenge, at most `age_bound_ms` after you issued it. It assumes the key holder ran an unmodified `mira`, and it does not make the measurements true. Use one machine to issue and verify: across two machines, their clock offset enters the bound.
 
 ## Verify while comparing
 
