@@ -133,12 +133,24 @@ def read_regular(path, limit, dir_fd=None):
     return data
 
 
+def bounded_names(directory, limit):
+    """The names in an open directory, read lazily and refused past `limit`
+    before any are kept in bulk or sorted."""
+    names = []
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            names.append(entry.name)
+            if len(names) > limit:
+                raise ValueError('a directory holds too many entries')
+    return sorted(names)
+
+
 def load_fixtures(fixtures):
     """The attacker's fixtures as validated inert data, by name."""
     found = {}
     directory = os.open(fixtures, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        for name in sorted(os.listdir(directory)):
+        for name in bounded_names(directory, len(FIXTURES)):
             if name not in FIXTURES:
                 raise ValueError(f'unknown fixture {name!r}; fixtures are {", ".join(FIXTURES)}')
             found[name] = read_regular(name, MAX_FIXTURE, dir_fd=directory)
@@ -174,7 +186,7 @@ def private_copy(bundle, destination):
         if depth > MAX_BUNDLE_DEPTH:
             raise ValueError('the bundle is nested too deeply')
         target.mkdir(mode=0o700)
-        for name in sorted(os.listdir(directory)):
+        for name in bounded_names(directory, MAX_BUNDLE_FILES - counted['entries']):
             counted['entries'] += 1
             if counted['entries'] > MAX_BUNDLE_FILES:
                 raise ValueError('the bundle has too many entries')
