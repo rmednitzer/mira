@@ -92,7 +92,7 @@ The agent runs `mira session request` under its own key. It names one capability
 You start the broker yourself with `mira session run`, in your own terminal; it is not a service. It checks its key as the collector before doing anything, then processes the inbox every 250 ms until the session is closed. With `--once` it makes one pass and stops.
 
 The broker trusts only what it has verified itself:
-- **Path:** under `separate_user` it refuses to start if any directory above the session is writable by others, unless that directory is sticky, is owned by you or root (a sticky directory's owner can still rename its children), and the next component belongs to you or root. Otherwise another user could rename the session away and put a substitute in its place.
+- **Path:** under `separate_user` it refuses to start if any directory above the session belongs to someone other than you or root (a directory's owner can always rename its children), or is writable by others, unless that directory is sticky and the next component belongs to you or root. Otherwise another user could rename the session away and put a substitute in its place.
 - **Identity:** it resolves the session path once, uses only that canonical path from then on, pins the directory's identity (device and inode), and stops if that changes.
 - **Signatures:** it verifies each entry's signature the first time it sees it. It acts only on a log that extends that verified prefix byte for byte, and this check runs on the same read each append decides on, so a forged, unsigned or rolled-back entry never steers it. For each request, the broker:
 1. under `separate_user`, refuses a file owned by the broker's own user (`owner`)

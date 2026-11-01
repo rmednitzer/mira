@@ -108,7 +108,7 @@ Stage 1b adds the broker:
 - every agent-attributable entry (relayed request or refusal) costs budget, and the last 64 entries are reserved for the operator and results, so an agent cannot fill the log and block stop or close
 - signature files are created at most 0644 whatever the umask, so a group-shared `documents/` never lets the agent open one for writing
 - `start --separation separate_user` checks the parent's ancestry before creating anything and changes group and mode only on real, self-created directories; the broker and `act` resolve the session path once and use only the canonical path
-- the broker pins the session directory's identity, refuses under `separate_user` any ancestor another user could rename through (including a sticky directory owned by another user), and acts only on a log extending the prefix whose signatures it verified, checked on the same read each append decides on
+- the broker pins the session directory's identity, refuses under `separate_user` any ancestor another user could rename through (including any directory owned by another user, whatever its mode), and acts only on a log extending the prefix whose signatures it verified, checked on the same read each append decides on
 - the agent-writable `inbox/` is read with hard caps per pass (4,096 directory entries, 64 requests), and non-request objects, stale pending files and empty directories are purged. Disk exhaustion by the agent's user is outside MIRA's control: a quota on that user is a deployment requirement
 - `separate_user` gives the agent's group read access to the log and write access to `inbox/` only, and the broker refuses inbox files owned by its own user
 

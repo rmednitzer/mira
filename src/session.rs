@@ -1063,12 +1063,13 @@ pub fn own_uid() -> Option<u32> {
     line.split_whitespace().nth(2)?.parse().ok()
 }
 
-/// Whether one ancestor is safe: unwritable by others, or sticky and owned by
-/// the session's owner or root (a sticky directory's owner may still rename
-/// any child) with the next component owned by the session's owner or root.
+/// Whether one ancestor is safe. It must be owned by the session's owner or
+/// root, since a directory's owner can always grant themselves write access
+/// and rename any child. It must also be unwritable by others, or sticky with
+/// the next component owned by the session's owner or root.
 pub fn ancestor_ok(mode: u32, ancestor_uid: u32, child_uid: u32, owner: u32) -> bool {
     let trusted = |uid: u32| uid == owner || uid == 0;
-    mode & 0o022 == 0 || (mode & 0o1000 != 0 && trusted(ancestor_uid) && trusted(child_uid))
+    trusted(ancestor_uid) && (mode & 0o022 == 0 || (mode & 0o1000 != 0 && trusted(child_uid)))
 }
 
 /// Check `start` (an existing, canonical directory whose next component on the
@@ -2154,8 +2155,12 @@ mod tests {
     #[test]
     fn ancestors_must_not_let_another_user_rename_the_session() {
         let (owner, other) = (1000, 1001);
-        // Not writable by others: always safe.
-        assert!(ancestor_ok(0o40755, other, other, owner));
+        // Not writable by others and owned by the operator or root: safe.
+        assert!(ancestor_ok(0o40755, owner, other, owner));
+        assert!(ancestor_ok(0o40755, 0, owner, owner));
+        // Owned by another user, whatever the mode: they can rename any child.
+        assert!(!ancestor_ok(0o40755, other, owner, owner));
+        assert!(!ancestor_ok(0o40700, other, owner, owner));
         // Writable by others without the sticky bit: never safe.
         assert!(!ancestor_ok(0o40777, owner, owner, owner));
         assert!(!ancestor_ok(0o40775, 0, owner, owner));
