@@ -28,6 +28,7 @@ WORK = Path('/srv/mira-test')
 NAMESPACE = 'mira-session-v1@rmednitzer.github.io'
 DOCUMENTS = 'mira-capture-v1@rmednitzer.github.io,mira-investigation-v1@rmednitzer.github.io'
 ROOT = Path(__file__).resolve().parents[1]
+RUNUSER = shutil.which('runuser') or '/usr/sbin/runuser'
 
 
 class Run:
@@ -46,7 +47,8 @@ class Run:
     def run(self, user, *argv, environ=None, input_bytes=None):
         env = {'PATH': '/usr/local/bin:/usr/bin:/bin', 'HOME': str(self.home[user]), 'LANG': 'C.UTF-8'}
         env.update(environ or {})
-        return subprocess.run(['runuser', '-u', user, '--', *argv], env=env, cwd='/',
+        # The minimal PATH is the user's; runuser itself is found from root's.
+        return subprocess.run([RUNUSER, '-u', user, '--', *argv], env=env, cwd='/',
                               capture_output=True, timeout=300, check=False, input=input_bytes)
 
     def mira_as(self, user, *argv, **kwargs):
