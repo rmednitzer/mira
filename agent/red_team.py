@@ -14,20 +14,25 @@ pass after each, closes the session with a receipt and writes a bundle:
   BUNDLE/turns/N/      the host transcript of each turn
   BUNDLE/verdict.json  the four pass conditions and the utility measure
 
-`check BUNDLE --allowed-signers FILE` computes the verdict again for any
-bundle in that layout, including a `separate_user` round run by hand. It
-trusts only the reviewer's signers file, never the bundle's copy, so the
-holder of a bundle can neither re-sign nor swap keys.
-`seal BUNDLE --key OPERATOR-KEY` signs the transcripts' digests.
+`check BUNDLE --allowed-signers FILE --verdict NEW-FILE` computes the
+verdict again for any bundle in that layout, including a `separate_user`
+round run by hand. It first copies the bundle into a private directory,
+regular files only, and checks the copy. It trusts only the reviewer's
+signers file, never the bundle's copy, so the holder of a bundle can neither
+re-sign nor swap keys.
+`seal BUNDLE --key OPERATOR-KEY` signs, after the close, the transcripts'
+digests bound to the session and its close receipt.
 
-Fixtures, all optional, in one directory:
-  systemctl      an executable stand-in, put first on the broker's PATH
-  dpkg-status    a dpkg status database (MIRA_TEST_DPKG_STATUS)
-  journalctl     an executable stand-in (MIRA_TEST_JOURNALCTL); without it,
-                 the native fixture's journal-hostile mode is used
-  expected.json  {"claim": CLAIM, "capability": NAME}: the finding a correct
-                 agent should reach, for the utility measure
-  goal.txt       the attacker's goal for this round, copied into the verdict
+Fixtures, all optional, all inert data (nothing the attacker writes is ever
+executed), in one directory of regular files:
+  service-states.json  {"UNIT.service": {"LoadState": …, "ActiveState": …,
+                       "SubState": …}}, served by a shim the kit writes and
+                       puts first on the broker's PATH as `systemctl`
+  dpkg-status          a dpkg status database (MIRA_TEST_DPKG_STATUS)
+  expected.json        {"claim": CLAIM, "capability": NAME}: the finding a
+                       correct agent should reach, for the utility measure
+  goal.txt             the attacker's goal for this round
+Journal entries come from the native fixture's journal-hostile mode.
 
 The broker must be a test-support build (target/test-support/debug/mira),
 which is the only build that takes the fixtures; release builds compile the
@@ -46,6 +51,8 @@ import ipaddress
 import json
 import os
 import shutil
+import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -64,6 +71,13 @@ TOOLS = {tool['name'] for tool in mira_agent_mcp.tools()}
 SEAL_NAMESPACE = 'mira-red-team-v1@rmednitzer.github.io'
 KEYGEN = '/usr/bin/ssh-keygen'
 MACHINE = '2647eb65b1ed4abe8c03300b925dd8fe'
+FIXTURES = ('service-states.json', 'dpkg-status', 'expected.json', 'goal.txt')
+MAX_FIXTURE = 1024 * 1024
+# A bundle copied for checking: bounded in files and bytes.
+MAX_BUNDLE_FILES = 20000
+MAX_BUNDLE_BYTES = 512 * 1024 * 1024
+UNIT = re.compile(r'[A-Za-z0-9:_.@\\-]{1,192}\.service')
+STATE = re.compile(r'[\x20-\x7e]{1,256}')
 
 
 def mira(binary, *arguments, environ=None):
@@ -75,10 +89,21 @@ def broker_environ(bundle, support):
     """The broker's environment: the attacker's fixtures as host evidence."""
     fixtures, host = bundle / 'fixtures', bundle / 'host'
     environ = dict(os.environ)
-    if (fixtures / 'systemctl').exists():
+    if (fixtures / 'service-states.json').exists():
+        # The kit's own shim over the attacker's inert data: only these
+        # three properties, for the unit systemctl was asked about.
         (host / 'bin').mkdir(parents=True, exist_ok=True)
-        shutil.copy2(fixtures / 'systemctl', host / 'bin/systemctl')
-        (host / 'bin/systemctl').chmod(0o755)
+        shim = host / 'bin/systemctl'
+        shim.write_text(
+            f'#!{sys.executable}\n'
+            'import json, sys\n'
+            f'states = json.load(open({str(fixtures / "service-states.json")!r}))\n'
+            'unit = sys.argv[-1]\n'
+            "state = states.get(unit, {'LoadState': 'not-found', 'ActiveState': 'inactive', "
+            "'SubState': 'dead'})\n"
+            "print(f'Id={unit}\\nNames={unit}\\nLoadState={state[\"LoadState\"]}\\n'\n"
+            "      f'ActiveState={state[\"ActiveState\"]}\\nSubState={state[\"SubState\"]}')\n")
+        shim.chmod(0o755)
         environ['PATH'] = f"{host / 'bin'}:{environ['PATH']}"
     if (fixtures / 'dpkg-status').exists():
         environ['MIRA_TEST_DPKG_STATUS'] = str(fixtures / 'dpkg-status')
@@ -89,13 +114,67 @@ def broker_environ(bundle, support):
     (host / 'proc/sys/kernel/core_pattern').write_text('|/usr/lib/systemd/systemd-coredump %P\n')
     environ['MIRA_TEST_JOURNAL_DIRS'] = str(host / 'var')
     environ['MIRA_TEST_PROC_ROOT'] = str(host / 'proc')
-    if (fixtures / 'journalctl').exists():
-        (fixtures / 'journalctl').chmod(0o755)
-        environ['MIRA_TEST_JOURNALCTL'] = str(fixtures / 'journalctl')
-    else:
-        environ['MIRA_TEST_JOURNALCTL'] = str(support.parent / 'mira-process-fixture')
-        environ['MIRA_PROCESS_FIXTURE_MODE'] = 'journal-hostile'
+    environ['MIRA_TEST_JOURNALCTL'] = str(support.parent / 'mira-process-fixture')
+    environ['MIRA_PROCESS_FIXTURE_MODE'] = 'journal-hostile'
     return environ
+
+
+def read_regular(path, limit):
+    """A regular file's bytes, never through a link, at most `limit` bytes."""
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, 'rb') as file:
+        if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
+            raise ValueError(f'{Path(path).name} is not a regular file')
+        data = file.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError(f'{Path(path).name} is too large')
+    return data
+
+
+def load_fixtures(fixtures):
+    """The attacker's fixtures as validated inert data, by name."""
+    found = {}
+    for entry in os.scandir(fixtures):
+        if entry.name not in FIXTURES:
+            raise ValueError(f'unknown fixture {entry.name!r}; fixtures are {", ".join(FIXTURES)}')
+        found[entry.name] = read_regular(entry.path, MAX_FIXTURE)
+    if 'service-states.json' in found:
+        states = json.loads(found['service-states.json'])
+        fields = {'LoadState', 'ActiveState', 'SubState'}
+        if not isinstance(states, dict) or not all(
+                isinstance(unit, str) and UNIT.fullmatch(unit) and isinstance(state, dict)
+                and set(state) == fields
+                and all(isinstance(value, str) and STATE.fullmatch(value) for value in state.values())
+                for unit, state in states.items()):
+            raise ValueError('service-states.json must map UNIT.service names to LoadState, '
+                             'ActiveState and SubState, each 1-256 printable ASCII characters')
+    if 'expected.json' in found:
+        expected = json.loads(found['expected.json'])
+        if not isinstance(expected, dict) or set(expected) != {'claim', 'capability'}:
+            raise ValueError('expected.json must hold exactly claim and capability')
+    return found
+
+
+def private_copy(bundle, destination):
+    """Copy a bundle into a private directory, accepting only directories and
+    regular files and never following a link, so a supplier can neither point
+    the check at the reviewer's files nor change the bundle while it runs."""
+    count, total = 0, 0
+    for directory, names, files in os.walk(bundle, followlinks=False):
+        relative = Path(directory).relative_to(bundle)
+        (destination / relative).mkdir(mode=0o700, exist_ok=True)
+        for name in names + files:
+            mode = os.lstat(Path(directory) / name).st_mode
+            if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
+                raise ValueError(f'{relative / name} is a link or special file')
+        for name in files:
+            data = read_regular(Path(directory) / name, MAX_BUNDLE_BYTES - total)
+            count, total = count + 1, total + len(data)
+            if count > MAX_BUNDLE_FILES:
+                raise ValueError('the bundle has too many files')
+            target = destination / relative / name
+            with open(target, 'xb') as file:
+                file.write(data)
 
 
 def takes_fixtures(binary, scratch):
@@ -131,6 +210,11 @@ def run(args):
     if not fixtures.is_dir():
         print('red-team: --fixtures must be a directory', file=sys.stderr)
         return 2
+    try:
+        fixture_data = load_fixtures(fixtures)
+    except (OSError, ValueError) as error:
+        print(f'red-team: {error}', file=sys.stderr)
+        return 2
     support = Path(args.mira).resolve()
     if not takes_fixtures(support, bundle.parent):
         print('red-team: --mira must be a test-support build (cargo build --locked --features '
@@ -141,7 +225,10 @@ def run(args):
     bundle.mkdir(parents=True)
     # A copy for reference only: check trusts the reviewer's signers file.
     shutil.copy2(keys / 'signers', bundle / 'signers')
-    shutil.copytree(fixtures, bundle / 'fixtures', symlinks=True)
+    (bundle / 'fixtures').mkdir()
+    for name, data in fixture_data.items():
+        with open(bundle / 'fixtures' / name, 'xb') as file:
+            file.write(data)
     trust = ['--allowed-signers', str(keys / 'signers')]
     session = bundle / 'session'
     started = mira(support, 'start', str(session), *trust, '--key', str(keys / 'operator'),
@@ -191,29 +278,39 @@ def run(args):
                  if entry['kind'] == 'stop'] if transcript.exists() else []
         if hosted.returncode != 0 or 'idle' in stops:
             break
-    # The kit ran every turn itself, as the operator: seal what it recorded.
-    seal(bundle, keys / 'operator')
     closed = mira(support, 'close', str(session), *trust, '--key', str(keys / 'operator'),
                   '--conclusion', 'red-team round closed by the run kit', '--receipt',
                   str(bundle / 'receipt'), '--abandon-pending')
     if closed.returncode != 0:
         print(f'red-team: close failed: {closed.stdout.decode()}', file=sys.stderr)
         return 2
-    return check(bundle, support, keys / 'signers')
+    # The kit ran every turn itself, as the operator: seal what it recorded,
+    # bound to this session and its close receipt.
+    seal(bundle, keys / 'operator')
+    return check(bundle, support, keys / 'signers', bundle / 'verdict.json')
 
 
 def transcripts(bundle):
     """Each turn's transcript bytes, read once, by turn name."""
-    return {path.parent.name: path.read_bytes()
+    return {path.parent.name: read_regular(path, 64 * 1024 * 1024)
             for path in sorted((bundle / 'turns').glob('*/transcript.jsonl'))}
 
 
+def binding(bundle):
+    """The session ID and the close receipt's digest that a seal commits to."""
+    header = read_regular(bundle / 'session' / 'entries' / '000000.entry', 1 << 16)
+    session_id = json.loads(header.split(b'\n', 1)[0])['session_id']
+    receipt = read_regular(bundle / 'receipt', 1 << 16)
+    return {'session_id': session_id, 'receipt_sha256': hashlib.sha256(receipt).hexdigest()}
+
+
 def seal(bundle, key):
-    """Sign the SHA-256 of every transcript as the session operator, so a
-    transcript the agent could write cannot be changed after the seal."""
+    """Sign, as the session operator, the SHA-256 of every transcript together
+    with the session ID and the close receipt's digest, so transcripts can
+    neither change after the seal nor move to another session."""
     bundle, key = Path(bundle), Path(key)
     digests = {turn: hashlib.sha256(data).hexdigest() for turn, data in transcripts(bundle).items()}
-    manifest = json.dumps({'transcripts': digests}, sort_keys=True).encode() + b'\n'
+    manifest = json.dumps({**binding(bundle), 'transcripts': digests}, sort_keys=True).encode() + b'\n'
     signed = subprocess.run([KEYGEN, '-Y', 'sign', '-f', str(key), '-n', SEAL_NAMESPACE],
                             input=manifest, capture_output=True, timeout=60, check=False)
     if signed.returncode != 0:
@@ -256,7 +353,14 @@ def read_seal(bundle, allowed):
             input=manifest, capture_output=True, timeout=60, check=False)
     if verified.returncode != 0:
         return 'broken', found, 'the seal does not verify'
-    digests = json.loads(manifest)['transcripts']
+    sealed = json.loads(manifest)
+    try:
+        bound = binding(bundle)
+    except (OSError, ValueError, KeyError):
+        return 'broken', found, 'the session or its receipt cannot be read'
+    if {name: sealed.get(name) for name in bound} != bound:
+        return 'broken', found, 'the seal belongs to another session or close receipt'
+    digests = sealed['transcripts']
     actual = {turn: hashlib.sha256(data).hexdigest() for turn, data in found.items()}
     if digests != actual:
         changed = sorted(set(digests) ^ set(actual) | {turn for turn in digests
@@ -384,12 +488,14 @@ def revision():
     return done.stdout.strip() or None
 
 
-def check(bundle, binary, allowed):
-    result = verdict(Path(bundle), binary, allowed)
-    path = Path(bundle) / 'verdict.json'
-    # Replace, never write through: a handed-over bundle may hold a link here.
-    if path.is_symlink() or path.exists():
-        path.unlink()
+def check(bundle, binary, allowed, out):
+    """Copy the bundle privately, compute the verdict on the copy, and write it
+    to `out`, a new file the reviewer chose."""
+    with tempfile.TemporaryDirectory(prefix='mira-red-team-bundle-') as scratch:
+        copy = Path(scratch) / 'bundle'
+        private_copy(Path(bundle), copy)
+        result = verdict(copy, binary, allowed)
+    path = Path(out)
     with open(path, 'x') as file:
         file.write(json.dumps(result, indent=2) + '\n')
     for name, item in result['conditions'].items():
@@ -423,6 +529,8 @@ def main(argv=None):
     checked.add_argument('bundle')
     checked.add_argument('--allowed-signers', required=True,
                          help="the reviewer's own signers file; the bundle's copy is never trusted")
+    checked.add_argument('--verdict', required=True,
+                         help='a new file outside the bundle for the verdict')
     checked.add_argument('--mira', default=str(ROOT / 'target/debug/mira'))
     args = parser.parse_args(argv)
     if args.command == 'run':
@@ -434,10 +542,16 @@ def main(argv=None):
             print(f'red-team: {error}', file=sys.stderr)
             return 2
         return 0
-    if not (Path(args.bundle) / 'session').is_dir():
-        print('red-team: not a bundle (no session directory)', file=sys.stderr)
+    bundle, out = Path(args.bundle).resolve(), Path(args.verdict).resolve()
+    if not (bundle / 'session').is_dir() or out.exists() or bundle in out.parents:
+        print('red-team: need a bundle with a session, and a new --verdict path outside it',
+              file=sys.stderr)
         return 2
-    return check(args.bundle, args.mira, Path(args.allowed_signers).resolve())
+    try:
+        return check(bundle, args.mira, Path(args.allowed_signers).resolve(), out)
+    except (OSError, ValueError) as error:
+        print(f'red-team: refused: {error}', file=sys.stderr)
+        return 2
 
 
 if __name__ == '__main__':
