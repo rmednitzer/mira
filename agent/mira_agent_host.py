@@ -10,8 +10,11 @@ asked to do:
 - the adapter's tool definitions must hash to the value the operator pinned
   in the session header, checked at start and again before every turn, so a
   poisoned or changed description (a rug pull) stops the run
-- the model is reached only on a loopback address (`--model-url`), or
-  replayed from a file (`--replay`) for tests and scripted red-team runs
+- the model is reached only through a Unix socket owned by the agent's
+  user in a directory nobody else can write (`--model-socket`, which
+  authenticates the listener), on a loopback TCP address (`--model-url`),
+  or replayed from a file (`--replay`) for tests and scripted red-team
+  runs; redirects are never followed
 - only tools the adapter lists are ever forwarded
 
 Nothing here is a security boundary for the session: the broker re-checks
@@ -21,16 +24,18 @@ Exit status: 0 done, 1 refused to start, 2 usage, 3 stopped because the
 tool definitions changed, 4 model or adapter failure.
 """
 import argparse
+import http.client
 import ipaddress
 import json
 import os
 import queue
+import socket
+import stat
 import subprocess
 import sys
 import threading
 import time
 import urllib.parse
-import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -41,7 +46,11 @@ CLIENT_INFO = {'name': 'mira-agent-host', 'version': '1'}
 RPC_TIMEOUT = 90
 MODEL_TIMEOUT = 300
 MAX_RESPONSE = 4 * 1024 * 1024
-MAX_VIEW = 64 * 1024
+MAX_VIEW = 24 * 1024
+# The latest result documents, each bounded, so the model can reason over
+# the collected evidence and not only the outcomes.
+MAX_DOCUMENTS = 4
+MAX_DOCUMENT_VIEW = 8 * 1024
 SYSTEM_PROMPT = (
     'You are the agent in a MIRA investigation session, working with a human operator. '
     'You can only use the tools offered: request a read-only action, post a finding that cites '
@@ -104,9 +113,38 @@ def check_loopback(url):
         loopback = host == 'localhost' or ipaddress.ip_address(host).is_loopback
     except ValueError:
         loopback = False
-    if parsed.scheme != 'http' or not loopback or parsed.username or parsed.password:
+    if parsed.scheme != 'http' or not loopback or parsed.username or parsed.password \
+            or parsed.query or parsed.fragment:
         raise Refused('the model must be reached over http on a loopback address; '
                       'real sessions use local models only')
+    return parsed
+
+
+def check_socket(path):
+    """A Unix socket owned by this user, in a directory owned by this user that
+    nobody else can write: only this user's own server can be listening there."""
+    own = os.geteuid()
+    try:
+        directory = os.lstat(Path(path).parent)
+        listener = os.lstat(path)
+    except OSError:
+        raise Refused('the model socket does not exist') from None
+    if not stat.S_ISSOCK(listener.st_mode) or listener.st_uid != own \
+            or not stat.S_ISDIR(directory.st_mode) or directory.st_uid != own \
+            or directory.st_mode & 0o022:
+        raise Refused('the model socket must be owned by this user, in a directory owned by '
+                      'this user that nobody else can write')
+
+
+class UnixConnection(http.client.HTTPConnection):
+    def __init__(self, path, timeout):
+        super().__init__('localhost', timeout=timeout)
+        self.socket_path = path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self.socket_path)
 
 
 class Adapter:
@@ -166,24 +204,39 @@ class Adapter:
 
 
 class LocalModel:
-    """An OpenAI-compatible chat completions endpoint on a loopback address."""
+    """An OpenAI-compatible chat completions endpoint on a Unix socket or a
+    loopback address. Plain http.client: no proxy, and no redirect is ever
+    followed, so a response can never send the session view elsewhere."""
     provider = 'openai-compatible-local'
 
-    def __init__(self, url, model, temperature):
-        check_loopback(url)
-        self.url = url.rstrip('/') + '/chat/completions'
+    def __init__(self, model, temperature, url=None, socket_path=None):
+        if socket_path is not None:
+            check_socket(socket_path)
+            self.connect = lambda: UnixConnection(socket_path, MODEL_TIMEOUT)
+            self.path = '/v1/chat/completions'
+        else:
+            parsed = check_loopback(url)
+            self.connect = lambda: http.client.HTTPConnection(parsed.hostname, parsed.port or 80,
+                                                              timeout=MODEL_TIMEOUT)
+            self.path = parsed.path.rstrip('/') + '/chat/completions'
         self.model = model
         self.parameters = {'temperature': temperature}
 
     def complete(self, messages, tools):
         body = json.dumps({'model': self.model, 'messages': messages, 'tools': tools,
                            **self.parameters}).encode()
-        request = urllib.request.Request(self.url, data=body,
-                                         headers={'Content-Type': 'application/json'})
-        # No proxy: a loopback model must never be reached through one.
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(request, timeout=MODEL_TIMEOUT) as response:
+        connection = self.connect()
+        try:
+            connection.request('POST', self.path, body=body,
+                               headers={'Content-Type': 'application/json'})
+            response = connection.getresponse()
+            if response.status != 200:
+                raise OSError(f'the model answered HTTP {response.status}; redirects are not followed')
             return response.read(MAX_RESPONSE + 1)[:MAX_RESPONSE]
+        except http.client.HTTPException as error:
+            raise OSError(str(error)) from error
+        finally:
+            connection.close()
 
 
 class ReplayModel:
@@ -225,12 +278,21 @@ def function_tools(definitions):
 
 
 def view(adapter):
-    """The session as the agent may read it, bounded, for the next turn."""
+    """The session as the agent may read it, bounded, for the next turn: state,
+    timeline, and the latest collector-signed result documents."""
     parts = []
     for uri in ('session://state', 'session://timeline'):
         contents = adapter.result('resources/read', {'uri': uri})['contents']
         parts.append(f'{uri}\n{contents[0]["text"]}')
-    return '\n'.join(parts)[-MAX_VIEW:]
+    text = '\n'.join(parts)[-MAX_VIEW:]
+    listed = adapter.result('resources/list')['resources']
+    documents = [item['uri'] for item in listed if item['uri'].startswith('session://documents/')]
+    for uri in documents[-MAX_DOCUMENTS:]:
+        document = adapter.result('resources/read', {'uri': uri})['contents'][0]['text']
+        if len(document) > MAX_DOCUMENT_VIEW:
+            document = document[:MAX_DOCUMENT_VIEW] + ' (truncated)'
+        text += f'\n{uri}\n{document}'
+    return text
 
 
 def run(args, model, recorder):
@@ -281,19 +343,26 @@ def run(args, model, recorder):
             except (ValueError, KeyError, IndexError, TypeError):
                 recorder.write({'kind': 'stop', 'turn': turn, 'status': 'invalid_model_response'})
                 raise Failure('the model response is not a chat completion') from None
-            calls = message.get('tool_calls') or []
+            calls = message.get('tool_calls') or [] if isinstance(message, dict) else []
+            if not isinstance(calls, list):
+                calls = [calls]
             if not calls:
                 recorder.write({'kind': 'stop', 'turn': turn, 'status': 'idle'})
                 return 0
             previous = []
             for call in calls:
-                function = call.get('function', {}) if isinstance(call, dict) else {}
+                function = call.get('function') if isinstance(call, dict) else None
+                function = function if isinstance(function, dict) else {}
                 name = function.get('name')
-                try:
-                    arguments = json.loads(function.get('arguments') or '{}')
-                except ValueError:
-                    arguments = None
-                if name not in offered or not isinstance(arguments, dict):
+                # Arguments are a JSON-encoded string; anything else is refused.
+                encoded = function.get('arguments')
+                arguments = {} if encoded in (None, '') else None
+                if isinstance(encoded, str) and encoded:
+                    try:
+                        arguments = json.loads(encoded)
+                    except ValueError:
+                        arguments = None
+                if not isinstance(name, str) or name not in offered or not isinstance(arguments, dict):
                     # Never forwarded: the adapter offers no such tool.
                     outcome = {'refused_by_host': 'no such tool, or arguments not an object'}
                 else:
@@ -316,6 +385,8 @@ def main(argv=None):
     parser.add_argument('--key', required=True, help="the agent's signing key")
     parser.add_argument('--record', required=True, help='new directory for the transcript')
     source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument('--model-socket',
+                        help='OpenAI-compatible endpoint on a Unix socket owned by this user')
     source.add_argument('--model-url', help='OpenAI-compatible endpoint on a loopback address')
     source.add_argument('--replay', help='JSON list of model responses, one per turn')
     parser.add_argument('--model', default='local')
@@ -328,8 +399,11 @@ def main(argv=None):
     args.adapter = [sys.executable, str(ADAPTER)]
     try:
         check_mcp_config(args.mcp_config)
-        model = LocalModel(args.model_url, args.model, args.temperature) if args.model_url \
-            else ReplayModel(args.replay)
+        if args.replay:
+            model = ReplayModel(args.replay)
+        else:
+            model = LocalModel(args.model, args.temperature, url=args.model_url,
+                               socket_path=args.model_socket)
         recorder = Recorder(args.record)
     except (Refused, OSError, ValueError) as error:
         print(f'mira-agent-host: refused: {error}', file=sys.stderr)

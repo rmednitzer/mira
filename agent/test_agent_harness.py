@@ -7,6 +7,7 @@ import argparse
 import http.server
 import json
 import os
+import socketserver
 import subprocess
 import sys
 import tempfile
@@ -323,6 +324,134 @@ class HostTests(unittest.TestCase):
         self.assertEqual(records[0]['provider'], 'openai-compatible-local')
         self.assertEqual(records[0]['parameters'], {'temperature': 0.0})
         self.assertEqual(oct(record.stat().st_mode & 0o777), '0o700')
+
+
+def serve_model(replies, seen, address=None):
+    """A fake OpenAI-compatible model: each reply is a JSON body, or (status, headers)."""
+
+    class Model(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            seen.append(json.loads(self.rfile.read(int(self.headers['Content-Length']))))
+            reply = replies.pop(0)
+            if isinstance(reply, tuple):
+                self.send_response(reply[0])
+                for name, value in reply[1].items():
+                    self.send_header(name, value)
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
+            body = json.dumps(reply).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def address_string(self):
+            return 'local'
+
+        def log_message(self, *args):
+            pass
+
+    if address is None:
+        server = http.server.HTTPServer(('127.0.0.1', 0), Model)
+    else:
+        class UnixServer(socketserver.UnixStreamServer):
+            def get_request(self):
+                request, _ = super().get_request()
+                return request, ('local', 0)
+        server = UnixServer(address, Model)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def stop(server):
+    server.shutdown()
+    server.server_close()
+
+
+IDLE = {'choices': [{'message': {'role': 'assistant', 'content': 'Nothing more.'}}]}
+
+
+class ReviewRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.session = Session()
+
+    def tearDown(self):
+        self.session.close()
+
+    def transcript(self, record):
+        return [json.loads(line) for line in (record / 'transcript.jsonl').read_text().splitlines()]
+
+    def test_a_redirect_from_the_model_is_never_followed(self):
+        elsewhere_seen = []
+        elsewhere = serve_model([IDLE], elsewhere_seen)
+        seen = []
+        model = serve_model([(302, {'Location': f'http://0.0.0.0:{elsewhere.server_port}/v1/chat/completions'})],
+                            seen)
+        try:
+            record = self.session.root / 'redirect'
+            ran = self.session.host('--model-url', f'http://127.0.0.1:{model.server_port}/v1',
+                                    '--record', str(record))
+        finally:
+            stop(model)
+            stop(elsewhere)
+        self.assertEqual(ran.returncode, 4, ran)
+        self.assertEqual((len(seen), elsewhere_seen), (1, []))
+        self.assertEqual(self.transcript(record)[1]['status'], 'model_unreachable')
+
+    def test_a_unix_socket_model_must_belong_to_this_user(self):
+        directory = self.session.root / 'model'
+        directory.mkdir(mode=0o700)
+        address = str(directory / 'socket')
+        seen = []
+        model = serve_model([dict(IDLE)], seen, address)
+        try:
+            ran = self.session.host('--model-socket', address, '--record', str(self.session.root / 'unix'))
+            self.assertEqual(ran.returncode, 0, ran)
+            self.assertEqual(len(seen), 1)
+            # A directory others can write lets another user swap the socket in.
+            directory.chmod(0o777)
+            refused = self.session.host('--model-socket', address,
+                                        '--record', str(self.session.root / 'unix-open'))
+            self.assertEqual(refused.returncode, 1, refused)
+            directory.chmod(0o700)
+        finally:
+            stop(model)
+        for path in (str(self.session.root / 'signers'), str(directory / 'absent')):
+            refused = self.session.host('--model-socket', path, '--record', str(self.session.root / 'x'))
+            self.assertEqual(refused.returncode, 1, refused)
+
+    def test_tool_arguments_that_are_not_a_json_string_are_refused(self):
+        replay = self.session.root / 'objects.json'
+        replay.write_text(json.dumps([{'choices': [{'message': {'role': 'assistant', 'tool_calls': [
+            {'type': 'function', 'function': {'name': 'ask', 'arguments': {'question': 'raw object?'}}},
+            {'type': 'function', 'function': {'name': ['ask'], 'arguments': '{}'}},
+            {'type': 'function', 'function': 'ask'},
+            call('ask', question='Still running?'),
+        ]}}]}]))
+        record = self.session.root / 'objects'
+        ran = self.session.host('--replay', str(replay), '--record', str(record))
+        self.assertEqual(ran.returncode, 0, ran)
+        tools = [item for item in self.transcript(record) if item['kind'] == 'tool']
+        self.assertEqual(len(tools), 4)
+        self.assertTrue(all('refused_by_host' in item['outcome'] for item in tools[:3]))
+        self.assertFalse(tools[3]['outcome']['isError'])
+        self.assertEqual(self.transcript(record)[-1]['status'], 'idle')
+        self.assertEqual(len(self.session.inbox()), 1)
+
+    def test_the_model_sees_the_latest_result_documents(self):
+        acted = mira('act', str(self.session.dir), *self.session.trust, '--key',
+                     str(self.session.root / 'operator'), '--collector-key',
+                     str(self.session.root / 'collector'), '--capability', 'memory-headroom',
+                     '--arguments', '1')
+        self.assertEqual(acted.returncode, 0, acted)
+        record = self.session.root / 'documents'
+        ran = self.session.host('--replay', self.session.replay([]), '--record', str(record))
+        self.assertEqual(ran.returncode, 0, ran)
+        content = self.transcript(record)[1]['request']['messages'][1]['content']
+        self.assertIn('session://documents/000001\n{"investigation_version":1', content)
+        self.assertIn('"reason":"minimum_met"', content)
 
 
 if __name__ == '__main__':
