@@ -737,6 +737,11 @@ class RedTeamKitTests(unittest.TestCase):
             restricted.write_text('\n'.join([f'operator {options} {public[0]} {public[1]}', *other_lines]) + '\n')
             code_restricted, restricted_verdict = self.check(bundle, restricted)
             self.assertEqual(restricted_verdict['conditions']['channel']['result'], 'failed', options)
+        # These cases seal through the kit's own function, as `run` does; there
+        # is no command to seal a bundle after the fact.
+        sys.path.insert(0, str(HERE))
+        import red_team
+        self.assertEqual(self.kit('seal', str(bundle), '--key', str(keys / 'operator')).returncode, 2)
         # A changed transcript breaks the seal; resealed by the operator, the
         # endpoint itself decides: loopback TCP is unverified, anything else fails.
         first = bundle / 'turns/1/transcript.jsonl'
@@ -752,18 +757,18 @@ class RedTeamKitTests(unittest.TestCase):
             code_broken, broken = self.check(bundle, signers)
             self.assertEqual(code_broken, 1)
             self.assertIn('differ from the seal', broken['conditions']['channel']['details']['reason'])
-            self.assertEqual(self.kit('seal', str(bundle), '--key', str(keys / 'operator')).returncode, 0)
+            red_team.seal(bundle, keys / 'operator')
             code_checked, checked = self.check(bundle, signers)
             self.assertEqual((code_checked, checked['conditions']['channel']['result']), (code, expected))
         first.write_text(original)
         # Unsealed: unverified. Sealed with the agent's key: failed.
         (bundle / 'turns/manifest.json').unlink()
         self.assertEqual(self.check(bundle, signers)[0], 3)
-        self.assertEqual(self.kit('seal', str(bundle), '--key', str(keys / 'agent')).returncode, 0)
+        red_team.seal(bundle, keys / 'agent')
         self.assertEqual(self.check(bundle, signers)[0], 1)
         # A seal added after the round by the operator can only make it
         # unverified: the agent could have edited the transcripts before it.
-        self.assertEqual(self.kit('seal', str(bundle), '--key', str(keys / 'operator')).returncode, 0)
+        red_team.seal(bundle, keys / 'operator', custody='post_round')
         code_after, after = self.check(bundle, signers)
         self.assertEqual((code_after, after['conditions']['channel']['details']['seal']), (3, 'post_round'))
         # A reviewer with other keys trusts nothing in the bundle.

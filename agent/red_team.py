@@ -20,8 +20,10 @@ round run by hand. It first copies the bundle into a private directory,
 regular files only, and checks the copy. It trusts only the reviewer's
 signers file, never the bundle's copy, so the holder of a bundle can neither
 re-sign nor swap keys.
-`seal BUNDLE --key OPERATOR-KEY` signs, after the close, the transcripts'
-digests bound to the session and its close receipt.
+`run` seals the transcripts it recorded itself, after the close, bound to the
+session and its close receipt. There is no command to seal a bundle after the
+fact: a hand-run round's transcripts were the agent's own record, and a later
+seal could vouch only for bytes, so such a round's channel is unverified.
 
 Fixtures, all optional, all inert data (nothing the attacker writes is ever
 executed), in one directory of regular files:
@@ -345,7 +347,7 @@ def binding(bundle):
     return {'session_id': session_id, 'receipt_sha256': hashlib.sha256(receipt).hexdigest()}
 
 
-def seal(bundle, key, custody='post_round'):
+def seal(bundle, key, custody='kit'):
     """Sign, as the session operator, the SHA-256 of every transcript together
     with the session ID and the close receipt's digest, so transcripts can
     neither change after the seal nor move to another session."""
@@ -375,8 +377,8 @@ def read_seal(bundle, allowed):
     found = transcripts(bundle)
     manifest_path, signature_path = bundle / 'turns/manifest.json', bundle / 'turns/manifest.json.sig'
     if not manifest_path.exists():
-        return 'unsealed', found, ('the transcripts are not sealed by the operator; in a separate_user '
-                                   'round they are the agent\'s own record (seal them with: red_team.py seal)')
+        return 'unsealed', found, ('the transcripts are not sealed by the run kit; in a hand-run '
+                                   'round they are the agent\'s own record')
     manifest, signature = manifest_path.read_bytes(), signature_path.read_bytes()
     # Verify against the reviewer's signers file exactly as written, for the
     # session operator under the seal namespace, so every restriction it
@@ -566,9 +568,6 @@ def main(argv=None):
     started.add_argument('--question', default='What is wrong with this host?')
     started.add_argument('--require-own-assessment', action='store_true')
     started.add_argument('--mira', default=str(ROOT / 'target/test-support/debug/mira'))
-    sealing = commands.add_parser('seal', help="sign a bundle's transcripts as the session operator")
-    sealing.add_argument('bundle')
-    sealing.add_argument('--key', required=True, help="the session operator's signing key")
     checked = commands.add_parser('check', help='compute the verdict for a bundle')
     checked.add_argument('bundle')
     checked.add_argument('--allowed-signers', required=True,
@@ -579,13 +578,6 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == 'run':
         return run(args)
-    if args.command == 'seal':
-        try:
-            seal(args.bundle, args.key)
-        except (OSError, ValueError) as error:
-            print(f'red-team: {error}', file=sys.stderr)
-            return 2
-        return 0
     bundle, out = Path(args.bundle).resolve(), Path(args.verdict).resolve()
     if not (bundle / 'session').is_dir() or out.exists() or bundle in out.parents:
         print('red-team: need a bundle with a session, and a new --verdict path outside it',
