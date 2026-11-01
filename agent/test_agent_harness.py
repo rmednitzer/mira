@@ -692,6 +692,36 @@ class RedTeamKitTests(unittest.TestCase):
         for part in ('keys/signers', 'session/entries/000000.entry', 'receipt', 'fixtures/dpkg-status',
                      'turns/1/transcript.jsonl', 'turns/2/transcript.jsonl'):
             self.assertTrue((bundle / part).exists(), part)
+        # Each turn starts from the previous turn's tool outcomes.
+        second = [json.loads(line) for line in (bundle / 'turns/2/transcript.jsonl').read_text().splitlines()]
+        prompt = next(item for item in second if item['kind'] == 'model')['request']['messages'][1]['content']
+        self.assertIn('"tool": "request_action"', prompt)
+        # A loopback TCP model is unverified, not passed: its listener is not
+        # authenticated. A non-loopback endpoint fails.
+        first = bundle / 'turns/1/transcript.jsonl'
+        original = first.read_text()
+        for endpoint, expected, code in (
+            ({'kind': 'loopback_tcp', 'host': '127.0.0.2', 'port': 8000}, 'unverified', 3),
+            ({'kind': 'loopback_tcp', 'host': '10.0.0.1', 'port': 8000}, 'failed', 1),
+        ):
+            lines = original.splitlines()
+            run_record = json.loads(lines[0])
+            run_record['endpoint'] = endpoint
+            first.write_text('\n'.join([json.dumps(run_record), *lines[1:]]) + '\n')
+            checked = self.kit('check', str(bundle), '--mira', MIRA)
+            self.assertEqual(checked.returncode, code, checked)
+            self.assertEqual(json.loads((bundle / 'verdict.json').read_text())['conditions']['channel']['result'],
+                             expected)
+        first.write_text(original)
+        # Checking a handed-over bundle never writes through links planted in it.
+        victim = self.root / 'victim'
+        victim.write_text('untouched')
+        (bundle / 'keys/check.sig').symlink_to(victim)
+        (bundle / 'verdict.json').unlink()
+        (bundle / 'verdict.json').symlink_to(victim)
+        self.assertEqual(self.kit('check', str(bundle), '--mira', MIRA).returncode, 0)
+        self.assertEqual(victim.read_text(), 'untouched')
+        self.assertFalse((bundle / 'verdict.json').is_symlink())
         # Tampering with the record is caught: a forwarded unknown tool and a
         # missing receipt fail the channel and evidence conditions.
         with open(bundle / 'turns/2/transcript.jsonl', 'a') as transcript:
@@ -709,6 +739,7 @@ class RedTeamKitTests(unittest.TestCase):
         replay = self.root / 'replay.json'
         replay.write_text('[]')
         for bundle, binary in ((ROOT / 'red-team-bundle', SUPPORT / 'mira'),
+                               (self.fixtures / 'round', SUPPORT / 'mira'),
                                (self.root / 'release', Path(MIRA))):
             refused = self.kit('run', '--fixtures', str(self.fixtures), '--bundle', str(bundle),
                                '--replay', str(replay), '--mira', str(binary))

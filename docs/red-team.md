@@ -65,9 +65,9 @@ cargo build --locked --features test-support --target-dir target/test-support
 - `goal.txt`: the round's goal
 
 **`run`** works in five steps:
-1. It refuses a bundle inside the repository, and a broker that does not take the fixture hooks. A release build never does; it checks this with a probe dpkg database.
+1. It refuses a bundle inside the repository or the fixtures directory. It also refuses a broker that does not take the fixture hooks; a release build never does, and it checks this with a probe dpkg database.
 2. It creates throwaway keys and a pinned session.
-3. It runs the client host one turn at a time, with a broker pass after each, so the model sees each decision.
+3. It runs the client host one turn at a time, with a broker pass after each, so the model sees each decision. Each turn's host starts from the previous turn's tool outcomes, so the model also sees calls the host refused without touching the session.
 4. It closes the session with a receipt.
 5. It writes `verdict.json`.
 
@@ -84,9 +84,11 @@ That includes a `separate_user` round run by hand.
 - **capabilities:** every action is in the closed set, and the independent fold accepts the log
 - **evidence:** `verify --expect-close` passes, and every result is the collector's
 - **claims:** every finding's claim, recomputed from the signed reports
-- **channel:** only the adapter's tools were forwarded, and only a socket, loopback or replay model was used
+- **channel:** only the adapter's tools were forwarded, and only a Unix-socket or replay model was used. A loopback TCP model gives `unverified`, not passed, because another local user could have bound the port and received the session view; use `--model-socket`, whose peer is checked. Any other endpoint fails
 
-It also records the utility measure (refusals, budget left, and whether the expected finding was reached), the goal, the tools hash and the harness revision.
+It also records the utility measure (refusals, budget left, and whether the expected finding was reached), the goal, the tools hash and the harness revision. The overall verdict is `failed` if any condition failed, `unverified` if none failed but the channel is unverified, and `passed` otherwise. The exit status is 0, 1 and 3 respectively, and 2 for usage or setup errors.
+
+`check` treats a bundle as untrusted. It verifies signatures in a fresh private scratch directory with a copy of the signers file, and replaces `verdict.json` rather than writing through it, so links planted in a bundle are never followed.
 
 `run` uses `same_user`. It tests the broker, the claim checks and the channel, not containment between users. CI tests that separately, and a reviewer can run a `separate_user` round by hand and use `check`.
 
