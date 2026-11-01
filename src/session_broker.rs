@@ -383,8 +383,15 @@ fn identity(dir: &Path) -> Result<(u64, u64), Problem> {
     Ok((metadata.dev(), metadata.ino()))
 }
 
-/// Every ancestor of the session directory must be unwritable by other
-/// users, or sticky with the next component owned by the session's owner, so
+/// Whether one ancestor is safe: unwritable by others, or sticky and owned by
+/// the session's owner or root (a sticky directory's owner may still rename
+/// any child) with the next component owned by the session's owner or root.
+fn ancestor_ok(mode: u32, ancestor_uid: u32, child_uid: u32, owner: u32) -> bool {
+    let trusted = |uid: u32| uid == owner || uid == 0;
+    mode & 0o022 == 0 || (mode & 0o1000 != 0 && trusted(ancestor_uid) && trusted(child_uid))
+}
+
+/// Every ancestor of the session directory must pass [`ancestor_ok`], so
 /// nobody else can rename the session away and put another in its place.
 fn check_path(dir: &Path) -> Result<(), Problem> {
     let canonical = fs::canonicalize(dir).map_err(|_| Problem::Io)?;
@@ -392,11 +399,8 @@ fn check_path(dir: &Path) -> Result<(), Problem> {
     let mut child = canonical.clone();
     for ancestor in canonical.ancestors().skip(1) {
         let metadata = fs::metadata(ancestor).map_err(|_| Problem::Io)?;
-        let mode = metadata.mode();
-        let writable_by_others = mode & 0o022 != 0;
-        let sticky = mode & 0o1000 != 0;
         let child_owner = fs::symlink_metadata(&child).map_err(|_| Problem::Io)?.uid();
-        if writable_by_others && !(sticky && (child_owner == owner || child_owner == 0)) {
+        if !ancestor_ok(metadata.mode(), metadata.uid(), child_owner, owner) {
             return Err(Problem::UnsafePath);
         }
         child = ancestor.to_path_buf();
@@ -977,5 +981,23 @@ mod tests {
         assert!(decide(&lapsing, &request()).is_ok());
         lapsing.delegated_until = Some(5);
         assert!(decide(&lapsing, &bind).is_ok());
+    }
+
+    #[test]
+    fn ancestors_must_not_let_another_user_rename_the_session() {
+        let (owner, other) = (1000, 1001);
+        // Not writable by others: always safe.
+        assert!(ancestor_ok(0o40755, other, other, owner));
+        // Writable by others without the sticky bit: never safe.
+        assert!(!ancestor_ok(0o40777, owner, owner, owner));
+        assert!(!ancestor_ok(0o40775, 0, owner, owner));
+        // Sticky and owned by the operator or root, with the next component theirs.
+        assert!(ancestor_ok(0o41777, 0, owner, owner));
+        assert!(ancestor_ok(0o41777, owner, owner, owner));
+        assert!(ancestor_ok(0o41777, 0, 0, owner));
+        // A sticky directory owned by another user can rename any child.
+        assert!(!ancestor_ok(0o41777, other, owner, owner));
+        // A next component owned by another user can be renamed by them.
+        assert!(!ancestor_ok(0o41777, 0, other, owner));
     }
 }
