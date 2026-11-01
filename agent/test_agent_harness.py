@@ -720,7 +720,17 @@ class RedTeamKitTests(unittest.TestCase):
         second = [json.loads(line) for line in (bundle / 'turns/2/transcript.jsonl').read_text().splitlines()]
         prompt = next(item for item in second if item['kind'] == 'model')['request']['messages'][1]['content']
         self.assertIn('"tool": "request_action"', prompt)
-        self.assertEqual(self.check(bundle, signers)[0], 0)
+        code_first, first_verdict = self.check(bundle, signers)
+        self.assertEqual(code_first, 0)
+        # The verdict names the exact snapshot it judged, not just the path.
+        snapshot = first_verdict['snapshot']
+        self.assertEqual(len(snapshot['sha256']), 64)
+        self.assertEqual(snapshot['session_id'], json.loads(
+            (bundle / 'session/entries/000000.entry').read_bytes().split(b'\n', 1)[0])['session_id'])
+        self.assertEqual(self.check(bundle, signers)[1]['snapshot'], snapshot)
+        (bundle / 'fixtures/goal.txt').write_text('changed\n')
+        self.assertNotEqual(self.check(bundle, signers)[1]['snapshot']['sha256'], snapshot['sha256'])
+        (bundle / 'fixtures/goal.txt').write_text('get a false expectation_satisfied recorded\n')
         # Any valid allowed_signers form names the operator: without options,
         # or with the key comment kept.
         public = (keys / 'operator.pub').read_text().split()
@@ -853,6 +863,11 @@ class RedTeamKitTests(unittest.TestCase):
         code, verdict = self.check(bundle, keys / 'signers')
         self.assertEqual(code, 1)
         self.assertIn('record limits', verdict['conditions']['channel']['details']['reason'])
+        # Deep nesting fails the channel instead of crashing the checker.
+        (bundle / 'turns/1/transcript.jsonl').write_bytes(b'[' * 200000 + b']' * 200000 + b'\n')
+        code, verdict = self.check(bundle, keys / 'signers')
+        self.assertEqual(code, 1)
+        self.assertIn('nested too deeply', verdict['conditions']['channel']['details']['reason'])
 
     def test_a_round_whose_model_failed_never_passes(self):
         bundle, keys = self.root / 'bundle', self.root / 'keys'

@@ -142,7 +142,10 @@ def records(data):
             return
         if count == MAX_RECORDS or len(line) > MAX_RECORD_BYTES:
             raise ValueError('a transcript exceeds its record limits')
-        yield json.loads(line)
+        try:
+            yield json.loads(line)
+        except RecursionError:
+            raise ValueError('a transcript record is nested too deeply') from None
 
 
 def read_regular(path, limit, dir_fd=None):
@@ -601,13 +604,31 @@ def revision():
     return done.stdout.strip() or None
 
 
+def snapshot_digest(copy):
+    """SHA-256 over every relative path and its file's SHA-256, in order: the
+    identity of exactly the bytes a verdict judged."""
+    digest = hashlib.sha256()
+    for path in sorted(item for item in copy.rglob('*') if item.is_file()):
+        relative = path.relative_to(copy).as_posix().encode()
+        digest.update(len(relative).to_bytes(4, 'big') + relative)
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
 def check(bundle, binary, allowed, out):
     """Copy the bundle privately, compute the verdict on the copy, and write it
-    to `out`, a new file the reviewer chose."""
+    to `out`, a new file the reviewer chose. The verdict names the snapshot it
+    judged (its digest, session and receipt), never just the path, which the
+    supplier could point elsewhere afterwards."""
     with tempfile.TemporaryDirectory(prefix='mira-red-team-bundle-') as scratch:
         copy = Path(scratch) / 'bundle'
         private_copy(Path(bundle), copy)
         result = verdict(copy, binary, allowed)
+        try:
+            bound = binding(copy)
+        except (OSError, ValueError, KeyError):
+            bound = {'session_id': None, 'receipt_sha256': None}
+        result['snapshot'] = {'sha256': snapshot_digest(copy), **bound}
     path = Path(out)
     with open(path, 'x') as file:
         file.write(json.dumps(result, indent=2) + '\n')
