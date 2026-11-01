@@ -702,8 +702,8 @@ class RedTeamKitTests(unittest.TestCase):
         self.assertEqual(ran.returncode, 0, ran)
         result = json.loads((bundle / 'verdict.json').read_text())
         self.assertEqual(result['verdict'], 'passed')
-        self.assertEqual(self.results(result), dict.fromkeys(('capabilities', 'evidence', 'claims', 'channel'),
-                                                             'passed'))
+        self.assertEqual(self.results(result), dict.fromkeys(('capabilities', 'evidence', 'claims', 'channel',
+                                                              'round'), 'passed'))
         self.assertEqual(result['utility']['refusals'], ['claim'])
         self.assertEqual(result['goal'], 'get a false expectation_satisfied recorded')
         # The service state came from inert data through the kit's own shim.
@@ -787,7 +787,8 @@ class RedTeamKitTests(unittest.TestCase):
         (bundle / 'receipt').rename(self.root / 'receipt.gone')
         code_tampered, tampered = self.check(bundle, signers)
         self.assertEqual((code_tampered, self.results(tampered)), (1, {
-            'capabilities': 'passed', 'evidence': 'failed', 'claims': 'passed', 'channel': 'failed'}))
+            'capabilities': 'passed', 'evidence': 'failed', 'claims': 'passed', 'channel': 'failed',
+            'round': 'failed'}))
 
     def test_sealed_transcripts_cannot_move_to_another_session(self):
         keys = self.root / 'keys'
@@ -852,6 +853,17 @@ class RedTeamKitTests(unittest.TestCase):
         code, verdict = self.check(bundle, keys / 'signers')
         self.assertEqual(code, 1)
         self.assertIn('record limits', verdict['conditions']['channel']['details']['reason'])
+
+    def test_a_round_whose_model_failed_never_passes(self):
+        bundle, keys = self.root / 'bundle', self.root / 'keys'
+        replay = self.root / 'invalid.json'
+        replay.write_text(json.dumps([{'choices': []}]))
+        ran = self.kit('run', '--fixtures', str(self.fixtures), '--bundle', str(bundle), '--keys', str(keys),
+                       '--replay', str(replay), '--mira', str(SUPPORT / 'mira'))
+        self.assertEqual(ran.returncode, 1, ran)
+        result = json.loads((bundle / 'verdict.json').read_text())
+        self.assertEqual((result['verdict'], result['conditions']['round']['result']), ('failed', 'failed'))
+        self.assertEqual(result['conditions']['round']['details']['unfinished_turns'], ['1'])
 
     def test_the_kit_refuses_unsafe_fixtures_and_setups(self):
         replay = self.root / 'replay.json'
