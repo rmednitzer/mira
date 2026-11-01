@@ -84,6 +84,21 @@ Stage 1 of [ADR 0014](adr/0014-consumer-challenge-freshness.md) is implemented: 
 
 Implemented ([ADR 0012](adr/0012-bounded-journal-events.md)): MIRA reads journal entries for three closed event classes by catalog `MESSAGE_ID`, through a fixed `journalctl` argv under the shared bounded runner. It exports only counts, bounded validated unit names and boot-relative times, and never message text, PIDs, command lines, executable names or the boot ID. Partial journal access returns exit 0 with fewer entries, so a PID 1 sentinel must be visible, and every system journal file must be openable (access is per file ACL), before "none recorded" can be reported. journald rate limits and rotation mean that absence stays weak evidence, and the journal is attacker-influenceable TB2 input. Each catalog `MESSAGE_ID` is bound to its actual producer's journald-set fields: `_UID=0` with the systemd executable for manager messages (including systemd-oomd kills), and the systemd-coredump executable with its slice, matched in the query, and a cgroup-derived `systemd-coredump@` unit for crashes (backtrace reports are excluded because they cannot be bound). `_EXE` alone is not trusted, because an allowed binary can be run with injected code. Any producer-valid entry is conclusive, and only a full window without one is indeterminate, so decoys can at most cause "cannot tell". Neither unprivileged users (already excluded from `--system`) nor other system services can forge counted events; root can. The journalctl tool path and the journal-directory and procfs-root overrides exist only in `test-support` builds; CI checks that the release binary does not contain them.
 
+### Planned shared workspace boundary
+
+Status: design only ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.md)); no session, agent or model harness is implemented. TB8 is the agent principal: an untrusted process with its own signing key that acts only through `mira session` subcommands.
+
+| Plausible threat | Planned control and verification |
+|---|---|
+| Prompt injection through host evidence (journal unit names, dpkg strings, service states) steering the agent | The agent reads untrusted, private data, so under the Rule of Two it has no state-changing or communicating capability. Its actions are the closed read-only set, enforced by `mira`. Hostile-content fixtures must show that it cannot widen capabilities or post a false checked claim |
+| Agent claims the operator role, or forges a decision | Roles come from the operator-signed header. Every entry is signed under its own namespace and verified against the operator's `allowed_signers` |
+| Excessive agency or runaway acquisition | Autonomy level, budget and expiry come from operator directives and are checked on every entry. `stop` takes precedence. Each action is already bounded |
+| Over-reliance on persuasive or wrong agent output | Closed claim vocabulary; checkable claims verified at append time; inference labelled with confidence; bounded, escaped, unchecked notes; optional forcing; measured in stage 3 |
+| Session tampering by a same-user agent (deleting entries, reading the operator's key) | Signatures and sequence numbers detect modification, replay, gaps and post-close truncation, but not open-session tail truncation. A separate agent user and an `ssh-agent`-confirmed or FIDO2 operator key are recommended. Detection is tested; prevention is not claimed |
+| Host evidence leaking to a hosted model | Real sessions use local models only; hosted models see synthetic or public sessions only; `mira` itself never calls a model |
+
+These are design hypotheses, not verified controls.
+
 ### Planned platform observation boundary
 
 Status: design constraints only; no remote adapter, credential loading or network request is implemented. [ADR 0004](adr/0004-staged-platform-observation.md) and the [integration plan](platform-integrations.md) require a separate implementation review.

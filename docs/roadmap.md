@@ -26,7 +26,17 @@ Fresh source/target builds also compare raw binaries and full packages against s
 
 Next release gates: clean physical-host qualification, genuine version-to-version upgrades/downgrades, independent-host reproduction and signed provenance. Optional hardened collector units remain a separate design requiring justified unattended collection, bounded output/retention, verified sandbox/IPC access and explicit operator activation. No daemon or unit is installed now.
 
-## Phase 2 — security exposure and evidence correlation
+## Phase 2 — shared mixed-initiative workspace
+
+The operator and an AI agent investigate together in one signed, append-only session ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.md), grounded in the [research basis](research/mixed-initiative.md)). Either party can act, raise findings, ask or propose. The agent's autonomy is set per function, bounded, expiring and revocable. Decisions stay with the operator. The agent's actions are exactly the read-only Phase 1 templates and captures, enforced by `mira`. It has no state-changing or communicating capability, because it reads untrusted, private host evidence (Rule of Two).
+
+1. **Session core with a scripted agent.** Principals bound to signing keys, the closed entry kinds, ported arbitration rules (operator precedence, expiry, staleness, terminal immutability, budget), machine-checked findings, and an independent validator.
+2. **Local model harness.** Optional tooling outside the CLI, with full model-I/O recording and hostile-content fixtures. Hosted models see synthetic or public sessions only.
+3. **Evaluation.** Matched tasks against an operator-only baseline, measuring correctness, time, evidence access, over-reliance on seeded wrong findings and override rate.
+
+Exit: the evaluation is recorded, the agent never exceeded its capabilities or posted a false checked claim under hostile fixtures, and an agent failure always leaves a usable operator session. No benefit is claimed before the evaluation.
+
+## Phase 3 — security exposure and evidence correlation
 
 Ingest versioned distribution advisories and machine-readable security data. Reconcile package revisions/backports, runtime/configuration applicability and evidence freshness. Produce affected/not-affected/unknown with citations. Exit: representative fixtures distinguish true/false exposure without inferring vulnerability from upstream versions alone.
 
@@ -36,18 +46,16 @@ Plan Kubernetes workload/cluster evidence first and Talos node OS evidence separ
 
 This track may proceed after the offline investigator exit and adapter-specific identity, credentials, transport and evidence contracts are validated; it is independent of AI/UI delivery and does not require remediation capability. No adapters are implemented or scheduled. A separately reviewed implementation is required; this plan adds no network, credentials or runtime dependencies.
 
-## Phase 3 — intent-driven adaptive workspace
+Advisory correlation becomes another closed, read-only capability set available to both workspace parties.
 
-The CLI already has closed explicit template selection. Add a natural-language intent grammar, further admitted capabilities and registered UI components. Exit: operators navigate evidence and incident workflows without gaining privileges from layout or model output. Compare against a fixed UI with matched tasks.
+## Phase 4 — intent-driven adaptive views
 
-## Phase 4 — optional AI-assisted investigation
-
-Evaluate interchangeable local inference and optional hosted models; hosted evaluation uses synthetic/public inputs only by default. Capture model/prompt/output revisions and failures. Exit: model failure cannot alter admitted access, and useful offline investigation remains available.
+The CLI already has closed explicit template selection, and the Phase 2 session gives both parties one shared record. Add a natural-language intent grammar that selects admitted capabilities, and registered UI components that render the session. Exit: operators and agents navigate evidence and incident workflows without either gaining privileges from layout or model output. Compare against a fixed UI with matched tasks.
 
 ## Phase 5 — governed remediation
 
-Only after a separate design/threat review: authenticated principals, scoped grants, dry-run, operator authorization, preconditions, postcondition verification, recovery and any write adapters. Exit: adversarial authorization/failure tests pass under stated conditions. No production-readiness claim follows automatically.
+Only after a separate design/threat review: dry-run, operator authorization, preconditions, postcondition verification, recovery and any write adapters, built on the Phase 2 principals and grants. In the shared workspace the agent may propose a change; the operator approves it, and an independent executor checks preconditions and postconditions. Under the Rule of Two, an agent that reads untrusted host evidence never applies a change itself. Exit: adversarial authorization/failure tests pass under stated conditions. No production-readiness claim follows automatically.
 
 ## Retained fixture
 
-The grid simulator remains a deterministic coordination regression fixture. It is not the primary product, an identity provider or an operational control gate. Remove it only after equivalent invariants are covered in the real operations domain.
+The grid simulator remains a deterministic coordination regression fixture. It is not the primary product, an identity provider or an operational control gate. Remove it only after equivalent invariants are covered in the real operations domain; ADR 0015 ports them into the shared workspace with tested, operations-domain equivalents.

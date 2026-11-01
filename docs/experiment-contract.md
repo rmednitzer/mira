@@ -18,7 +18,7 @@ All proposals are **data**, not authority. Caller-supplied actor labels and gran
 This first increment does **not** implement on-disk storage, canonical serialization, cryptographic digests, model calls, a browser UI, scoped delegation, revocation or identity verification. Those require separate protocol and security decisions. `PROTOCOL_VERSION` is the in-memory contract version, not a stable external wire format.
 
 ## Future provider interface
-AI providers, including optional GitHub Models and local inference, should receive a versioned, bounded observation and return a structured proposal. Their outputs must enter the same arbitration path as scripted or human proposals. No hosted service is required for Rust CI.
+AI providers, including optional GitHub Models and local inference, should receive a versioned, bounded observation and return a structured proposal. Their outputs must enter the same arbitration path as scripted or human proposals. No hosted service is required for Rust CI. The operations-domain form of this interface is the shared workspace session ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.md)), in which the agent is a key-holding principal acting only through `mira`'s closed read-only capabilities.
 
 ## Verification
 `cargo test --all-targets --locked` includes replay equality, tampered transition detection, tampered outcome detection, unknown version rejection, terminal-state immutability and rejected delegated action tests.
