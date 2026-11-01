@@ -1,6 +1,6 @@
 # ADR 0015: shared mixed-initiative investigation workspace
 
-Status: **Proposed**, 2026-11-01.
+Status: **Accepted**, 2026-11-01 (proposed and reviewed the same day). Not yet implemented.
 
 ## Context
 
@@ -230,13 +230,15 @@ They use the methods of Bansal et al. and Buçinca et al. Participants are strat
 
 The roadmap moves the shared workspace ahead of security-advisory correlation, and the vision states the mixed-initiative goal directly.
 
-## Review questions
+## Review decisions
 
-1. **Default autonomy:** `assisted` (the agent gathers evidence within a budget) or `advisory` (the agent only proposes)? The proposal is `assisted`, the intermediate level the out-of-the-loop research favours.
-2. **Separate OS user:** required for model agents (proposed), since without it nothing contains the agent. Should `same_user` exist at all, beyond tests?
-3. **Integrity primitive:** per-entry signatures with sequence numbers, a signed close and an external close receipt (proposed), or a hash chain? A chain needs either a `sha256sum` subprocess or a first crate, which ADR 0011's criteria exclude.
-4. **Forcing functions:** opt-in (proposed), or required before closing?
-5. **Roadmap order:** workspace before advisory correlation (proposed)?
+1. **Default autonomy:** `assisted`. The agent gathers evidence within its budget and the operator decides, the intermediate level the out-of-the-loop research favours.
+2. **Separation:** a separate OS user is **required** for model-driven agents. `same_user` exists only for trusted scripted agents in tests and demonstrations, and is labelled "not separated".
+3. **Integrity:** per-entry signatures with sequence numbers, a signed close and an external close receipt. No hash chain, which would need a new subprocess or MIRA's first crate.
+4. **Forcing functions:** opt-in, through `--own-assessment` and the header flag.
+5. **Roadmap:** the shared workspace is Phase 2, ahead of security-advisory correlation.
+
+The automated Codex review covered the first proposal, whose three findings were fixed in this PR. At the maintainer's instruction, later revisions were accepted without a further automated review.
 
 ## Primary references
 

@@ -86,7 +86,7 @@ Implemented ([ADR 0012](adr/0012-bounded-journal-events.md)): MIRA reads journal
 
 ### Planned shared workspace boundary
 
-Status: design only ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.md)); no session, agent or model harness is implemented. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.
+Status: design accepted ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.md)); no session, agent or model harness is implemented. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.
 
 | Plausible threat | Planned control and verification |
 |---|---|

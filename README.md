@@ -2,7 +2,7 @@
 
 **Security-first, mixed-initiative Linux and infrastructure operations.**
 
-MIRA is a local-first Rust project. Its goal is a shared workspace in which a human operator and an AI agent both act on an investigation, as a real mixed-initiative system: either party can gather evidence, raise findings, ask or propose, and each contributes what it does best. The agent's autonomy is explicit, set per function, bounded and revocable, and MIRA enforces it, not the model. Decisions stay with the operator, and every claim is grounded in cited, signed evidence. See the [vision](docs/vision.md), the [workspace design](docs/adr/0015-shared-mixed-initiative-workspace.md) (proposed) and its [research basis](docs/research/mixed-initiative.md).
+MIRA is a local-first Rust project. Its goal is a shared workspace in which a human operator and an AI agent both act on an investigation, as a real mixed-initiative system: either party can gather evidence, raise findings, ask or propose, and each contributes what it does best. The agent's autonomy is explicit, set per function, bounded and revocable, and MIRA enforces it, not the model. Decisions stay with the operator, and every claim is grounded in cited, signed evidence. See the [vision](docs/vision.md), the [workspace design](docs/adr/0015-shared-mixed-initiative-workspace.md) (accepted, not yet implemented) and its [research basis](docs/research/mixed-initiative.md).
 
 The foundation built so far is the evidence layer both parties will share.
 
