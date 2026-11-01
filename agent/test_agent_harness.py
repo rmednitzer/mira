@@ -4,6 +4,8 @@
 Needs the mira binary (MIRA_BINARY, or target/debug/mira) and /usr/bin/ssh-keygen.
 """
 import argparse
+import functools
+import hashlib
 import http.server
 import json
 import os
@@ -872,9 +874,14 @@ class RedTeamKitTests(unittest.TestCase):
         # A header of the wrong type, and an oversized goal, give a verdict too.
         header = bundle / 'session/entries/000000.entry'
         original_header = header.read_bytes()
-        header.write_bytes(b'[]\n' + original_header.split(b'\n', 1)[1])
-        code, verdict = self.check(bundle, keys / 'signers')
-        self.assertEqual((code, verdict['verdict'], verdict['snapshot']['session_id']), (1, 'failed', None))
+        # A header whose session_id is not 64 lowercase hex characters, such
+        # as deep nesting that indentation would blow up, binds to nothing.
+        for line in (b'[]', json.dumps({'session_id': functools.reduce(
+                lambda inner, _: [inner], range(750), 'x')}).encode()):
+            header.write_bytes(line + b'\n' + original_header.split(b'\n', 1)[1])
+            code, verdict = self.check(bundle, keys / 'signers')
+            self.assertEqual((code, verdict['verdict'], verdict['snapshot']['session_id']), (1, 'failed', None))
+            self.assertLess((self.root / f'verdict-{self.verdicts}.json').stat().st_size, 256 * 1024)
         header.write_bytes(original_header)
         goal = bundle / 'fixtures/goal.txt'
         original_goal = goal.read_bytes()
@@ -883,13 +890,20 @@ class RedTeamKitTests(unittest.TestCase):
         self.assertEqual((verdict['goal']['truncated'], len(verdict['goal']['text']) <= 4096), (True, True))
         self.assertLess((self.root / f'verdict-{self.verdicts}.json').stat().st_size, 256 * 1024)
         goal.write_bytes(original_goal)
-        # Malformed utility metadata still yields a failed verdict, never a crash.
+        # Malformed utility metadata is recorded as rejected, never a crash.
         expected = bundle / 'fixtures/expected.json'
         original = expected.read_bytes() if expected.exists() else None
-        expected.write_bytes(b'[' * 200000 + b']' * 200000)
+        expected.write_bytes(b'[' * 30000 + b']' * 30000)
         code, verdict = self.check(bundle, keys / 'signers')
         self.assertEqual((code, verdict['verdict']), (1, 'failed'))
-        self.assertIn('malformed', verdict)
+        self.assertNotIn('malformed', verdict)
+        self.assertIsNone(verdict['utility']['expected'])
+        # Rejected for its shape, or as not JSON where the parser's recursion
+        # limit is lower (CPython 3.12).
+        self.assertRegex(verdict['utility']['expected_rejected']['reason'],
+                         'exactly claim and capability|not JSON')
+        self.assertEqual(verdict['utility']['expected_rejected']['sha256'],
+                         hashlib.sha256(expected.read_bytes()).hexdigest())
         if original is None:
             expected.unlink()
         else:
@@ -899,6 +913,59 @@ class RedTeamKitTests(unittest.TestCase):
         code, verdict = self.check(bundle, keys / 'signers')
         self.assertEqual(code, 1)
         self.assertIn('nested too deeply', verdict['conditions']['channel']['details']['reason'])
+
+    def test_a_supplied_expected_finding_never_bloats_the_verdict(self):
+        bundle, keys = self.root / 'bundle', self.root / 'keys'
+        self.assertEqual(self.round(bundle, keys, [[call('ask', question='anything?')]]).returncode, 0)
+        code, baseline = self.check(bundle, keys / 'signers')
+        self.assertEqual(baseline['utility']['expected'],
+                         {'claim': 'expectation_satisfied', 'capability': 'package-installed'})
+        self.assertIsNone(baseline['utility']['expected_rejected'])
+        expected = bundle / 'fixtures/expected.json'
+        for data, reason in (
+            # 4 MB of an otherwise well-formed expected finding.
+            (json.dumps({'claim': 'x' * (4 * 1000 * 1000), 'capability': 'package-installed'}).encode(),
+             'too large'),
+            (b'not json', 'not JSON'),
+            (json.dumps({'claim': 'expectation_satisfied'}).encode(), 'exactly claim and capability'),
+            (json.dumps({'claim': 'a\x1b]52;c;x\x07', 'capability': 'package-installed'}).encode(),
+             'printable'),
+            (json.dumps({'claim': 'x' * 257, 'capability': 'package-installed'}).encode(), 'printable'),
+        ):
+            expected.write_bytes(data)
+            code_checked, verdict = self.check(bundle, keys / 'signers')
+            # Utility metadata never decides a security condition.
+            self.assertEqual((code_checked, verdict['verdict'], self.results(verdict)),
+                             (code, baseline['verdict'], self.results(baseline)), reason)
+            self.assertIsNone(verdict['utility']['expected'])
+            self.assertIn(reason, verdict['utility']['expected_rejected']['reason'])
+            self.assertEqual(verdict['utility']['expected_rejected']['sha256'], hashlib.sha256(data).hexdigest())
+            self.assertLess((self.root / f'verdict-{self.verdicts}.json').stat().st_size, 64 * 1024)
+        # Whatever the details hold, the written verdict stays within its limit
+        # and keeps every condition's result.
+        sys.path.insert(0, str(HERE))
+        import red_team
+        huge = {'verdict': 'failed', 'conditions': {
+            'channel': {'result': 'failed', 'details': {
+                'endpoints': [{'kind': 'x' * 4096, str(n): ['y' * 1024] * 50} for n in range(400)],
+                'nested': functools.reduce(lambda inner, _: [inner], range(500), 'z')}},
+            'round': {'result': 'passed', 'details': {'turns': 1}}},
+            'utility': {'expected': None, 'refusals': ['r' * 8192] * 2000},
+            'snapshot': {'sha256': 'a' * 64}}
+        written = red_team.bounded_verdict(huge)
+        self.assertLessEqual(len(written.encode()), red_team.MAX_VERDICT)
+        bounded = json.loads(written)
+        self.assertEqual((bounded['verdict'], bounded['truncated'], bounded['snapshot']),
+                         ('failed', True, {'sha256': 'a' * 64}))
+        self.assertEqual(self.results(bounded), {'channel': 'failed', 'round': 'passed'})
+        # Beyond what cutting details can reach, only the verdict, the results,
+        # the snapshot and the digests are kept.
+        oversized = dict(huge, goal={'text': 'g' * (2 * red_team.MAX_VERDICT)})
+        kept = json.loads(red_team.bounded_verdict(oversized))
+        self.assertEqual((set(kept), self.results(kept)), (
+            {'verdict', 'conditions', 'snapshot', 'truncated'}, {'channel': 'failed', 'round': 'passed'}))
+        small = {'verdict': 'passed', 'conditions': {}, 'utility': {'refusals': []}}
+        self.assertEqual(json.loads(red_team.bounded_verdict(small)), small)
 
     def test_a_round_whose_model_failed_never_passes(self):
         bundle, keys = self.root / 'bundle', self.root / 'keys'

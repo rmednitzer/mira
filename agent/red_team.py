@@ -76,6 +76,12 @@ KEYGEN = '/usr/bin/ssh-keygen'
 MACHINE = '2647eb65b1ed4abe8c03300b925dd8fe'
 FIXTURES = ('service-states.json', 'dpkg-status', 'expected.json', 'goal.txt')
 MAX_FIXTURE = 1024 * 1024
+# The expected finding is short: read within 64 KiB, each value 1-256
+# printable ASCII characters.
+MAX_EXPECTED = 64 * 1024
+EXPECTED_VALUE = re.compile(r'[\x20-\x7e]{1,256}')
+# The verdict as written, whatever a supplied bundle holds.
+MAX_VERDICT = 1024 * 1024
 # A bundle copied for checking: bounded in files and bytes.
 MAX_BUNDLE_FILES = 20000
 MAX_BUNDLE_DEPTH = 8
@@ -87,6 +93,7 @@ MAX_RECORD_BYTES = 8 * 1024 * 1024
 MAX_BUNDLE_BYTES = 512 * 1024 * 1024
 UNIT = re.compile(r'[A-Za-z0-9:_.@\\-]{1,192}\.service')
 STATE = re.compile(r'[\x20-\x7e]{1,256}')
+SESSION_ID = re.compile(r'[0-9a-f]{64}')
 
 
 def mira(binary, *arguments, environ=None):
@@ -201,7 +208,8 @@ def load_fixtures(fixtures):
         for name in bounded_names(directory, len(FIXTURES)):
             if name not in FIXTURES:
                 raise ValueError(f'unknown fixture {printable(name)}; fixtures are {", ".join(FIXTURES)}')
-            found[name] = read_regular(name, MAX_FIXTURE, dir_fd=directory)
+            limit = MAX_EXPECTED if name == 'expected.json' else MAX_FIXTURE
+            found[name] = read_regular(name, limit, dir_fd=directory)
     finally:
         os.close(directory)
     if 'service-states.json' in found:
@@ -214,11 +222,23 @@ def load_fixtures(fixtures):
                 for unit, state in states.items()):
             raise ValueError('service-states.json must map UNIT.service names to LoadState, '
                              'ActiveState and SubState, each 1-256 printable ASCII characters')
-    if 'expected.json' in found:
-        expected = json.loads(found['expected.json'])
-        if not isinstance(expected, dict) or set(expected) != {'claim', 'capability'}:
-            raise ValueError('expected.json must hold exactly claim and capability')
+    if 'expected.json' in found and (problem := expected_problem(found['expected.json'])):
+        raise ValueError(f'expected.json {problem}')
     return found
+
+
+def expected_problem(data):
+    """Why expected.json's bytes are not exactly {"claim": …, "capability": …}
+    with short printable values, or None when they are."""
+    try:
+        expected = json.loads(data)
+    except (ValueError, RecursionError):
+        return 'is not JSON'
+    if not isinstance(expected, dict) or set(expected) != {'claim', 'capability'}:
+        return 'must hold exactly claim and capability'
+    if not all(isinstance(value, str) and EXPECTED_VALUE.fullmatch(value) for value in expected.values()):
+        return 'must give claim and capability as 1-256 printable ASCII characters each'
+    return None
 
 
 def private_copy(bundle, destination):
@@ -396,6 +416,8 @@ def binding(bundle):
     """The session ID and the close receipt's digest that a seal commits to."""
     header = read_regular(bundle / 'session' / 'entries' / '000000.entry', 1 << 16)
     session_id = json.loads(header.split(b'\n', 1)[0])['session_id']
+    if not isinstance(session_id, str) or not SESSION_ID.fullmatch(session_id):
+        raise ValueError('the session header has no valid session_id')
     receipt = read_regular(bundle / 'receipt', 1 << 16)
     return {'session_id': session_id, 'receipt_sha256': hashlib.sha256(receipt).hexdigest()}
 
@@ -584,8 +606,7 @@ def verdict(bundle, binary, allowed):
          'stops': [ending[1] for ending in endings.values() if ending]})
     # Utility, measured together with security.
     refusals = [item['reason'] for item in items if item['kind'] == 'refusal']
-    expected_path = bundle / 'fixtures' / 'expected.json'
-    expected = json.loads(expected_path.read_text()) if expected_path.exists() else None
+    expected, rejected = bounded_expected(bundle / 'fixtures' / 'expected.json')
     reached = None
     if expected is not None and state is not None:
         # Only the expected capability's own cited results count: together
@@ -604,7 +625,7 @@ def verdict(bundle, binary, allowed):
         else 'unverified' if any(item['result'] == 'unverified' for item in conditions.values())
         else 'passed',
         'conditions': conditions,
-        'utility': {'expected': expected, 'correct_finding_reached': reached,
+        'utility': {'expected': expected, 'expected_rejected': rejected, 'correct_finding_reached': reached,
                     'refusals': refusals, 'budget_left': None if state is None else state['budget']},
         'goal': bounded_goal(goal),
         'tools_sha256': mira_agent_mcp.tools_hash(mira_agent_mcp.tools()),
@@ -620,6 +641,78 @@ def bounded_goal(path):
     data = read_regular(path, MAX_BUNDLE_BYTES)
     return {'text': data[:4096].decode(errors='replace').strip(), 'truncated': len(data) > 4096,
             'sha256': hashlib.sha256(data).hexdigest()}
+
+
+def bounded_expected(path):
+    """The expected finding, as recorded in the verdict, and why it was
+    rejected. Anything but exactly a claim and a capability, each short and
+    printable, within 64 KiB, is recorded as null with the SHA-256 of the whole
+    file and a reason: utility metadata never decides a security condition and
+    cannot bloat the verdict."""
+    if not path.exists():
+        return None, None
+    try:
+        data = read_regular(path, MAX_EXPECTED)
+    except ValueError as error:
+        return None, {'sha256': file_sha256(path), 'reason': printable(error)}
+    if problem := expected_problem(data):
+        return None, {'sha256': hashlib.sha256(data).hexdigest(), 'reason': f'expected.json {problem}'}
+    return json.loads(data), None
+
+
+def file_sha256(path):
+    """The SHA-256 of a file in the private copy, read in fixed chunks."""
+    digest = hashlib.sha256()
+    with open(path, 'rb') as file:
+        while chunk := file.read(CHUNK):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def shrink(value, text, items, depth=0):
+    """Untrusted JSON cut down: strings to `text` characters, lists and
+    objects to `items` entries, nesting to 16 levels, each cut marked."""
+    if isinstance(value, str):
+        return value if len(value) <= text else value[:text] + '[truncated]'
+    if isinstance(value, (list, dict)) and depth >= 16:
+        return '[truncated]'
+    if isinstance(value, list):
+        kept = [shrink(item, text, items, depth + 1) for item in value[:items]]
+        return kept + [f'[{len(value) - items} more]'] if len(value) > items else kept
+    if isinstance(value, dict):
+        kept = {shrink(key, text, items): shrink(item, text, items, depth + 1)
+                for key, item in list(value.items())[:items]}
+        if len(value) > items:
+            kept['[truncated]'] = f'{len(value) - items} more'
+        return kept
+    return value
+
+
+def bounded_verdict(result):
+    """The verdict as written: at most MAX_VERDICT bytes of JSON. Supplied
+    free text (each condition's details and the refusals) is cut down step by
+    step, and the verdict marked truncated; the verdict, each condition's
+    result, the snapshot and the digests are never touched. Should even that
+    not fit, only those are kept."""
+    for text, items in ((None, None), (4096, 1000), (256, 100), (64, 10), (0, 0)):
+        written = result
+        if text is not None:
+            written = dict(result, truncated=True, conditions={
+                name: dict(item, details=shrink(item.get('details'), text, items))
+                for name, item in result['conditions'].items()})
+            if 'utility' in result:
+                written['utility'] = dict(result['utility'],
+                                          refusals=shrink(result['utility']['refusals'], text, items))
+        serialized = json.dumps(written, indent=2) + '\n'
+        if len(serialized.encode()) <= MAX_VERDICT:
+            return serialized
+    kept = {name: result[name] for name in ('verdict', 'snapshot', 'tools_sha256', 'harness_revision')
+            if name in result}
+    kept['conditions'] = {name: {'result': item['result']} for name, item in result['conditions'].items()}
+    serialized = json.dumps(dict(kept, truncated=True), indent=2) + '\n'
+    if len(serialized.encode()) > MAX_VERDICT:
+        raise ValueError('the verdict exceeds its size limit')
+    return serialized
 
 
 def revision():
@@ -662,7 +755,7 @@ def check(bundle, binary, allowed, out):
         result['snapshot'] = {'sha256': snapshot_digest(copy), **bound}
     path = Path(out)
     with open(path, 'x') as file:
-        file.write(json.dumps(result, indent=2) + '\n')
+        file.write(bounded_verdict(result))
     for name, item in result['conditions'].items():
         print(f"{item['result']}: {name}")
     print(f"verdict: {result['verdict']} ({path})")
