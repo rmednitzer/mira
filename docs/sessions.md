@@ -62,7 +62,7 @@ mira session verify DIR --allowed-signers SIGNERS --operator NAME [--expect-clos
   - delegate until a later sequence number, after which the level returns to `assisted`
 
   Delegation ends after a number of entries. The operator-clock deadline the ADR also allows is not implemented.
-- **`close`** appends your conclusion and the final entry count. After it, every append is refused. While an action is still pending (admitted but without a result), `close` refuses, because a result could otherwise arrive after the immutable close. `--abandon-pending` first appends an operator-signed `abandon` entry for each pending action, for example after an interrupted broker; a broker that later finishes such an action records nothing. With `--receipt PATH`, the close record (entry and signature) is also written, exclusively, to `PATH`. That path must be in an existing directory outside the session, resolved through symbolic links. An existing path, a path inside the session or a missing directory is refused before anything is written.
+- **`close`** appends your conclusion and the final entry count. After it, every append is refused. While an action is still pending (admitted but without a result), `close` refuses, because a result could otherwise arrive after the immutable close. `--abandon-pending` first appends an operator-signed `abandon` entry for each pending action, for example after an interrupted broker; a broker that later finishes such an action records nothing. With `--receipt PATH`, the close record (entry and signature) is also written, exclusively and owner-only (0600 whatever the umask), to `PATH`. That path must be in an existing directory outside the session, resolved through symbolic links. An existing path, a path inside the session or a missing directory is refused before anything is written.
 - **`show`** prints the timeline and current state, or the state alone with `--json`. It reads the log's structure but does not check signatures. No command prints the session ID; it is in entry 0 for anyone who reads the log.
 - **`verify`** checks everything against the operator you name with `--operator`, including every relayed agent request and every result document. It never takes the operator from the session's own header: any key in `allowed_signers`, the agent's included, could otherwise write a header naming itself operator and sign a counterfeit session. It checks:
   - the header names exactly that operator
@@ -74,6 +74,8 @@ mira session verify DIR --allowed-signers SIGNERS --operator NAME [--expect-clos
   - every signature, under the session namespace, for the principal the entry names
   - each relayed `action` or `question` against the agent's stored request: signed by the agent and identical in session, request ID, `based_on`, capability, arguments and note
   - each result's document: present, signed by the collector under its capture or investigation namespace, with exactly the signature the result commits to
+
+  The request and document checks run on the same in-memory entries whose signatures were checked; the log is never read a second time.
 
   With `--expect-close PATH`, the receipt must also match the session's final entry byte for byte. This detects a removed close entry or a truncated tail.
 

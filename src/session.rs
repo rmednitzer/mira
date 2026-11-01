@@ -931,15 +931,19 @@ pub(crate) fn pending_name(directory: &Path, extension: &str) -> PathBuf {
 /// Files are readable by the session's group, so a separate agent user in it
 /// can read the log and documents; directory modes keep everyone else out.
 pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    write_with_mode(path, bytes, 0o640)
+}
+
+/// Create `path` exclusively with exactly `mode`: the creation mode is masked
+/// by the umask, so it is set again through the descriptor.
+fn write_with_mode(path: &Path, bytes: &[u8], mode: u32) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
-        .mode(0o640)
+        .mode(mode)
         .open(path)?;
-    // The creation mode is masked by the umask; set it through the descriptor
-    // so a restrictive umask cannot hide shared files from the group.
-    file.set_permissions(fs::Permissions::from_mode(0o640))?;
+    file.set_permissions(fs::Permissions::from_mode(mode))?;
     file.write_all(bytes)?;
     file.sync_all()
 }
@@ -1111,7 +1115,7 @@ pub fn verify(
     allowed: &Path,
     operator: &str,
     receipt: Option<&Path>,
-) -> Result<State, Problem> {
+) -> Result<(Log, State), Problem> {
     let (log, state) = load(dir)?;
     if state.header.operator != operator {
         return Err(Problem::Operator);
@@ -1149,7 +1153,8 @@ pub fn verify(
             return Err(Problem::Receipt);
         }
     }
-    Ok(state)
+    // The authenticated snapshot: later checks must use it, never a re-read.
+    Ok((log, state))
 }
 
 /// Whether `receipt` would be written outside the session directory, with
@@ -1170,7 +1175,8 @@ pub fn receipt_outside(dir: &Path, receipt: &Path) -> bool {
 pub fn write_receipt(dir: &Path, close: &Entry, receipt: &Path) -> Result<(), Problem> {
     let record = signature::read_regular(&entry_path(dir, close.seq), MAX_RECORD_BYTES)
         .map_err(|_| Problem::Io)?;
-    write_new(receipt, &record).map_err(|_| Problem::Receipt)
+    // A receipt lives outside the shared session: owner-only, whatever the umask.
+    write_with_mode(receipt, &record, 0o600).map_err(|_| Problem::Receipt)
 }
 
 /// A fixed, escaped human timeline.

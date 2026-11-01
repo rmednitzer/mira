@@ -1079,3 +1079,76 @@ fn an_inbox_flood_is_handled_in_bounded_passes_and_purged() {
     assert_eq!(left, [".pending-fresh", "full-dir"]);
     assert!(stdout(&dir.verify()).starts_with("MIRA session: verified entries 4 "));
 }
+
+#[test]
+fn relay_and_document_checks_use_the_authenticated_snapshot() {
+    let dir = Dir::new();
+    assert!(dir.start(&[]).status.success());
+    assert!(
+        dir.request(&[
+            "--capability",
+            "uptime-minimum",
+            "--arguments",
+            "1",
+            "--text",
+            "up?"
+        ])
+        .status
+        .success()
+    );
+    assert!(stdout(&dir.broker()).starts_with("MIRA session: admitted request as 000001"));
+    let signers = dir.path("signers");
+    // Authenticate the log once.
+    let (log, state) = mira::session::verify(&dir.session(), &signers, "operator", None).unwrap();
+    // Then replace the result on disk with an unsigned abandon and remove its
+    // document, as a concurrent writer could between two reads.
+    let abandon = format!(
+        "{{\"session_version\":1,\"session_id\":\"{}\",\"seq\":2,\"kind\":\"abandon\",\"principal\":\"operator\",\"based_on\":1,\"action_seq\":1,\"note\":\"\"}}\n-----BEGIN SSH SIGNATURE-----\nAA==\n-----END SSH SIGNATURE-----\n",
+        dir.session_id()
+    );
+    fs::write(dir.session().join("entries/000002.entry"), abandon).unwrap();
+    fs::remove_file(dir.session().join("documents/000001.json")).unwrap();
+    // The checks run on the snapshot, whose result still needs its document.
+    assert_eq!(
+        mira::session_broker::verify_relays(&dir.session(), &log, &state, &signers),
+        Err(mira::session::Problem::Document(2))
+    );
+}
+
+#[test]
+fn close_receipts_are_owner_only_whatever_the_umask() {
+    use std::os::unix::fs::PermissionsExt;
+    for umask in ["022", "077"] {
+        let dir = Dir::new();
+        assert!(dir.start(&[]).status.success());
+        let receipt = dir.path("receipt");
+        let session = dir.session();
+        let signers = dir.path("signers");
+        let key = dir.path("operator");
+        let closed = Command::new("/bin/sh")
+            .args([
+                "-c",
+                &format!("umask {umask} && exec \"$0\" \"$@\""),
+                env!("CARGO_BIN_EXE_mira"),
+            ])
+            .args([
+                "session",
+                "close",
+                session.to_str().unwrap(),
+                "--allowed-signers",
+                signers.to_str().unwrap(),
+                "--key",
+                key.to_str().unwrap(),
+                "--conclusion",
+                "private conclusion",
+                "--receipt",
+                receipt.to_str().unwrap(),
+            ])
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert!(closed.status.success(), "{closed:?}");
+        let mode = fs::metadata(&receipt).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "umask {umask}");
+    }
+}

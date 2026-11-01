@@ -220,6 +220,8 @@ Stage 1b (broker):
   - decisions use the level of the entry being written
   - every agent-attributable entry costs budget, and the operator's reserve is never charged; with no budget left, a flood of requests is dropped unrecorded while stop and close still work
   - signature files are not group-writable under `umask 002`
+  - relay and document checks run on the authenticated snapshot, even after the result on disk is replaced by an unsigned abandon
+  - close receipts are 0600 under umask 022 and 077
   - an inbox flood (junk files, directories, stale and fresh pending files, and 70 request-shaped files) is handled in passes of at most 64 and purged, leaving only the agent's fresh pending file and its non-empty directory
 - **`scripts/validate_session.py`:** restates the capability table, outcome mapping and fold rules. It runs a real broker flow (request, admission, refusal, operator capture, close) and checks every entry, stored request and document signature with `ssh-keygen` directly.
 

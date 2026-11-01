@@ -104,6 +104,7 @@ Stage 1b adds the broker:
 - results are signed with a collector key that the broker checks before starting
 - `verify` checks every relayed request against the agent's stored, agent-signed record. Each result document is checked against the collector's signature that the collector-signed result entry itself carries, so a different genuine document cannot be substituted
 - close requires every action to have a result or an operator-signed `abandon` entry, so no result can follow the immutable close
+- `verify` checks relayed requests and documents against the same authenticated in-memory log, never a second read that a concurrent writer could have replaced; external receipts are owner-only
 - every agent-attributable entry (relayed request or refusal) costs budget, and the last 64 entries are reserved for the operator and results, so an agent cannot fill the log and block stop or close
 - signature files are created at most 0644 whatever the umask, so a group-shared `documents/` never lets the agent open one for writing
 - the agent-writable `inbox/` is read with hard caps per pass (4,096 directory entries, 64 requests), and non-request objects, stale pending files and empty directories are purged. Disk exhaustion by the agent's user is outside MIRA's control: a quota on that user is a deployment requirement

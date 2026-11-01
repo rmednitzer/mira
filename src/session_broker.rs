@@ -600,10 +600,22 @@ pub fn verify(
     operator: &str,
     receipt: Option<&Path>,
 ) -> Result<State, Problem> {
-    let state = session::verify(dir, allowed, operator, receipt)?;
-    let (log, _) = session::load(dir)?;
+    let (log, state) = session::verify(dir, allowed, operator, receipt)?;
+    verify_relays(dir, &log, &state, allowed)?;
+    Ok(state)
+}
+
+/// Check relayed requests and result documents for an already authenticated
+/// log. It never re-reads the entries: a snapshot taken after their
+/// signatures were checked could have been replaced in between.
+pub fn verify_relays(
+    dir: &Path,
+    log: &session::Log,
+    state: &State,
+    allowed: &Path,
+) -> Result<(), Problem> {
     let mut actions = std::collections::BTreeMap::new();
-    for stored in &log {
+    for stored in log {
         let entry = &stored.entry;
         let relayed = match &entry.body {
             Body::Question {
@@ -689,7 +701,7 @@ pub fn verify(
             }
         }
     }
-    Ok(state)
+    Ok(())
 }
 
 #[cfg(test)]
