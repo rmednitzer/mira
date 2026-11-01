@@ -34,7 +34,7 @@ jobs:
           test ! -e target/release/mira-process-fixture
           # The test-only ssh-keygen override must be compiled out of release builds.
           ! grep -q MIRA_TEST_SSH_KEYGEN target/release/mira
-          ! grep -qE "MIRA_TEST_(JOURNALCTL|JOURNAL_DIRS|PROC_ROOT)" target/release/mira
+          ! grep -qE "MIRA_TEST_(JOURNALCTL|JOURNAL_DIRS|PROC_ROOT|RANDOM_SOURCE)" target/release/mira
           cargo run --locked -- demo
       - name: Validate versioned evidence JSON contract
         run: |

@@ -1,5 +1,6 @@
 //! Complete, explicitly scoped captures. Labels are operator assertions, not identity.
 use crate::{
+    challenge::Challenge,
     collector::FailureReason,
     evidence, evidence_json,
     host_extra::{self, PressureResource},
@@ -219,10 +220,22 @@ impl Capture {
     }
     /// capture-v1, unchanged; the timeline is not exported.
     pub fn to_json(&self) -> String {
-        self.render(1, "")
+        self.render(1, "", "")
     }
     /// capture-v2: the same records plus the collection window and timeline.
     pub fn to_timeline_json(&self) -> String {
+        self.render(2, "", &self.timing_json())
+    }
+    /// capture-v3: capture-v2 with the consumer's challenge immediately after
+    /// the version, so verifiers can check a fixed prefix (ADR 0014).
+    pub fn to_challenge_json(&self, challenge: &Challenge) -> String {
+        self.render(
+            3,
+            &format!("\"challenge\":\"{}\",", challenge.as_str()),
+            &self.timing_json(),
+        )
+    }
+    fn timing_json(&self) -> String {
         let timeline = &self.timeline;
         let entries = timeline
             .entries
@@ -237,19 +250,16 @@ impl Capture {
             })
             .collect::<Vec<_>>()
             .join(",");
-        self.render(
-            2,
-            &format!(
-                "\"collection\":{{\"monotonic_window_ms\":{},\"started_unix_ms\":{},\"ended_unix_ms\":{},\"wall_clock\":{},\"boot\":{}}},\"timeline\":[{entries}],",
-                timeline.monotonic_window_ms,
-                evidence_json::timestamp(timeline.started_unix_ms),
-                evidence_json::timestamp(timeline.ended_unix_ms),
-                evidence_json::quoted(timeline.wall_clock()),
-                self.boot.to_json()
-            ),
+        format!(
+            "\"collection\":{{\"monotonic_window_ms\":{},\"started_unix_ms\":{},\"ended_unix_ms\":{},\"wall_clock\":{},\"boot\":{}}},\"timeline\":[{entries}],",
+            timeline.monotonic_window_ms,
+            evidence_json::timestamp(timeline.started_unix_ms),
+            evidence_json::timestamp(timeline.ended_unix_ms),
+            evidence_json::quoted(timeline.wall_clock()),
+            self.boot.to_json()
         )
     }
-    fn render(&self, version: u32, timing: &str) -> String {
+    fn render(&self, version: u32, header: &str, timing: &str) -> String {
         let sources = self
             .profile
             .sources()
@@ -258,7 +268,7 @@ impl Capture {
             .collect::<Vec<_>>()
             .join(",");
         format!(
-            "{{\"capture_version\":{version},\"capture_scope\":{},\"scope_trust\":\"operator_asserted\",\"profile\":{},\"expected_sources\":[{sources}],\"collection_complete\":true,\"all_available\":{},{timing}\"records\":[{}]}}",
+            "{{\"capture_version\":{version},{header}\"capture_scope\":{},\"scope_trust\":\"operator_asserted\",\"profile\":{},\"expected_sources\":[{sources}],\"collection_complete\":true,\"all_available\":{},{timing}\"records\":[{}]}}",
             evidence_json::quoted(&self.label),
             evidence_json::quoted(self.profile.id()),
             self.all_available,
@@ -531,6 +541,20 @@ mod tests {
             format!(
                 r#"{{"capture_version":2,"capture_scope":"fixture","scope_trust":"operator_asserted","profile":"host/v1","expected_sources":{sources},"collection_complete":true,"all_available":false,"collection":{{"monotonic_window_ms":7,"started_unix_ms":1000,"ended_unix_ms":null,"wall_clock":"unknown","boot":{{"binding":"not_requested"}}}},"timeline":[{{"source":"/proc/meminfo","offset_ms":0,"elapsed_ms":1}},{{"source":"/proc/uptime","offset_ms":2,"elapsed_ms":null}}],"records":[{{"r":1}},{{"r":2}}]}}"#
             )
+        );
+    }
+
+    #[test]
+    fn capture_v3_is_capture_v2_with_the_challenge_after_the_version() {
+        let capture = fixed_capture();
+        let hex = "0123456789abcdef".repeat(4);
+        let challenge = Challenge::parse(&hex).unwrap();
+        let v2 = capture.to_timeline_json();
+        let v3 = capture.to_challenge_json(&challenge);
+        let rest = v2.strip_prefix(r#"{"capture_version":2,"#).unwrap();
+        assert_eq!(
+            v3,
+            format!(r#"{{"capture_version":3,"challenge":"{hex}",{rest}"#)
         );
     }
 }

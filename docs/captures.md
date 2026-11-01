@@ -54,6 +54,14 @@ mira capture incident-a --pressure --timeline --bind-boot
 
 The boot ID is a kernel-generated random identifier that changes on every boot. It links every capture from one boot, and containers on one host usually share it, so it can link tenants. Treat it like a label: keep it out of public captures unless linkability is intended. It is never collected without `--bind-boot`, never appears in capture-v1 or investigation reports, and does not authenticate a host. procfs can be emulated or altered by a privileged party, so the binding is what the kernel interface reported.
 
+## Challenged captures (capture-v3)
+
+```sh
+mira capture incident-a --challenge HEX --signature incident-a.json.sig --sign-with KEY > incident-a.json
+```
+
+`--challenge HEX` answers a consumer's challenge so the consumer can bound the capture's age on its own clock ([ADR 0014](adr/0014-consumer-challenge-freshness.md), see [signatures](signatures.md#freshness-answer-a-challenge)). It comes last, after `[--pressure] [--timeline] [--bind-boot]`, implies `--timeline` and requires signing. HEX must be exactly 64 lowercase hex characters. A malformed challenge, or a challenge without `--signature`/`--sign-with`, exits 2 before anything is read. The output is capture-v3: capture-v2 with `"challenge": HEX` immediately after `"capture_version": 3`, and otherwise identical. The challenge carries no host data. The comparator and the independent capture validator do not accept capture-v3 yet; that is stage 2 of the ADR.
+
 ## Compare
 
 Produce two captures with the same label and profile, then run:

@@ -1,6 +1,6 @@
 # ADR 0014: consumer-challenge freshness for signed captures
 
-Status: **Accepted**, 2026-11-01 (proposed and reviewed the same day). Not yet implemented.
+Status: **Accepted**, 2026-11-01 (proposed and reviewed the same day). **Stage 1 (Rust CLI) is implemented**; guide: [signatures](../signatures.md#freshness-answer-a-challenge). Stage 2 (comparator, schemas and validators) is outstanding.
 
 ## Context
 

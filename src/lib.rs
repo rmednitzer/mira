@@ -2,6 +2,7 @@
 //! Evidence is observational; the simulation is not an authenticated or safety-certified controller.
 
 pub mod capture;
+pub mod challenge;
 pub mod collector;
 pub mod evidence;
 pub mod evidence_json;

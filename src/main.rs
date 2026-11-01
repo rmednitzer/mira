@@ -179,43 +179,14 @@ fn main() {
         [_, command, template, unit, format] if command == "investigate" && format == "--json" => {
             investigate(template, unit, true)
         }
-        [
-            _,
-            command,
-            file,
-            signature,
-            sig,
-            signers,
-            allowed,
-            principal,
-            name,
-        ] if command == "verify"
-            && signature == "--signature"
-            && signers == "--allowed-signers"
-            && principal == "--principal" =>
-        {
-            verify(file, sig, allowed, name, None)
-        }
-        [
-            _,
-            command,
-            file,
-            signature,
-            sig,
-            signers,
-            allowed,
-            principal,
-            name,
-            revocations,
-            krl,
-        ] if command == "verify"
-            && signature == "--signature"
-            && signers == "--allowed-signers"
-            && principal == "--principal"
-            && revocations == "--revocations" =>
-        {
-            verify(file, sig, allowed, name, Some(krl))
-        }
+        [_, command, file, rest @ ..] if command == "verify" => match VerifyOptions::parse(rest) {
+            Some(options) => verify(file, options),
+            None => {
+                eprintln!("Usage: {VERIFY_USAGE}");
+                std::process::exit(2);
+            }
+        },
+        [_, command] if command == "challenge" => challenge(),
         [_, command, ..] if command == "verify" => {
             eprintln!("Usage: {VERIFY_USAGE}");
             std::process::exit(2);
@@ -236,7 +207,50 @@ struct Signing {
 
 static SIGNING: std::sync::OnceLock<Signing> = std::sync::OnceLock::new();
 
-const VERIFY_USAGE: &str = "mira verify FILE --signature SIG --allowed-signers SIGNERS --principal NAME [--revocations KRL]";
+const VERIFY_USAGE: &str = "mira verify FILE --signature SIG --allowed-signers SIGNERS --principal NAME [--revocations KRL] [--challenge-file FILE --max-age-ms N]";
+
+struct VerifyOptions<'a> {
+    signature: &'a str,
+    allowed: &'a str,
+    principal: &'a str,
+    revocations: Option<&'a str>,
+    freshness: Option<(&'a str, &'a str)>,
+}
+
+impl<'a> VerifyOptions<'a> {
+    /// Fixed option order; optional groups may only be absent, never reordered.
+    fn parse(rest: &'a [String]) -> Option<Self> {
+        let [signature, sig, signers, allowed, principal, name, rest @ ..] = rest else {
+            return None;
+        };
+        if signature != "--signature"
+            || signers != "--allowed-signers"
+            || principal != "--principal"
+        {
+            return None;
+        }
+        let (revocations, rest) = match rest {
+            [option, krl, rest @ ..] if option == "--revocations" => (Some(krl.as_str()), rest),
+            _ => (None, rest),
+        };
+        let freshness = match rest {
+            [] => None,
+            [challenge, file, age, maximum]
+                if challenge == "--challenge-file" && age == "--max-age-ms" =>
+            {
+                Some((file.as_str(), maximum.as_str()))
+            }
+            _ => return None,
+        };
+        Some(Self {
+            signature: sig,
+            allowed,
+            principal: name,
+            revocations,
+            freshness,
+        })
+    }
+}
 
 /// Remove a trailing `--signature PATH --sign-with KEY` pair, if present.
 fn split_signing(mut args: Vec<String>) -> (Vec<String>, Option<Signing>) {
@@ -276,48 +290,126 @@ fn emit_json(json: &str) {
     print!("{document}");
 }
 
-fn verify(file: &str, signature: &str, allowed: &str, principal: &str, revocations: Option<&str>) {
+fn verify(file: &str, options: VerifyOptions) {
+    use mira::challenge;
     use mira::signature::{self, Failure, Trust};
-    if signature::validate_principal(principal).is_err() {
+    if signature::validate_principal(options.principal).is_err() {
         eprintln!(
             "MIRA: principal must be 1-128 characters from A-Za-z0-9._@+- starting alphanumeric"
         );
         std::process::exit(2);
     }
-    let Ok(document) = signature::read_document(std::path::Path::new(file)) else {
-        println!("MIRA verify: not verified (document unreadable or larger than 1 MiB)");
+    let maximum = match options.freshness {
+        Some((_, maximum)) => match challenge::parse_decimal(maximum.as_bytes()) {
+            Some(maximum) => Some(maximum),
+            None => {
+                eprintln!("MIRA: --max-age-ms must be a decimal integer of at most 16 digits");
+                std::process::exit(2);
+            }
+        },
+        None => None,
+    };
+    // With a freshness check, every signature-stage refusal has one fixed reason.
+    let refused = |detail: &str| -> ! {
+        if options.freshness.is_some() {
+            println!("MIRA verify: not verified (signature)");
+        } else if detail.is_empty() {
+            println!("MIRA verify: not verified");
+        } else {
+            println!("MIRA verify: not verified ({detail})");
+        }
         std::process::exit(1);
     };
-    let trust = Trust {
-        allowed_signers: std::path::Path::new(allowed),
-        principal,
-        revocations: revocations.map(std::path::Path::new),
+    let Ok(document) = signature::read_document(std::path::Path::new(file)) else {
+        refused("document unreadable or larger than 1 MiB");
     };
-    match signature::verify(&document, std::path::Path::new(signature), &trust) {
-        Ok(kind) => {
-            println!(
-                "MIRA verify: verified namespace={} principal={principal}",
-                kind.namespace()
-            );
-        }
+    let trust = Trust {
+        allowed_signers: std::path::Path::new(options.allowed),
+        principal: options.principal,
+        revocations: options.revocations.map(std::path::Path::new),
+    };
+    let kind = match signature::verify(&document, std::path::Path::new(options.signature), &trust) {
+        Ok(kind) => kind,
         Err(Failure::Tool) => {
             eprintln!("MIRA: ssh-keygen unavailable; nothing verified");
             std::process::exit(4);
         }
-        Err(Failure::Document) => {
-            println!("MIRA verify: not verified (not a MIRA capture or investigation report)");
+        Err(Failure::Document) => refused("not a MIRA capture or investigation report"),
+        Err(Failure::Refused | Failure::Output) => refused(""),
+    };
+    let (Some((challenge_file, _)), Some(maximum)) = (options.freshness, maximum) else {
+        println!(
+            "MIRA verify: verified namespace={} principal={}",
+            kind.namespace(),
+            options.principal
+        );
+        return;
+    };
+    // The challenge file is read only after the signature verified (ADR 0014).
+    let issued = match signature::read_regular(
+        std::path::Path::new(challenge_file),
+        challenge::MAX_CHALLENGE_FILE_BYTES,
+    ) {
+        Ok(bytes) => match challenge::parse_issued(&bytes) {
+            Some(issued) => issued,
+            None => {
+                eprintln!("MIRA: challenge file is not a challenge-v1 document");
+                std::process::exit(2);
+            }
+        },
+        // Oversized or not a regular file is the operator's input, hence usage.
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::InvalidData | std::io::ErrorKind::InvalidInput
+            ) =>
+        {
+            eprintln!("MIRA: challenge file must be a regular file of at most 4 KiB");
+            std::process::exit(2);
+        }
+        Err(_) => {
+            eprintln!("MIRA: challenge file unreadable; freshness not checked");
+            std::process::exit(4);
+        }
+    };
+    let Some(now) = mira_now_unix_ms() else {
+        eprintln!("MIRA: verifier wall clock unavailable; freshness not checked");
+        std::process::exit(4);
+    };
+    match challenge::check(&document, &issued, now, maximum) {
+        Ok(age) => println!(
+            "MIRA verify: verified namespace={} principal={} age_bound_ms={age}",
+            kind.namespace(),
+            options.principal
+        ),
+        Err(stale) => {
+            println!("MIRA verify: not verified ({})", stale.reason());
             std::process::exit(1);
         }
-        Err(Failure::Refused | Failure::Output) => {
-            println!("MIRA verify: not verified");
-            std::process::exit(1);
+    }
+}
+
+/// The verifier's own wall clock, the only clock ADR 0014 trusts.
+fn mira_now_unix_ms() -> Option<u64> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    u64::try_from(now.as_millis()).ok()
+}
+
+fn challenge() {
+    match mira::challenge::issue() {
+        Ok(document) => println!("{document}"),
+        Err(_) => {
+            eprintln!("MIRA: challenge unavailable (random source or wall clock); nothing issued");
+            std::process::exit(4);
         }
     }
 }
 
 fn usage() -> ! {
     eprintln!(
-        "Usage: mira capture LABEL [--pressure] [--timeline] [--bind-boot] [--signature PATH --sign-with KEY] | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE} | {JOURNAL_USAGE} | {VERIFY_USAGE} (investigate --json also accepts --signature PATH --sign-with KEY)"
+        "Usage: mira capture LABEL [--pressure] [--timeline] [--bind-boot] [--challenge HEX] [--signature PATH --sign-with KEY] | mira challenge | mira inspect [--json] | mira demo | mira service UNIT.service [--json] | mira investigate service-active[/v1|/v2] UNIT.service [--json] | mira investigate memory-headroom --min-available-kib N [--json] | {PRESSURE_USAGE} | {PACKAGE_USAGE} | {UPTIME_USAGE} | {KERNEL_USAGE} | {JOURNAL_USAGE} | {VERIFY_USAGE} (investigate --json also accepts --signature PATH --sign-with KEY)"
     );
     std::process::exit(2);
 }
@@ -783,6 +875,7 @@ struct CaptureOptions {
     pressure: bool,
     timeline: bool,
     bind_boot: bool,
+    challenge: Option<String>,
 }
 
 impl CaptureOptions {
@@ -798,16 +891,41 @@ impl CaptureOptions {
         let pressure = take("--pressure");
         let timeline = take("--timeline");
         let bind_boot = take("--bind-boot");
+        let challenge = match rest {
+            [option, value] if option == "--challenge" => {
+                let value = value.clone();
+                rest = &[];
+                Some(value)
+            }
+            _ => None,
+        };
         rest.is_empty().then_some(Self {
             pressure,
-            timeline: timeline || bind_boot,
+            timeline: timeline || bind_boot || challenge.is_some(),
             bind_boot,
+            challenge,
         })
     }
 }
 
 fn capture(label: &str, options: CaptureOptions) {
     use mira::capture::{self, Profile};
+    // The challenge is checked before any acquisition and only counts when
+    // signed: an unsigned one could be pasted into any old file (ADR 0014).
+    let challenge = match options.challenge.as_deref() {
+        Some(_) if SIGNING.get().is_none() => {
+            eprintln!("MIRA: --challenge requires --signature and --sign-with");
+            std::process::exit(2);
+        }
+        Some(text) => match mira::challenge::Challenge::parse(text) {
+            Some(challenge) => Some(challenge),
+            None => {
+                eprintln!("MIRA: --challenge must be exactly 64 lowercase hex characters");
+                std::process::exit(2);
+            }
+        },
+        None => None,
+    };
     let profile = if options.pressure {
         Profile::HostPressure
     } else {
@@ -831,7 +949,9 @@ fn capture(label: &str, options: CaptureOptions) {
         }
     };
     // capture-v1 stays the default; --timeline opts into capture-v2 (ADR 0010).
-    if options.timeline {
+    if let Some(challenge) = &challenge {
+        emit_json(&report.to_challenge_json(challenge));
+    } else if options.timeline {
         emit_json(&report.to_timeline_json());
     } else {
         emit_json(&report.to_json());
