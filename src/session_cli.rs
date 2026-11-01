@@ -412,8 +412,15 @@ fn request(dir: &Path, rest: &[String]) {
     }
 }
 
+/// Resolve the session path once; every later operation uses this canonical
+/// path, so a symbolic link switched mid-run cannot redirect anything.
+fn canonical(dir: &Path) -> std::path::PathBuf {
+    std::fs::canonicalize(dir).unwrap_or_else(|_| write_failure(Problem::Io))
+}
+
 fn run_broker(dir: &Path, rest: &[String]) {
     let options = Options::parse(rest, &["--allowed-signers", "--key"], &["--once"]);
+    let dir = &canonical(dir);
     let state = session::load(dir)
         .map(|(_, state)| state)
         .unwrap_or_else(|problem| write_failure(problem));
@@ -461,6 +468,7 @@ fn run_broker(dir: &Path, rest: &[String]) {
 }
 
 fn act(dir: &Path, rest: &[String]) {
+    let dir = &canonical(dir);
     let options = Options::parse(
         rest,
         &[

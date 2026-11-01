@@ -1230,3 +1230,119 @@ fn a_separate_user_session_under_a_replaceable_parent_is_refused() {
     assert!(dir.broker().status.success());
     fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o755)).unwrap();
 }
+
+#[test]
+fn a_shared_session_is_never_started_under_a_replaceable_parent() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = Dir::new();
+    let group = String::from_utf8(Command::new("id").arg("-gn").output().unwrap().stdout).unwrap();
+    // Writable by others without the sticky bit: anyone could swap the tree
+    // in while its group permissions are being set.
+    fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o777)).unwrap();
+    let refused = dir.start(&[
+        "--separation",
+        "separate_user",
+        "--agent-group",
+        group.trim(),
+    ]);
+    assert_eq!(refused.status.code(), Some(1), "{refused:?}");
+    assert!(
+        stdout(&refused).contains("another user could replace the session directory"),
+        "{refused:?}"
+    );
+    assert!(!dir.session().exists(), "nothing is created");
+    fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(
+        dir.start(&[
+            "--separation",
+            "separate_user",
+            "--agent-group",
+            group.trim()
+        ])
+        .status
+        .success()
+    );
+}
+
+#[test]
+fn the_broker_keeps_the_path_it_resolved_when_a_link_is_switched() {
+    let dir = Dir::new();
+    assert!(dir.start(&[]).status.success());
+    // A replacement tree the link will be switched to mid-run.
+    assert!(
+        Command::new("cp")
+            .arg("-a")
+            .arg(dir.session())
+            .arg(dir.path("replacement"))
+            .status()
+            .unwrap()
+            .success()
+    );
+    let link = dir.path("link");
+    std::os::unix::fs::symlink(dir.session(), &link).unwrap();
+    let signers = dir.path("signers");
+    let collector = dir.path("collector");
+    let mut broker = Command::new(env!("CARGO_BIN_EXE_mira"))
+        .args(["session", "run"])
+        .arg(&link)
+        .arg("--allowed-signers")
+        .arg(&signers)
+        .arg("--key")
+        .arg(&collector)
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    let wait_for = |path: &Path| {
+        let start = std::time::Instant::now();
+        while !path.exists() {
+            assert!(
+                start.elapsed() < std::time::Duration::from_secs(20),
+                "{path:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    };
+    let request = |session: &Path, text: &str| {
+        let output = Command::new(env!("CARGO_BIN_EXE_mira"))
+            .args(["session", "request"])
+            .arg(session)
+            .arg("--allowed-signers")
+            .arg(&signers)
+            .arg("--key")
+            .arg(dir.path("agent"))
+            .args([
+                "--capability",
+                "uptime-minimum",
+                "--arguments",
+                "1",
+                "--text",
+                text,
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+    };
+    request(&dir.session(), "first");
+    wait_for(&dir.session().join("entries/000002.entry"));
+    // Switch the link to the replacement, and give both a request.
+    fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink(dir.path("replacement"), &link).unwrap();
+    request(&dir.path("replacement"), "redirected");
+    request(&dir.session(), "second");
+    wait_for(&dir.session().join("entries/000004.entry"));
+    let _ = broker.kill();
+    let _ = broker.wait();
+    // The broker kept to the session it resolved; the replacement is untouched.
+    assert!(dir.line(3).contains("\"note\":\"second\""));
+    assert!(
+        !dir.path("replacement")
+            .join("entries/000001.entry")
+            .exists()
+    );
+    assert_eq!(
+        fs::read_dir(dir.path("replacement").join("documents"))
+            .unwrap()
+            .count(),
+        0
+    );
+}

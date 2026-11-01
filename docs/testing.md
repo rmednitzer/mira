@@ -222,7 +222,7 @@ Stage 1b (broker):
   - signature files are not group-writable under `umask 002`
   - relay and document checks run on the authenticated snapshot, even after the result on disk is replaced by an unsigned abandon
   - close receipts are 0600 under umask 022 and 077
-  - the broker's guard refuses a replaced directory (an exact copy at the same path), a rolled-back prefix and an entry signed by an unlisted key; a `separate_user` session under a parent writable by others without the sticky bit is refused, and a sticky parent is accepted; a unit test of the ancestor rule refuses a sticky directory owned by another user, or with a next component owned by another user
+  - the broker's guard refuses a replaced directory (an exact copy at the same path), a rolled-back prefix and an entry signed by an unlisted key; a `separate_user` session under a parent writable by others without the sticky bit is refused, and a sticky parent is accepted; `start` under such a parent creates nothing; a broker started through a symbolic link keeps to the session it resolved when the link is switched to a replacement mid-run; a unit test of the ancestor rule refuses a sticky directory owned by another user, or with a next component owned by another user
   - an inbox flood (junk files, directories, stale and fresh pending files, and 70 request-shaped files) is handled in passes of at most 64 and purged, leaving only the agent's fresh pending file and its non-empty directory
 - **`scripts/validate_session.py`:** restates the capability table, outcome mapping and fold rules. It runs a real broker flow (request, admission, refusal, operator capture, close) and checks every entry, stored request and document signature with `ssh-keygen` directly.
 

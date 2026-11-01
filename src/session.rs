@@ -1055,6 +1055,37 @@ pub const DOCUMENTS: &str = "documents";
 pub const REQUESTS: &str = "requests";
 pub const INBOX: &str = "inbox";
 
+/// This process's effective user ID, from `/proc/self/status` (no libc).
+pub fn own_uid() -> Option<u32> {
+    let bytes = signature::read_regular(Path::new("/proc/self/status"), 64 * 1024).ok()?;
+    let text = std::str::from_utf8(&bytes).ok()?;
+    let line = text.lines().find(|line| line.starts_with("Uid:"))?;
+    line.split_whitespace().nth(2)?.parse().ok()
+}
+
+/// Whether one ancestor is safe: unwritable by others, or sticky and owned by
+/// the session's owner or root (a sticky directory's owner may still rename
+/// any child) with the next component owned by the session's owner or root.
+pub fn ancestor_ok(mode: u32, ancestor_uid: u32, child_uid: u32, owner: u32) -> bool {
+    let trusted = |uid: u32| uid == owner || uid == 0;
+    mode & 0o022 == 0 || (mode & 0o1000 != 0 && trusted(ancestor_uid) && trusted(child_uid))
+}
+
+/// Check `start` (an existing, canonical directory whose next component on the
+/// way to the session is owned by `child_uid`) and each of its ancestors.
+pub fn check_ancestry(start: &Path, child_uid: u32, owner: u32) -> Result<(), Problem> {
+    use std::os::unix::fs::MetadataExt;
+    let mut child_uid = child_uid;
+    for ancestor in start.ancestors() {
+        let metadata = fs::symlink_metadata(ancestor).map_err(|_| Problem::Io)?;
+        if !metadata.is_dir() || !ancestor_ok(metadata.mode(), metadata.uid(), child_uid, owner) {
+            return Err(Problem::UnsafePath);
+        }
+        child_uid = metadata.uid();
+    }
+    Ok(())
+}
+
 /// The numeric ID of a group from `/etc/group`, read bounded.
 pub fn group_id(name: &str) -> Option<u32> {
     let bytes = signature::read_regular(Path::new("/etc/group"), 1024 * 1024).ok()?;
@@ -1091,6 +1122,23 @@ pub fn start(
         note: question,
     };
     fold(None, &entry).map_err(|_| Problem::InvalidDirective)?;
+    // For a shared session, check before creating anything that nobody else
+    // can rename the new directory, then work only on the canonical path.
+    let canonical;
+    let dir = if group.is_some() {
+        let own = own_uid().ok_or(Problem::Io)?;
+        let name = dir.file_name().ok_or(Problem::Io)?;
+        let parent = match dir.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent,
+            _ => Path::new("."),
+        };
+        let parent = fs::canonicalize(parent).map_err(|_| Problem::Io)?;
+        check_ancestry(&parent, own, own)?;
+        canonical = parent.join(name);
+        canonical.as_path()
+    } else {
+        dir
+    };
     let mut builder = fs::DirBuilder::new();
     builder.mode(0o700);
     builder.create(dir).map_err(|_| Problem::Io)?;
@@ -1108,7 +1156,15 @@ pub fn start(
                 (dir.join(REQUESTS), 0o2750),
                 (dir.join(INBOX), 0o2770),
             ];
+            let own = own_uid().ok_or(Problem::Io)?;
             for (path, mode) in modes {
+                // chown and chmod follow links: act only on the real
+                // directories this call created and still owns.
+                use std::os::unix::fs::MetadataExt;
+                let metadata = fs::symlink_metadata(&path).map_err(|_| Problem::Io)?;
+                if !metadata.is_dir() || metadata.uid() != own {
+                    return Err(Problem::UnsafePath);
+                }
                 chown(&path, None, Some(group)).map_err(|_| Problem::Io)?;
                 fs::set_permissions(&path, fs::Permissions::from_mode(mode))
                     .map_err(|_| Problem::Io)?;
@@ -2094,5 +2150,22 @@ mod tests {
             )
             .is_err()
         );
+    }
+    #[test]
+    fn ancestors_must_not_let_another_user_rename_the_session() {
+        let (owner, other) = (1000, 1001);
+        // Not writable by others: always safe.
+        assert!(ancestor_ok(0o40755, other, other, owner));
+        // Writable by others without the sticky bit: never safe.
+        assert!(!ancestor_ok(0o40777, owner, owner, owner));
+        assert!(!ancestor_ok(0o40775, 0, owner, owner));
+        // Sticky and owned by the operator or root, with the next component theirs.
+        assert!(ancestor_ok(0o41777, 0, owner, owner));
+        assert!(ancestor_ok(0o41777, owner, owner, owner));
+        assert!(ancestor_ok(0o41777, 0, 0, owner));
+        // A sticky directory owned by another user can rename any child.
+        assert!(!ancestor_ok(0o41777, other, owner, owner));
+        // A next component owned by another user can be renamed by them.
+        assert!(!ancestor_ok(0o41777, 0, other, owner));
     }
 }

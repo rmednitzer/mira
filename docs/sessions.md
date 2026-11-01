@@ -93,7 +93,7 @@ You start the broker yourself with `mira session run`, in your own terminal; it 
 
 The broker trusts only what it has verified itself:
 - **Path:** under `separate_user` it refuses to start if any directory above the session is writable by others, unless that directory is sticky, is owned by you or root (a sticky directory's owner can still rename its children), and the next component belongs to you or root. Otherwise another user could rename the session away and put a substitute in its place.
-- **Identity:** it pins the session directory's identity (device and inode) and stops if that changes.
+- **Identity:** it resolves the session path once, uses only that canonical path from then on, pins the directory's identity (device and inode), and stops if that changes.
 - **Signatures:** it verifies each entry's signature the first time it sees it. It acts only on a log that extends that verified prefix byte for byte, and this check runs on the same read each append decides on, so a forged, unsigned or rolled-back entry never steers it. For each request, the broker:
 1. under `separate_user`, refuses a file owned by the broker's own user (`owner`)
 2. verifies the agent's signature (`signature`) and the exact request layout (`malformed`)
@@ -147,7 +147,7 @@ If the broker stops after storing a request but before recording it, the next ru
 
 ## Separation
 
-With `--separation separate_user --agent-group GROUP`, which is required for any model-driven agent, the session belongs to `GROUP`. You must be a member of it; the agent's user is too.
+With `--separation separate_user --agent-group GROUP`, which is required for any model-driven agent, the session belongs to `GROUP`. `start` refuses to create it if any directory above it is writable by another user without protection (the same rule as the broker's). It then works only on the canonical path, and changes group and mode only on real directories it created itself. You must be a member of it; the agent's user is too.
 
 | Path | Mode | The agent can |
 |---|---|---|
