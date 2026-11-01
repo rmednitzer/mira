@@ -1743,12 +1743,18 @@ fn findings_stay_hidden_until_the_operators_own_assessment() {
     let hidden = show();
     assert!(
         hidden.contains(
-            "000004 collector question (agent request): (agent note withheld until your own assessment of every agent finding)\n"
+            "000004 collector question (agent request): note (withheld until your own assessment of every agent finding)\n"
         ),
         "{hidden}"
     );
     assert!(!hidden.contains("Memory is fine"), "{hidden}");
     assert!(!hidden.contains("any?"), "{hidden}");
+    assert!(
+        hidden.contains(
+            "000001 collector action memory-headroom arguments (withheld until your own assessment of every agent finding) (agent request): note (withheld until your own assessment of every agent finding)\n"
+        ),
+        "{hidden}"
+    );
     assert!(
         hidden.contains(
             "000003 collector finding hidden until your own assessment (mira session assess --target 000003)\n"

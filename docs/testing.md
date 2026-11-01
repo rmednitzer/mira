@@ -256,7 +256,7 @@ Live `separate_user` containment, `scripts/test_separate_user.py`. It runs as ro
 
 Forcing and the delegation deadline:
 - unit tests: header and directive layouts round-trip and refuse other values; a timed delegation sets both bounds, `level_at` lapses it exactly at the deadline, and `stop` clears it; an assessment is recorded once, only for an open agent finding, only by the operator, with the finding labels; under the flag a decision waits for it, without the flag it does not; the broker's decision applies the deadline (`operator_only` after it)
-- `tests/session_broker.rs`: a hidden finding in `show` (note included) and a conclusion in an agent question's note withheld with it, a decision refused before the assessment, the assessment recorded once, the finding shown against it with `differs from your assessment`, then decided and verified; a timed delegation shown as "operator clock, unverified" whose operator-only request is refused once the deadline has passed, and deadlines refused on anything but a delegation
+- `tests/session_broker.rs`: a hidden finding in `show` (note included) with the agent's action arguments and every agent note (including a conclusion in a question) withheld too, a decision refused before the assessment, the assessment recorded once, the finding shown against it with `differs from your assessment`, then decided and verified; a timed delegation shown as "operator clock, unverified" whose operator-only request is refused once the deadline has passed, and deadlines refused on anything but a delegation
 - `scripts/validate_session.py` restates the header flag, the assessment rules, the decision gate and the timed delegation layout
 
 ## Representative host qualification

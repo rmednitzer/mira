@@ -1862,8 +1862,10 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
         })
         .collect();
     // Under the forcing flag, while any agent finding is unassessed, every
-    // agent note is withheld too: a question or proposal could otherwise
-    // carry the conclusion the hidden finding states.
+    // other agent-controlled field is withheld too (notes, and the arguments
+    // of relayed actions and proposals): any of them could otherwise carry
+    // the conclusion the hidden finding states. What remains is fixed
+    // vocabulary: kinds, capability names, outcomes and reasons.
     let withhold_notes = state.header.require_own_assessment
         && log.iter().any(|stored| {
             matches!(
@@ -1894,6 +1896,16 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
             ));
             continue;
         }
+        let withheld = "(withheld until your own assessment of every agent finding)";
+        let relayed_arguments = match &entry.body {
+            Body::Action {
+                request_id: Some(_),
+                capability,
+                ..
+            } => Some(("action", capability)),
+            Body::Proposal { capability, .. } => Some(("proposal", capability)),
+            _ => None,
+        };
         let detail = match &entry.body {
             Body::Header(header) => format!(
                 "header operator={} agent={} collector={} separation={}{}",
@@ -2016,6 +2028,12 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
             ),
             Body::Close { .. } => "close".to_owned(),
         };
+        let detail = match relayed_arguments {
+            Some((kind, capability)) if withhold_notes => {
+                format!("{kind} {capability} arguments {withheld} (agent request)")
+            }
+            _ => detail,
+        };
         // Text was validated free of controls when written, and re-checked
         // here. The agent's notes are never checked against anything.
         let note = if validate_text(&entry.note).is_err() {
@@ -2024,7 +2042,7 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
             && withhold_notes
             && !entry.note.is_empty()
         {
-            "(agent note withheld until your own assessment of every agent finding)".to_owned()
+            format!("note {withheld}")
         } else if entry.principal == state.header.collector && !entry.note.is_empty() {
             format!("[unchecked agent note] {}", entry.note)
         } else {
