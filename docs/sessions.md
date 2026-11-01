@@ -9,7 +9,7 @@ A session is the shared, signed record in which an operator and an AI agent inve
 
 - **Stage 2:** a local model as the agent, through the stdio MCP adapter and the client host in [`agent/`](../agent/README.md), with the adapter's tool definitions pinned in the header, and hostile host-content fixtures that check the pass condition.
 
-**Not yet run:** adaptive red-team rounds with people, under the [red-team protocol](red-team.md). **Not yet implemented:** the operator-clock delegation deadline and the optional own-assessment forcing function (`decide --own-assessment` and its header flag).
+**Not yet run:** adaptive red-team rounds with people, under the [red-team protocol](red-team.md). **Since stage 1:** the optional own-assessment forcing function and the operator-clock delegation deadline.
 
 The agent never writes the log. It submits signed requests, and the broker decides.
 
@@ -38,7 +38,7 @@ The collector key is used unattended by the broker. Keep it readable only by you
 ```sh
 mira session start DIR --allowed-signers SIGNERS --key KEY --operator NAME --agent NAME --collector NAME \
   [--separation same_user | --separation separate_user --agent-group GROUP] \
-  [--autonomy manual|advisory|assisted] [--budget N] [--agent-tools SHA256] --question TEXT
+  [--autonomy manual|advisory|assisted] [--budget N] [--agent-tools SHA256] [--require-own-assessment] --question TEXT
 mira session run DIR --allowed-signers SIGNERS --key COLLECTOR-KEY [--once]
 mira session act DIR --allowed-signers SIGNERS --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT]
 mira session request DIR --allowed-signers SIGNERS --key AGENT-KEY \
@@ -46,8 +46,9 @@ mira session request DIR --allowed-signers SIGNERS --key AGENT-KEY \
 mira session find DIR --allowed-signers SIGNERS --key KEY --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...] --text TEXT
 mira session decide DIR --allowed-signers SIGNERS --key KEY --target SEQ \
   (--approve [--despite-stale] --collector-key COLLECTOR-KEY | --reject | --accept | --uncertain) [--text TEXT]
+mira session assess DIR --allowed-signers SIGNERS --key KEY --target SEQ --claim CLAIM [--confidence low|medium|high] [--text TEXT]
 mira session ask DIR --allowed-signers SIGNERS --key KEY --text TEXT
-mira session direct DIR --allowed-signers SIGNERS --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT]
+mira session direct DIR --allowed-signers SIGNERS --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ [--delegate-seconds N] | --delegate-seconds N) [--text TEXT]
 mira session close DIR --allowed-signers SIGNERS --key KEY --conclusion TEXT [--receipt PATH]
 mira session show DIR [--json]
 mira session verify DIR --allowed-signers SIGNERS --operator NAME [--expect-close PATH]
@@ -69,7 +70,7 @@ mira session verify DIR --allowed-signers SIGNERS --operator NAME [--expect-clos
   - set the budget
   - delegate until a later sequence number, after which the level returns to `assisted`
 
-  Delegation ends after a number of entries. The operator-clock deadline the ADR also allows is not implemented.
+  Delegation ends after a number of entries, or with `--delegate-seconds N` also at a deadline that many seconds ahead on your clock (`--delegate-seconds` alone sets only the deadline). The broker applies the deadline at each decision with its own clock, which is yours, since it runs in your account. The log records the deadline (`until_unix_ms`, shown as "operator clock, unverified") but cannot prove the broker kept to it; the entry count is enforced by the state rules as before.
 - **`close`** appends your conclusion and the final entry count. After it, every append is refused. While an action is still pending (admitted but without a result), `close` refuses, because a result could otherwise arrive after the immutable close. `--abandon-pending` first appends an operator-signed `abandon` entry for each pending action, for example after an interrupted broker; a broker that later finishes such an action records nothing. With `--receipt PATH`, the close record (entry and signature) is also written, exclusively and owner-only (0600 whatever the umask), to `PATH`. That path must be in an existing directory outside the session, resolved through symbolic links. An existing path, a path inside the session or a missing directory is refused before anything is written.
 - **`show`** prints the timeline and current state, or the state alone with `--json`, including the open proposals and agent findings. The timeline labels every finding `checked`, `inference` (a hypothesis) or `unchecked` (`no_finding`), with its confidence and citations, and marks it `stale` when a cited result has a newer result for the same action. Agent notes are shown as `[unchecked agent note]`. It reads the log's structure but does not check signatures. No command prints the session ID; it is in entry 0 for anyone who reads the log.
 - **`verify`** checks everything against the operator you name with `--operator`, including every relayed agent request and every result document. It never takes the operator from the session's own header: any key in `allowed_signers`, the agent's included, could otherwise write a header naming itself operator and sign a counterfeit session. It checks:
@@ -172,6 +173,17 @@ A finding is a claim from a closed vocabulary, citing results by sequence number
 An indeterminate assessment over evidence that was collected, such as a service transition in progress or an incomplete package installation, supports `expectation_indeterminate` but not `evidence_unavailable`. Every citation must be a result, at most 16, in ascending order. A result written before stage 1c has no `reason` field; it still supports the outcome claims, but never `evidence_unavailable` for an investigation.
 
 The agent posts a finding with `request --claim`; the broker refuses one its citations do not support (`claim`). You post your own with `find`, which is checked the same way. Agent findings stay open until you decide on them; yours are not decided.
+
+## Your own assessment first
+
+With `start --require-own-assessment`, the session asks for your own view of each agent finding before you see it. This is opt-in, because forcing functions cost satisfaction, and the research shows they reduce over-reliance only partly.
+- `show` withholds each agent finding, note and all, and says how to assess it: `mira session assess --target SEQ --claim CLAIM [--confidence …]`. It also withholds every other field the agent controls (the notes on its questions, actions and proposals, and the arguments of its actions and proposals) until you have recorded an assessment after that text was written, and while any agent finding is unassessed. A conclusion cannot reach you through them ahead of your own view, whether the agent states it before or after a finding. What remains is fixed vocabulary: kinds, capability names, outcomes and reasons.
+- `assess --target 0` records your view of the session question itself. It can be recorded again whenever you want to see what the agent has written since.
+- `assess` records your view as an `assessment` entry, once per open agent finding (any number of times for target 0), with the same labels as a finding (a hypothesis needs a confidence, `no_finding` takes none). It is never checked and is shown as your own view.
+- After it, `show` reveals the finding and marks it `differs from your assessment` when its claim is not yours.
+- `decide` on an agent finding is refused until you have assessed it. Approving a proposal is refused while its arguments are still withheld, because approval copies them into your own action; rejecting needs no assessment.
+
+This is a display and workflow rule, not a secrecy one: the log itself stays readable to you and to the agent's group.
 
 ## Proposals and decisions
 

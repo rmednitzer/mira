@@ -254,7 +254,24 @@ pub fn submit(dir: &Path, writer: &Writer, ask: Ask, note: String) -> Result<Str
 }
 
 /// The admission decision for one verified request against the current state.
+/// The broker's own clock, in Unix milliseconds: the operator's clock,
+/// since the broker runs in the operator's account. Never verified.
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |time| {
+            u64::try_from(time.as_millis()).unwrap_or(u64::MAX)
+        })
+}
+
 fn decide(state: &State, request: &Request) -> Result<Body, Refusal> {
+    decide_at(state, request, now_unix_ms())
+}
+
+/// The admission decision at `now_unix_ms`, which applies a delegation's
+/// operator-clock deadline as well as its entry count.
+fn decide_at(state: &State, request: &Request, now_unix_ms: u64) -> Result<Body, Refusal> {
+    let level = state.level_at(now_unix_ms);
     if request.session_id != state.session_id {
         return Err(Refusal::SessionMismatch);
     }
@@ -277,7 +294,7 @@ fn decide(state: &State, request: &Request) -> Result<Body, Refusal> {
     };
     match &request.ask {
         Ask::Question => {
-            if state.effective_level() == Level::Manual {
+            if level == Level::Manual {
                 return Err(refused_by_level());
             }
             Ok(Body::Question {
@@ -291,7 +308,7 @@ fn decide(state: &State, request: &Request) -> Result<Body, Refusal> {
             let plan =
                 session_capability::plan(capability, arguments).ok_or(Refusal::Capability)?;
             // The level that applies to the entry about to be written.
-            match state.effective_level() {
+            match level {
                 Level::Manual | Level::Advisory => return Err(refused_by_level()),
                 Level::Assisted if plan.operator_only => return Err(Refusal::OperatorOnly),
                 _ => {}
@@ -307,7 +324,7 @@ fn decide(state: &State, request: &Request) -> Result<Body, Refusal> {
             confidence,
             cites,
         } => {
-            if state.effective_level() == Level::Manual {
+            if level == Level::Manual {
                 return Err(refused_by_level());
             }
             // Checked against collector results only, never the agent's note.
@@ -326,7 +343,7 @@ fn decide(state: &State, request: &Request) -> Result<Body, Refusal> {
             arguments,
         } => {
             session_capability::plan(capability, arguments).ok_or(Refusal::Capability)?;
-            if state.effective_level() == Level::Manual {
+            if level == Level::Manual {
                 return Err(refused_by_level());
             }
             let open = state
@@ -1030,6 +1047,7 @@ mod tests {
             autonomy: Level::Assisted,
             budget,
             agent_tools: None,
+            require_own_assessment: false,
         };
         State {
             session_id: "ab".repeat(32),
@@ -1038,12 +1056,15 @@ mod tests {
             level,
             budget,
             delegated_until: None,
+            delegated_until_unix_ms: None,
             closed: false,
             last_directive: None,
             pending: Default::default(),
             requests: Default::default(),
             results: Default::default(),
             open: Default::default(),
+            assessed: Default::default(),
+            last_assessment: None,
         }
     }
 
@@ -1248,5 +1269,22 @@ mod tests {
             decide(&crowded, &propose("capture")),
             Err(Refusal::Proposals)
         );
+    }
+
+    #[test]
+    fn a_delegation_deadline_applies_at_the_brokers_clock() {
+        let mut timed = state(Level::Delegated, 1);
+        timed.delegated_until = Some(4096);
+        timed.delegated_until_unix_ms = Some(1_000);
+        let bind = Request {
+            ask: Ask::Action {
+                capability: "capture".to_owned(),
+                arguments: "host bind-boot".to_owned(),
+            },
+            ..request()
+        };
+        assert!(decide_at(&timed, &bind, 999).is_ok());
+        assert_eq!(decide_at(&timed, &bind, 1_000), Err(Refusal::OperatorOnly));
+        assert!(decide_at(&timed, &request(), 1_000).is_ok());
     }
 }

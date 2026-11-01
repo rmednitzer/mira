@@ -81,9 +81,12 @@
         "agent_tools": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
+        },
+        "own_assessment": {
+          "const": "required"
         }
       },
-      "$comment": "agent_tools, when present, is the SHA-256 of the agent adapter's tool definitions that the operator pinned; headers without it stay valid."
+      "$comment": "agent_tools, when present, is the SHA-256 of the agent adapter's tool definitions that the operator pinned; own_assessment \"required\" withholds agent findings until the operator's own assessment. Headers without either stay valid."
     },
     {
       "type": "object",
@@ -288,6 +291,11 @@
                   "const": null
                 }
               ]
+            },
+            "until_unix_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
             }
           }
         }
@@ -306,7 +314,8 @@
             },
             "until_seq": {
               "const": null
-            }
+            },
+            "until_unix_ms": false
           }
         },
         {
@@ -326,7 +335,8 @@
             },
             "until_seq": {
               "const": null
-            }
+            },
+            "until_unix_ms": false
           }
         },
         {
@@ -344,7 +354,8 @@
             },
             "until_seq": {
               "const": null
-            }
+            },
+            "until_unix_ms": false
           }
         },
         {
@@ -365,7 +376,8 @@
             }
           }
         }
-      ]
+      ],
+      "$comment": "until_unix_ms, only on a delegation, is a deadline on the operator's clock; the broker applies it, and the log cannot prove it did."
     },
     {
       "type": "object",
@@ -777,6 +789,86 @@
           ]
         }
       }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_version",
+        "session_id",
+        "seq",
+        "principal",
+        "based_on",
+        "note",
+        "kind",
+        "target_seq",
+        "claim",
+        "confidence"
+      ],
+      "properties": {
+        "session_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "principal": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "based_on": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069])"
+        },
+        "kind": {
+          "const": "assessment"
+        },
+        "target_seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "claim": {
+          "enum": [
+            "expectation_satisfied",
+            "expectation_not_satisfied",
+            "expectation_indeterminate",
+            "evidence_unavailable",
+            "hypothesis",
+            "no_finding"
+          ]
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            {
+              "const": null
+            }
+          ]
+        }
+      },
+      "$comment": "The operator's own view of an open agent finding; never checked."
     },
     {
       "type": "object",
