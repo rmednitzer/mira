@@ -8,7 +8,7 @@ use mira::session::{
 use mira::session_broker::{self, Ask, Handled};
 use std::{collections::BTreeMap, path::Path};
 
-pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--separation same_user | --separation separate_user --agent-group GROUP] [--autonomy manual|advisory|assisted] [--budget N] --question TEXT | mira session run DIR --allowed-signers FILE --key COLLECTOR-KEY [--once] | mira session act DIR --allowed-signers FILE --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT] | mira session request DIR --allowed-signers FILE --key AGENT-KEY ([--propose] --capability NAME [--arguments TOKENS] | --question | --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...]) --text TEXT | mira session find DIR --allowed-signers FILE --key KEY --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...] --text TEXT | mira session decide DIR --allowed-signers FILE --key KEY --target SEQ (--approve [--despite-stale] --collector-key COLLECTOR-KEY | --reject | --accept | --uncertain) [--text TEXT] | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] [--abandon-pending] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE --operator NAME [--expect-close PATH]";
+pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--separation same_user | --separation separate_user --agent-group GROUP] [--autonomy manual|advisory|assisted] [--budget N] [--agent-tools SHA256] --question TEXT | mira session run DIR --allowed-signers FILE --key COLLECTOR-KEY [--once] | mira session act DIR --allowed-signers FILE --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT] | mira session request DIR --allowed-signers FILE --key AGENT-KEY ([--propose] --capability NAME [--arguments TOKENS] | --question | --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...]) --text TEXT | mira session find DIR --allowed-signers FILE --key KEY --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...] --text TEXT | mira session decide DIR --allowed-signers FILE --key KEY --target SEQ (--approve [--despite-stale] --collector-key COLLECTOR-KEY | --reject | --accept | --uncertain) [--text TEXT] | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] [--abandon-pending] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE --operator NAME [--expect-close PATH]";
 
 fn usage() -> ! {
     eprintln!("Usage: {USAGE}");
@@ -324,6 +324,7 @@ fn start(dir: &Path, rest: &[String]) {
             "--question",
             "--separation",
             "--agent-group",
+            "--agent-tools",
         ],
         &[],
     );
@@ -352,6 +353,15 @@ fn start(dir: &Path, rest: &[String]) {
                 .unwrap_or_else(|| fail("autonomy must be manual, advisory or assisted", 2))
         }),
         budget: options.get("--budget").map_or(10, decimal),
+        agent_tools: options.get("--agent-tools").map(|hash| {
+            if !session::is_sha256(hash) {
+                fail(
+                    "--agent-tools must be a SHA-256 digest in 64 lowercase hex digits",
+                    2,
+                );
+            }
+            hash.to_owned()
+        }),
     };
     if [&header.agent, &header.collector].contains(&&header.operator)
         || header.agent == header.collector

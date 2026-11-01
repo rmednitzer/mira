@@ -94,6 +94,8 @@ def fields(entry):
     # reason; those layouts stay valid.
     if entry['kind'] == 'question' and 'request_id' not in entry:
         return []
+    if entry['kind'] == 'header' and 'agent_tools' in entry:
+        return FIELDS['header'] + ['agent_tools']
     if entry['kind'] == 'result' and 'reason' not in entry:
         return [name for name in FIELDS['result'] if name != 'reason']
     return FIELDS[entry['kind']]
@@ -358,7 +360,13 @@ def check_fixtures():
     if (state['entries'], state['level'], state['budget'], state['closed'], state['pending']) \
             != (22, 'assisted', 0, True, {}) or state['open']:
         raise ValueError('fixture state mismatch')
+    pinned = dict(HEADER)
+    pinned['agent_tools'] = 'ab' * 32
+    pinned['note'] = pinned.pop('note')
+    admit(canonical(pinned, COMMON + fields(pinned) + ['note']))
     for mutate in (
+        lambda e: e.update(agent_tools='AB' * 32),
+        lambda e: e.update(agent_tools=None),
         lambda e: e.update(session_version=2),
         lambda e: e.update(session_id=ID.upper()),
         lambda e: e.update(autonomy='delegated'),

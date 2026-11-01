@@ -119,6 +119,12 @@ Stage 1c adds findings, proposals and decisions:
 - only the operator decides, once per open proposal or agent finding; approving a proposal written before a newer result for the same action needs an explicit `approve_despite_stale`, and a wrong collector key fails before the decision is written
 - the worst an agent's finding can do is be wrong as a labelled hypothesis or a correctly checked but irrelevant claim; over-reliance on such findings is measured in stage 3, not prevented
 
+Stage 2 adds the agent harness, all of it untrusted:
+- the stdio adapter turns four tools into `mira session request` calls after validating them against its closed schema; it opens no socket, takes authority only from the agent's environment and key, and serves read-only views by fixed resource names
+- the session header pins the SHA-256 of the adapter's tool definitions; the adapter refuses an unpinned session, and the client host refuses a mismatch at start and stops on any change before a turn, which covers tool poisoning and rug pulls by a replaced adapter
+- the client host accepts exactly one MCP server, the shipped adapter, so no shell, file, web or messaging tool reaches the model and no other server can shadow it; it reaches the model only on a loopback address without proxy
+- none of this is relied on for the session's integrity: a compromised adapter or host can only submit agent-signed requests, which the broker checks like any other
+
 Agent containment holds only under `separate_user` with a collector key the agent cannot read. A two-user deployment is not exercised in CI. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.
 
 | Plausible threat | Planned control and verification |

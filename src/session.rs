@@ -104,6 +104,14 @@ pub struct Header {
     pub separation: Separation,
     pub autonomy: Level,
     pub budget: u64,
+    /// The SHA-256 (lowercase hex) of the agent adapter's tool definitions,
+    /// when the operator pins them; absent in sessions started without it.
+    pub agent_tools: Option<String>,
+}
+
+/// A SHA-256 digest as 64 lowercase hex digits.
+pub fn is_sha256(text: &str) -> bool {
+    is_session_id(text)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -420,13 +428,20 @@ impl Entry {
     pub fn render(&self) -> String {
         let fields = match &self.body {
             Body::Header(header) => format!(
-                "\"operator\":{},\"agent\":{},\"collector\":{},\"separation\":{},\"autonomy\":{},\"budget\":{},",
+                "\"operator\":{},\"agent\":{},\"collector\":{},\"separation\":{},\"autonomy\":{},\"budget\":{},{}",
                 quoted(&header.operator),
                 quoted(&header.agent),
                 quoted(&header.collector),
                 quoted(header.separation.as_str()),
                 quoted(header.autonomy.as_str()),
-                header.budget
+                header.budget,
+                header
+                    .agent_tools
+                    .as_deref()
+                    .map_or_else(String::new, |hash| format!(
+                        "\"agent_tools\":{},",
+                        quoted(hash)
+                    ))
             ),
             Body::Question { request_id } => {
                 format!("\"request_id\":{},", optional_quoted(request_id.as_deref()))
@@ -554,6 +569,11 @@ impl Entry {
                 separation: Separation::parse(&string("separation")?)?,
                 autonomy: Level::parse(&string("autonomy")?)?,
                 budget: uint("budget")?,
+                agent_tools: match fields.get("agent_tools") {
+                    None => None,
+                    Some(Value::Str(hash)) if is_sha256(hash) => Some(hash.clone()),
+                    Some(_) => return None,
+                },
             }),
             "question" if !fields.contains_key("request_id") => Body::LegacyQuestion,
             "question" => Body::Question {
@@ -1710,11 +1730,15 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
     for Stored { entry, .. } in log {
         let detail = match &entry.body {
             Body::Header(header) => format!(
-                "header operator={} agent={} collector={} separation={}",
+                "header operator={} agent={} collector={} separation={}{}",
                 header.operator,
                 header.agent,
                 header.collector,
-                header.separation.as_str()
+                header.separation.as_str(),
+                header
+                    .agent_tools
+                    .as_deref()
+                    .map_or_else(String::new, |hash| format!(" agent_tools={hash}"))
             ),
             Body::Question { request_id: None } | Body::LegacyQuestion => "question".to_owned(),
             Body::Abandon { action_seq } => format!("abandon {action_seq:06}"),
@@ -1878,6 +1902,7 @@ mod tests {
                 separation: Separation::SameUser,
                 autonomy: Level::Assisted,
                 budget: 10,
+                agent_tools: None,
             }),
             note: "Why did \"svc\" restart? \\ check".to_owned(),
         }
@@ -1919,6 +1944,29 @@ mod tests {
                 "{text}"
             );
         }
+    }
+
+    #[test]
+    fn a_header_may_pin_the_agent_tools() {
+        let mut pinned = header();
+        if let Body::Header(header) = &mut pinned.body {
+            header.agent_tools = Some("ab".repeat(32));
+        }
+        let text = pinned.render();
+        assert!(text.contains(&format!(
+            ",\"budget\":10,\"agent_tools\":\"{}\",",
+            "ab".repeat(32)
+        )));
+        assert_eq!(Entry::parse(text.as_bytes()), Some(pinned));
+        for bad in [
+            text.replacen(&"ab".repeat(32), &"AB".repeat(32), 1),
+            text.replacen(&"ab".repeat(32), "abc", 1),
+            text.replacen(&format!("\"{}\"", "ab".repeat(32)), "null", 1),
+        ] {
+            assert_eq!(Entry::parse(bad.as_bytes()), None, "{bad}");
+        }
+        // Without a pin the field is absent, as in every earlier header.
+        assert!(!header().render().contains("agent_tools"));
     }
 
     #[test]

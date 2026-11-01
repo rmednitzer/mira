@@ -7,7 +7,9 @@ A session is the shared, signed record in which an operator and an AI agent inve
 - **Stage 1b:** agent requests, the broker that admits and runs them, the operator's own actions, collector-signed results, and the `separate_user` mode.
 - **Stage 1c:** findings checked against collector results, proposals, the operator's decisions with staleness, and a deterministic scripted agent ([`scripts/scripted_agent.py`](../scripts/scripted_agent.py)) for tests and demonstrations.
 
-**Not yet implemented:** the operator-clock delegation deadline and the optional own-assessment forcing function (`decide --own-assessment` and its header flag).
+- **Stage 2 (first part):** a local model as the agent, through the stdio MCP adapter and the client host in [`agent/`](../agent/README.md), with the adapter's tool definitions pinned in the header.
+
+**Not yet implemented:** hostile host-content fixtures and the adaptive red-team protocol (stage 2), the operator-clock delegation deadline and the optional own-assessment forcing function (`decide --own-assessment` and its header flag).
 
 The agent never writes the log. It submits signed requests, and the broker decides.
 
@@ -36,7 +38,7 @@ The collector key is used unattended by the broker. Keep it readable only by you
 ```sh
 mira session start DIR --allowed-signers SIGNERS --key KEY --operator NAME --agent NAME --collector NAME \
   [--separation same_user | --separation separate_user --agent-group GROUP] \
-  [--autonomy manual|advisory|assisted] [--budget N] --question TEXT
+  [--autonomy manual|advisory|assisted] [--budget N] [--agent-tools SHA256] --question TEXT
 mira session run DIR --allowed-signers SIGNERS --key COLLECTOR-KEY [--once]
 mira session act DIR --allowed-signers SIGNERS --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT]
 mira session request DIR --allowed-signers SIGNERS --key AGENT-KEY \
@@ -57,6 +59,7 @@ mira session verify DIR --allowed-signers SIGNERS --operator NAME [--expect-clos
   - the separation mode: `same_user` in stage 1a; `separate_user` arrives with the broker
   - the initial autonomy, `assisted` by default; `delegated` can only be granted with an expiry
   - the agent's budget, 10 by default
+  - with `--agent-tools`, the SHA-256 of the agent adapter's tool definitions, which the adapter and the client host require (see [Model agents](#model-agents))
   - your question
 
   If the key does not verify as the operator, nothing is left behind. An existing directory is never reused or removed.
@@ -187,6 +190,20 @@ A proposal is **stale** when a result for the same capability and arguments was 
 ```sh
 python3 scripts/scripted_agent.py DIR --allowed-signers SIGNERS --key AGENT-KEY [--mira PATH]
 ```
+
+## Model agents
+
+A model acts as the agent only through the harness in [`agent/`](../agent/README.md), which is optional tooling outside `mira`:
+- **`mira-agent-mcp`** (`agent/mira_agent_mcp.py`) is a stdio MCP server, run as the agent's OS user with the agent's key. Its four tools, `request_action`, `post_finding`, `ask` and `propose`, become `mira session request` calls. Its resources are read-only views of the session.
+- **The client host** (`agent/mira_agent_host.py`) connects one local model to that adapter and nothing else, and records every model exchange in a transcript outside the session.
+
+Pin the adapter's tool definitions when you start the session:
+
+```sh
+mira session start DIR … --agent-tools "$(python3 agent/mira_agent_mcp.py --tools-hash)" --question TEXT
+```
+
+The adapter refuses to serve a session without that pin. The host refuses an adapter whose definitions do not match it, and stops if they change during a run. Use `separate_user` for any model agent. The broker treats the model's requests exactly like any other agent's: the adapter, the host and the model are all untrusted.
 
 ## Separation
 

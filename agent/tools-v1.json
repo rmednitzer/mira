@@ -1,0 +1,79 @@
+[
+  {
+    "name": "request_action",
+    "title": "Request a read-only action",
+    "description": "Ask the session broker to run one read-only MIRA capture or investigation. The broker decides under the operator's autonomy level and budget, and records the result signed by the collector.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "arguments", "reason"],
+      "properties": {
+        "capability": {
+          "enum": ["capture", "service-active", "service-active/v1", "service-active/v2", "memory-headroom", "pressure-ceiling", "package-installed", "uptime-minimum", "kernel-release", "journal-events"]
+        },
+        "arguments": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^(|[A-Za-z0-9._:+@,/=\\\\][A-Za-z0-9._:+@,/=\\\\-]*( [A-Za-z0-9._:+@,/=\\\\][A-Za-z0-9._:+@,/=\\\\-]*)*)$"
+        },
+        "reason": {"type": "string", "minLength": 1, "maxLength": 1024}
+      }
+    }
+  },
+  {
+    "name": "post_finding",
+    "title": "Post a finding",
+    "description": "Post a claim from the closed vocabulary, citing result entries by sequence number. The broker checks every claim except hypothesis and no_finding against the cited collector results and refuses an unsupported one. A hypothesis needs a confidence.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "cites", "reason"],
+      "properties": {
+        "claim": {
+          "enum": ["expectation_satisfied", "expectation_not_satisfied", "expectation_indeterminate", "evidence_unavailable", "hypothesis", "no_finding"]
+        },
+        "confidence": {"enum": ["low", "medium", "high"]},
+        "cites": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {"type": "integer", "minimum": 0, "maximum": 4095}
+        },
+        "reason": {"type": "string", "minLength": 1, "maxLength": 1024}
+      }
+    }
+  },
+  {
+    "name": "ask",
+    "title": "Ask the operator",
+    "description": "Ask the operator a question. It is queued in the session and never interrupts.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question"],
+      "properties": {
+        "question": {"type": "string", "minLength": 1, "maxLength": 1024}
+      }
+    }
+  },
+  {
+    "name": "propose",
+    "title": "Propose an action",
+    "description": "Propose one read-only MIRA capture or investigation for the operator to approve or reject, for example one outside the current autonomy level. It costs no budget.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "arguments", "reason"],
+      "properties": {
+        "capability": {
+          "enum": ["capture", "service-active", "service-active/v1", "service-active/v2", "memory-headroom", "pressure-ceiling", "package-installed", "uptime-minimum", "kernel-release", "journal-events"]
+        },
+        "arguments": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^(|[A-Za-z0-9._:+@,/=\\\\][A-Za-z0-9._:+@,/=\\\\-]*( [A-Za-z0-9._:+@,/=\\\\][A-Za-z0-9._:+@,/=\\\\-]*)*)$"
+        },
+        "reason": {"type": "string", "minLength": 1, "maxLength": 1024}
+      }
+    }
+  }
+]

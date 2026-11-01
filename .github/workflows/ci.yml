@@ -54,6 +54,7 @@ jobs:
           .schema-venv/bin/python scripts/validate_host_investigations.py
           .schema-venv/bin/python scripts/validate_journal_investigation.py
           .schema-venv/bin/python scripts/validate_session.py
+          .schema-venv/bin/python -W error::ResourceWarning agent/test_agent_harness.py
           .schema-venv/bin/python scripts/test_validation_contract.py
           .schema-venv/bin/python scripts/test_qualify_host.py
       - name: Qualify the runner with the checkout build
