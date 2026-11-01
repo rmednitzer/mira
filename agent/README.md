@@ -7,6 +7,7 @@ Optional tooling for ADR 0015 stage 2. It lets a local model act as the agent in
 | `mira_agent_mcp.py` | **mira-agent-mcp**, the agent's stdio MCP server for one session |
 | `tools-v1.json` | its fixed, versioned tool definitions |
 | `mira_agent_host.py` | the client host: one local model, connected to this adapter and nothing else |
+| `red_team.py` | the red-team run kit: one round from fixtures to a bundle and a verdict ([protocol](../docs/red-team.md)) |
 | `fixtures/poisoned_adapter.py` | a malicious stand-in, used only by the tests |
 | `test_agent_harness.py` | the tests, against a real session, broker and `ssh-keygen` |
 
@@ -42,7 +43,7 @@ mira session start DIR … --agent-tools HASH --question TEXT
 python3 agent/mira_agent_host.py --session DIR --allowed-signers SIGNERS --key AGENT-KEY \
   (--model-socket PATH | --model-url http://127.0.0.1:PORT/v1 | --replay FILE) --model NAME \
   --record NEW-DIR [--mcp-config FILE] \
-  [--max-turns 8] [--turn-delay 1] [--temperature 0] [--mira PATH]
+  [--max-turns 8] [--turn-delay 1] [--temperature 0] [--mira PATH] [--previous-transcript FILE]
 ```
 
 The host enforces what a third-party client could only be asked to do:
@@ -55,7 +56,7 @@ The host enforces what a third-party client could only be asked to do:
   `--replay FILE` instead plays a JSON list of responses, one per turn, for tests and scripted red-team runs. Hosted models see synthetic or public sessions only; this host does not connect to them.
 - **Offered tools only.** A tool call naming anything the adapter does not list is never forwarded. It is recorded as refused by the host.
 
-Each turn the model gets:
+Each turn the model gets (with `--previous-transcript`, the first turn starts from that transcript's last tool outcomes):
 - a fixed system prompt (revision `mira-agent-prompt-v1`)
 - as untrusted data: the session's state and timeline, and the latest 4 collector-signed result documents, each bounded to 8 KiB, so it can reason over the evidence and not only the outcomes
 - the outcome of its previous tool calls
@@ -63,7 +64,7 @@ Each turn the model gets:
 Tool-call arguments must be a JSON-encoded object, as the chat completions format defines; anything else is refused by the host and recorded, and the run continues. The run ends when the model replies without a tool call, or after `--max-turns`.
 
 **Recording.** `--record` names a new directory (0700). Its `transcript.jsonl` holds, in order:
-- one `run` record: model, provider, parameters, prompt revision, the pinned tools hash
+- one `run` record: model, provider, endpoint (Unix socket, loopback address or replay), parameters, prompt revision, the pinned tools hash
 - per turn, a `model` record: the full request, the raw response and its status
 - a `tool` record per call: name, arguments and the adapter's reply, or the host's refusal
 - a final `stop` record: `idle`, `max_turns`, `tools_changed` or `invalid_model_response`

@@ -228,11 +228,13 @@ class LocalModel:
             check_socket(socket_path)
             self.connect = lambda: UnixConnection(socket_path, MODEL_TIMEOUT)
             self.path = '/v1/chat/completions'
+            self.endpoint = {'kind': 'unix_socket', 'path': str(socket_path)}
         else:
             parsed = check_loopback(url)
             self.connect = lambda: http.client.HTTPConnection(parsed.hostname, parsed.port or 80,
                                                               timeout=MODEL_TIMEOUT)
             self.path = parsed.path.rstrip('/') + '/chat/completions'
+            self.endpoint = {'kind': 'loopback_tcp', 'host': parsed.hostname, 'port': parsed.port or 80}
         self.model = model
         self.parameters = {'temperature': temperature}
 
@@ -261,6 +263,7 @@ class ReplayModel:
         self.responses = json.loads(Path(path).read_text())
         self.model = f'replay:{Path(path).name}'
         self.parameters = {}
+        self.endpoint = {'kind': 'replay'}
 
     def complete(self, messages, tools):
         if not self.responses:
@@ -309,6 +312,22 @@ def view(adapter):
     return text
 
 
+def previous_outcomes(path):
+    """The tool calls and outcomes of the last turn of an earlier run's
+    transcript, so a run continued across hosts keeps what the model learned,
+    including calls the host refused without touching the session."""
+    if path is None:
+        return []
+    # JSONL records end only at a newline, never at U+2028 and its kin.
+    records = [json.loads(line) for line in Path(path).read_bytes().split(b'\n') if line.strip()]
+    tools = [record for record in records if record.get('kind') == 'tool']
+    if not tools:
+        return []
+    last = max(record['turn'] for record in tools)
+    return [{'tool': record['name'], 'outcome': record['outcome']}
+            for record in tools if record['turn'] == last]
+
+
 def run(args, model, recorder):
     session = Path(args.session)
     pinned = pinned_hash(session)
@@ -330,9 +349,10 @@ def run(args, model, recorder):
             raise Refused('the adapter\'s tool definitions do not match the session header')
         recorder.write({'kind': 'run', 'model': model.model, 'provider': model.provider,
                         'parameters': model.parameters, 'prompt_revision': PROMPT_REVISION,
-                        'tools_sha256': pinned, 'max_turns': args.max_turns})
+                        'tools_sha256': pinned, 'max_turns': args.max_turns,
+                        'endpoint': model.endpoint})
         offered = {tool['name'] for tool in definitions}
-        previous = []
+        previous = previous_outcomes(getattr(args, 'previous_transcript', None))
         for turn in range(1, args.max_turns + 1):
             # Re-list before every turn: a changed description stops the run.
             if tools_hash(adapter.result('tools/list')['tools']) != pinned:
@@ -412,6 +432,8 @@ def main(argv=None):
     parser.add_argument('--mira', default='mira')
     parser.add_argument('--max-turns', type=int, default=8)
     parser.add_argument('--turn-delay', type=float, default=1.0)
+    parser.add_argument('--previous-transcript',
+                        help="an earlier run's transcript, whose last tool outcomes this run starts from")
     args = parser.parse_args(argv)
     args.adapter = [sys.executable, str(ADAPTER)]
     try:
