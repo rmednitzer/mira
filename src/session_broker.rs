@@ -20,6 +20,12 @@ use std::{
 };
 
 const ACTION_TIMEOUT: Duration = Duration::from_secs(120);
+/// Directory entries the broker reads from `inbox/` in one pass, and requests
+/// it handles: an agent flooding the inbox cannot make a pass unbounded.
+const MAX_SCAN: usize = 4096;
+const MAX_PER_PASS: usize = 64;
+/// How long an agent's pending (not yet published) request may sit.
+const PENDING_GRACE: Duration = Duration::from_secs(60);
 const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
 
 /// What an agent asks for.
@@ -324,14 +330,36 @@ pub fn run_once(dir: &Path, collector: &Writer) -> Result<Vec<Handled>, Problem>
     if collector.principal != state.header.collector {
         return Err(Problem::Role(state.entries));
     }
-    let mut names: Vec<String> = fs::read_dir(inbox(dir))
+    // Stream the agent-writable inbox with hard caps, and purge anything that
+    // is not a request so it cannot accumulate or fill the filesystem.
+    let mut names = Vec::new();
+    for item in fs::read_dir(inbox(dir))
         .map_err(|_| Problem::Io)?
-        .filter_map(|item| item.ok()?.file_name().into_string().ok())
-        .filter(|name| {
-            name.strip_suffix(".request")
-                .is_some_and(session::is_session_id)
-        })
-        .collect();
+        .take(MAX_SCAN)
+    {
+        let Ok(item) = item else { continue };
+        let path = item.path();
+        let name = item.file_name();
+        let name = name.to_str().unwrap_or_default();
+        if name
+            .strip_suffix(".request")
+            .is_some_and(session::is_session_id)
+        {
+            if names.len() < MAX_PER_PASS {
+                names.push(name.to_owned());
+            }
+            continue;
+        }
+        let fresh_pending = name.starts_with(".pending-")
+            && fs::symlink_metadata(&path)
+                .and_then(|metadata| metadata.modified())
+                .ok()
+                .and_then(|modified| modified.elapsed().ok())
+                .is_some_and(|age| age < PENDING_GRACE);
+        if !fresh_pending {
+            purge(&path);
+        }
+    }
     names.sort();
     let mut handled = Vec::new();
     for name in names {
@@ -340,12 +368,25 @@ pub fn run_once(dir: &Path, collector: &Writer) -> Result<Vec<Handled>, Problem>
     Ok(handled)
 }
 
+/// Remove an inbox object the agent left: a file or link, or an empty
+/// directory. A non-empty directory is left; its contents are the agent's
+/// to manage, under the quota its account should have.
+fn purge(path: &Path) {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_dir() => {
+            let _ = fs::remove_dir(path);
+        }
+        Ok(_) => {
+            let _ = fs::remove_file(path);
+        }
+        Err(_) => {}
+    }
+}
+
 fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<Handled, Problem> {
     let path = inbox(dir).join(name);
     let request_id = name.trim_end_matches(".request").to_owned();
-    let remove = || {
-        let _ = fs::remove_file(&path);
-    };
+    let remove = || purge(&path);
     if start.requests.contains(&request_id) {
         remove();
         return Ok(Handled::Discarded(Discard::Replayed));

@@ -385,7 +385,7 @@ fn forged_malformed_and_replayed_requests_never_run() {
         "garbage",
     )
     .unwrap();
-    // Names that are not request IDs are ignored entirely.
+    // Names that are not request IDs are never processed.
     fs::write(dir.session().join("inbox/notes.txt"), "x").unwrap();
     let ran = stdout(&dir.broker());
     let mut lines: Vec<_> = ran.lines().collect();
@@ -400,7 +400,8 @@ fn forged_malformed_and_replayed_requests_never_run() {
         ],
         "{ran}"
     );
-    assert!(dir.session().join("inbox/notes.txt").exists());
+    // Anything in the inbox that is not a request is purged.
+    assert!(!dir.session().join("inbox/notes.txt").exists());
     // A request admitted once and dropped into the inbox again is discarded.
     assert!(
         dir.request(&[
@@ -1034,4 +1035,47 @@ fn signature_files_are_never_group_writable_whatever_the_umask() {
     assert!(matches!(output.status.code(), Some(0 | 1)), "{output:?}");
     let mode = fs::metadata(&signature).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode & 0o022, 0, "mode {mode:o}");
+}
+
+#[test]
+fn an_inbox_flood_is_handled_in_bounded_passes_and_purged() {
+    let dir = Dir::new();
+    assert!(dir.start(&["--budget", "3"]).status.success());
+    let inbox = dir.session().join("inbox");
+    // Junk of every kind the agent's group could create.
+    for index in 0..300 {
+        fs::write(inbox.join(format!("junk-{index}")), "x").unwrap();
+    }
+    fs::create_dir(inbox.join("empty-dir")).unwrap();
+    fs::create_dir(inbox.join("full-dir")).unwrap();
+    fs::write(inbox.join("full-dir/file"), "x").unwrap();
+    fs::write(inbox.join(".pending-stale"), "x").unwrap();
+    assert!(
+        Command::new("touch")
+            .args(["-d", "2 minutes ago"])
+            .arg(inbox.join(".pending-stale"))
+            .status()
+            .unwrap()
+            .success()
+    );
+    fs::write(inbox.join(".pending-fresh"), "x").unwrap();
+    // 70 request-shaped files, more than one pass handles.
+    for index in 0..70u32 {
+        fs::write(inbox.join(format!("{:064x}.request", index + 1)), "garbage").unwrap();
+    }
+    let first = stdout(&dir.broker());
+    assert_eq!(first.lines().count(), 64, "{first}");
+    // Three refusals spend the budget; the rest are dropped unrecorded.
+    assert_eq!(first.matches("refused request (malformed)").count(), 3);
+    let second = stdout(&dir.broker());
+    assert_eq!(second.lines().count(), 6, "{second}");
+    let left: Vec<String> = fs::read_dir(&inbox)
+        .unwrap()
+        .map(|item| item.unwrap().file_name().into_string().unwrap())
+        .collect();
+    let mut left = left;
+    left.sort();
+    // Only the agent's fresh pending write and its non-empty directory remain.
+    assert_eq!(left, [".pending-fresh", "full-dir"]);
+    assert!(stdout(&dir.verify()).starts_with("MIRA session: verified entries 4 "));
 }

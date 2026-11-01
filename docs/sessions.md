@@ -150,6 +150,11 @@ With `--separation separate_user --agent-group GROUP`, which is required for any
 
 All files are created 0640, set through the open file descriptor so a restrictive umask cannot change it, so the group can read them and nobody else can. The broker refuses any inbox file owned by its own user, because under `separate_user` such a file was not written by the agent.
 
+The inbox is the one place the agent can write, so the broker bounds it:
+- **Bounded passes:** each pass reads at most 4,096 directory entries and handles at most 64 requests. The rest wait for later passes.
+- **Purging:** anything that is not a request is removed, as are pending files older than 60 seconds and empty directories. A non-empty directory the agent created is left in place.
+- **Quota:** `mira` cannot limit how much the agent writes, so give the agent's user a disk quota on the session's filesystem. Otherwise it can fill the filesystem, and then even your stop and close could fail.
+
 `same_user` (the default) makes everything 0700. It is for trusted scripted agents in tests and demonstrations only. Nothing then stops an agent from writing the log or using the collector key, so such a session supports no claim that the agent was contained.
 
 ## How entries are written
