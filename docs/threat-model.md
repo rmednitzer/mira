@@ -97,7 +97,15 @@ Status: design accepted ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.m
 - `verify` takes the expected operator from the verifier (`--operator`), never from the header, so a listed agent or collector key cannot pass off a counterfeit session in which it names itself operator
 - without a receipt, `verify` cannot tell an older genuine session by the same operator from the current one
 
-Only operator-side writers exist so far, so no agent containment is claimed yet. The broker, the collector key and agent requests are stage 1b. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.
+Stage 1b adds the broker:
+- agents submit only signed requests to `inbox/`
+- `mira session run`, started by the operator, verifies them and enforces level, budget and the closed capability set against the state at append time, so a directive takes precedence
+- admitted actions run as MIRA itself, with a fixed argument vector built from a capability table whose tokens never start with `-`
+- results are signed with a collector key that the broker checks before starting
+- `verify` checks every relayed request against the agent's stored, agent-signed record and every result document against the collector
+- `separate_user` gives the agent's group read access to the log and write access to `inbox/` only, and the broker refuses inbox files owned by its own user
+
+Agent containment holds only under `separate_user` with a collector key the agent cannot read. A two-user deployment is not exercised in CI. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.
 
 | Plausible threat | Planned control and verification |
 |---|---|

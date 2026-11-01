@@ -1,0 +1,736 @@
+//! The session broker (ADR 0015 stage 1b). The agent never writes the log:
+//! it drops signed request records into `inbox/`. `mira session run`, which
+//! the operator starts and the agent does not control, verifies each request,
+//! enforces autonomy, budget and the closed capability set, and records the
+//! outcome. It runs admitted actions itself, signing every result document
+//! with the collector key, which the agent cannot use.
+use crate::process::{Stderr, run_drained};
+use crate::session::{
+    self, Body, DOCUMENTS, Entry, INBOX, Level, Problem, REQUESTS, Refusal, Separation, State,
+    Writer,
+};
+use crate::session_capability::{self, Family, Outcome};
+use crate::signature::{self, Kind, Trust};
+use std::{
+    fs,
+    os::unix::fs::MetadataExt,
+    path::{Path, PathBuf},
+    process::Command,
+    time::Duration,
+};
+
+const ACTION_TIMEOUT: Duration = Duration::from_secs(120);
+const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
+
+/// What an agent asks for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ask {
+    Action {
+        capability: String,
+        arguments: String,
+    },
+    Question,
+}
+
+/// An agent request: one canonical line, signed by the agent under the session
+/// namespace. Its `kind` is `request`, which is never a log entry kind, so a
+/// request can never be passed off as an entry or the reverse.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Request {
+    pub session_id: String,
+    pub request_id: String,
+    pub principal: String,
+    pub based_on: u64,
+    pub ask: Ask,
+    pub note: String,
+}
+
+fn quoted(text: &str) -> String {
+    crate::evidence_json::quoted(text)
+}
+
+impl Request {
+    pub fn render(&self) -> String {
+        let (ask, capability, arguments) = match &self.ask {
+            Ask::Action {
+                capability,
+                arguments,
+            } => ("action", quoted(capability), quoted(arguments)),
+            Ask::Question => ("question", "null".to_owned(), "null".to_owned()),
+        };
+        format!(
+            "{{\"session_version\":{},\"session_id\":{},\"kind\":\"request\",\"request_id\":{},\"principal\":{},\"based_on\":{},\"request\":\"{ask}\",\"capability\":{capability},\"arguments\":{arguments},\"note\":{}}}\n",
+            session::SESSION_VERSION,
+            quoted(&self.session_id),
+            quoted(&self.request_id),
+            quoted(&self.principal),
+            self.based_on,
+            quoted(&self.note)
+        )
+    }
+
+    /// Admit only the canonical layout, through the session's strict parser.
+    pub fn parse(bytes: &[u8]) -> Option<Self> {
+        use session::Value;
+        let text = std::str::from_utf8(bytes).ok()?;
+        let fields = session::parse_flat(text.strip_suffix('\n')?)?;
+        let string = |key: &str| match fields.get(key)? {
+            Value::Str(value) => Some(value.clone()),
+            _ => None,
+        };
+        let ask = match string("request")?.as_str() {
+            "action" => Ask::Action {
+                capability: string("capability")?,
+                arguments: string("arguments")?,
+            },
+            "question" => Ask::Question,
+            _ => return None,
+        };
+        let based_on = match fields.get("based_on")? {
+            Value::Uint(value) => *value,
+            _ => return None,
+        };
+        let request = Self {
+            session_id: string("session_id")?,
+            request_id: string("request_id")?,
+            principal: string("principal")?,
+            based_on,
+            ask,
+            note: string("note")?,
+        };
+        (string("kind")? == "request"
+            && matches!(fields.get("session_version")?, Value::Uint(1))
+            && session::is_session_id(&request.session_id)
+            && session::is_session_id(&request.request_id)
+            && signature::validate_principal(&request.principal).is_ok()
+            && session::validate_text(&request.note).is_ok()
+            && request.render().as_bytes() == bytes)
+            .then_some(request)
+    }
+}
+
+fn inbox(dir: &Path) -> PathBuf {
+    dir.join(INBOX)
+}
+
+fn stored_request(dir: &Path, request_id: &str) -> PathBuf {
+    dir.join(REQUESTS).join(format!("{request_id}.request"))
+}
+
+pub fn document_path(dir: &Path, action_seq: u64) -> PathBuf {
+    dir.join(DOCUMENTS).join(format!("{action_seq:06}.json"))
+}
+
+fn sign_record(bytes: &str, writer: &Writer, pending_dir: &Path) -> Result<Vec<u8>, Problem> {
+    let pending_sig = session::pending_name(pending_dir, "sig");
+    let result = (|| {
+        signature::sign(bytes.as_bytes(), writer.key, &pending_sig).map_err(
+            |failure| match failure {
+                signature::Failure::Tool => Problem::Tool,
+                _ => Problem::Signature(0),
+            },
+        )?;
+        let signature =
+            signature::read_regular(&pending_sig, signature::MAX_SIGNATURE_BYTES as u64)
+                .map_err(|_| Problem::Io)?;
+        session::verify_signature(
+            bytes.as_bytes(),
+            &signature,
+            writer.allowed_signers,
+            writer.principal,
+            0,
+        )?;
+        let mut record = bytes.as_bytes().to_vec();
+        record.extend_from_slice(&signature);
+        Ok(record)
+    })();
+    let _ = fs::remove_file(&pending_sig);
+    result
+}
+
+/// The agent side: sign a request as the header's agent and publish it in
+/// the inbox by one exclusive hard link. Nothing it writes is trusted until
+/// the broker has verified and recorded it.
+pub fn submit(dir: &Path, writer: &Writer, ask: Ask, note: String) -> Result<String, Problem> {
+    session::validate_text(&note).map_err(|_| Problem::Text)?;
+    let (_, state) = session::load(dir)?;
+    if state.closed {
+        return Err(Problem::Closed);
+    }
+    if writer.principal != state.header.agent {
+        return Err(Problem::Role(state.entries));
+    }
+    let request = Request {
+        session_id: state.session_id.clone(),
+        request_id: crate::challenge::random_hex().map_err(|_| Problem::Io)?,
+        principal: writer.principal.to_owned(),
+        based_on: state.entries - 1,
+        ask,
+        note,
+    };
+    let record = sign_record(&request.render(), writer, &inbox(dir))?;
+    let pending = session::pending_name(&inbox(dir), "request");
+    let result = session::write_new(&pending, &record)
+        .and_then(|()| {
+            fs::hard_link(
+                &pending,
+                inbox(dir).join(format!("{}.request", request.request_id)),
+            )
+        })
+        .map_err(|_| Problem::Io);
+    let _ = fs::remove_file(&pending);
+    result.map(|()| request.request_id)
+}
+
+/// The admission decision for one verified request against the current state.
+fn decide(state: &State, request: &Request) -> Result<Body, Refusal> {
+    if request.session_id != state.session_id {
+        return Err(Refusal::SessionMismatch);
+    }
+    if request.based_on >= state.entries {
+        return Err(Refusal::Stale);
+    }
+    if state.requests.contains(&request.request_id) {
+        return Err(Refusal::Replayed);
+    }
+    // A directive after the request was written takes precedence over it.
+    let refused_by_level = || {
+        if state
+            .last_directive
+            .is_some_and(|seq| seq > request.based_on)
+        {
+            Refusal::SupersededByDirective
+        } else {
+            Refusal::Autonomy
+        }
+    };
+    match &request.ask {
+        Ask::Question => {
+            if state.level == Level::Manual {
+                return Err(refused_by_level());
+            }
+            Ok(Body::Question {
+                request_id: Some(request.request_id.clone()),
+            })
+        }
+        Ask::Action {
+            capability,
+            arguments,
+        } => {
+            let plan =
+                session_capability::plan(capability, arguments).ok_or(Refusal::Capability)?;
+            match state.level {
+                Level::Manual | Level::Advisory => return Err(refused_by_level()),
+                Level::Assisted if plan.operator_only => return Err(Refusal::OperatorOnly),
+                _ => {}
+            }
+            if state.budget == 0 {
+                return Err(Refusal::Budget);
+            }
+            Ok(Body::Action {
+                request_id: Some(request.request_id.clone()),
+                capability: capability.clone(),
+                arguments: arguments.clone(),
+            })
+        }
+    }
+}
+
+/// Run one planned action as `mira` itself with a fixed argument vector, the
+/// collector key signing the document, stdout drained under one deadline.
+fn execute(
+    dir: &Path,
+    collector_key: &Path,
+    action_seq: u64,
+    capability: &str,
+    arguments: &str,
+) -> Result<(Option<u64>, Outcome), Problem> {
+    let plan = session_capability::plan(capability, arguments).ok_or(Problem::Io)?;
+    let document = document_path(dir, action_seq);
+    let mut signature_path = document.clone().into_os_string();
+    signature_path.push(".sig");
+    let exe = std::env::current_exe().map_err(|_| Problem::Io)?;
+    let mut command = Command::new(exe);
+    command
+        .args(&plan.argv)
+        .arg("--signature")
+        .arg(&signature_path)
+        .arg("--sign-with")
+        .arg(collector_key);
+    let (code, stdout) = match run_drained(
+        &mut command,
+        Stderr::Inherit,
+        ACTION_TIMEOUT,
+        MAX_DOCUMENT_BYTES,
+    ) {
+        Ok((status, stdout)) => (status.code(), stdout),
+        Err(_) => (None, Vec::new()),
+    };
+    let outcome = Outcome::of(plan.family, code);
+    if outcome.has_document() {
+        session::write_new(&document, &stdout).map_err(|_| Problem::Io)?;
+    }
+    let exit_status = code.and_then(|code| u64::try_from(code).ok());
+    Ok((exit_status, outcome))
+}
+
+/// The broker's result for one inbox file.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Handled {
+    Admitted(Entry),
+    Refused(Refusal),
+    /// A request ID that already has an entry: discarded, not recorded again.
+    Discarded,
+}
+
+/// Check before any work that `collector.key` verifies as the header's
+/// collector, so a misconfigured broker refuses to start instead of failing
+/// midway through a request.
+pub fn check_key(dir: &Path, collector: &Writer) -> Result<(), Problem> {
+    let (_, state) = session::load(dir)?;
+    if collector.principal != state.header.collector {
+        return Err(Problem::Role(state.entries));
+    }
+    let probe = format!(
+        "{{\"session_version\":{},\"session_id\":{},\"kind\":\"broker_probe\"}}\n",
+        session::SESSION_VERSION,
+        quoted(&state.session_id)
+    );
+    sign_record(&probe, collector, &dir.join(DOCUMENTS)).map(|_| ())
+}
+
+/// Process every request currently in the inbox once, in name order.
+pub fn run_once(dir: &Path, collector: &Writer) -> Result<Vec<Handled>, Problem> {
+    let (_, state) = session::load(dir)?;
+    if state.closed {
+        return Err(Problem::Closed);
+    }
+    if collector.principal != state.header.collector {
+        return Err(Problem::Role(state.entries));
+    }
+    let mut names: Vec<String> = fs::read_dir(inbox(dir))
+        .map_err(|_| Problem::Io)?
+        .filter_map(|item| item.ok()?.file_name().into_string().ok())
+        .filter(|name| {
+            name.strip_suffix(".request")
+                .is_some_and(session::is_session_id)
+        })
+        .collect();
+    names.sort();
+    let mut handled = Vec::new();
+    for name in names {
+        handled.push(handle(dir, collector, &state, &name)?);
+    }
+    Ok(handled)
+}
+
+fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<Handled, Problem> {
+    let path = inbox(dir).join(name);
+    let request_id = name.trim_end_matches(".request").to_owned();
+    let remove = || {
+        let _ = fs::remove_file(&path);
+    };
+    if start.requests.contains(&request_id) {
+        remove();
+        return Ok(Handled::Discarded);
+    }
+    let refuse = |reason: Refusal| -> Result<Handled, Problem> {
+        session::append(dir, collector, |state| {
+            Ok((
+                Body::Refusal {
+                    request_id: request_id.clone(),
+                    reason,
+                },
+                Some(state.entries - 1),
+                String::new(),
+            ))
+        })?;
+        remove();
+        Ok(Handled::Refused(reason))
+    };
+    // Under separate_user an inbox file owned by the broker's own account was
+    // not written by the agent's user, so it is refused before it is read.
+    if start.header.separation == Separation::SeparateUser {
+        let own = fs::metadata(dir.join("entries"))
+            .map_err(|_| Problem::Io)?
+            .uid();
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_file() && metadata.uid() != own => {}
+            _ => return refuse(Refusal::Owner),
+        }
+    }
+    let Ok(record) = signature::read_regular(&path, session::MAX_RECORD_BYTES) else {
+        return refuse(Refusal::Malformed);
+    };
+    let Some((bytes, signature)) = session::split_record(&record) else {
+        return refuse(Refusal::Malformed);
+    };
+    let Some(request) = Request::parse(bytes) else {
+        return refuse(Refusal::Malformed);
+    };
+    if request.request_id != request_id || request.principal != start.header.agent {
+        return refuse(Refusal::Malformed);
+    }
+    match session::verify_signature(
+        bytes,
+        signature,
+        collector.allowed_signers,
+        &start.header.agent,
+        0,
+    ) {
+        Ok(()) => {}
+        Err(Problem::Tool) => return Err(Problem::Tool),
+        Err(_) => return refuse(Refusal::Signature),
+    }
+    // Keep the agent's exact signed record where the agent cannot change it.
+    match session::write_new(&stored_request(dir, &request_id), &record) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            remove();
+            return Ok(Handled::Discarded);
+        }
+        Err(_) => return Err(Problem::Io),
+    }
+    // Decide against the state current at append time, so a directive that
+    // lands meanwhile takes precedence.
+    let appended = session::append(dir, collector, |state| {
+        // Recorded meanwhile by another broker pass: never record it twice.
+        if state.requests.contains(&request_id) {
+            return Err(Problem::Replayed);
+        }
+        let body = decide(state, &request).unwrap_or_else(|reason| Body::Refusal {
+            request_id: request_id.clone(),
+            reason,
+        });
+        let note = match body {
+            Body::Refusal { .. } => String::new(),
+            _ => request.note.clone(),
+        };
+        let based_on = match body {
+            Body::Refusal { .. } => Some(state.entries - 1),
+            _ => Some(request.based_on),
+        };
+        Ok((body, based_on, note))
+    });
+    let entry = match appended {
+        Ok(entry) => entry,
+        Err(Problem::Replayed) => {
+            remove();
+            return Ok(Handled::Discarded);
+        }
+        Err(problem) => {
+            // Not recorded: drop the stored copy so the inbox request is
+            // retried, rather than discarded later as a replay.
+            let _ = fs::remove_file(stored_request(dir, &request_id));
+            return Err(problem);
+        }
+    };
+    remove();
+    match &entry.body {
+        Body::Refusal { reason, .. } => Ok(Handled::Refused(*reason)),
+        Body::Action {
+            capability,
+            arguments,
+            ..
+        } => {
+            record_result(dir, collector, entry.seq, capability, arguments)?;
+            Ok(Handled::Admitted(entry))
+        }
+        _ => Ok(Handled::Admitted(entry)),
+    }
+}
+
+fn record_result(
+    dir: &Path,
+    collector: &Writer,
+    action_seq: u64,
+    capability: &str,
+    arguments: &str,
+) -> Result<Entry, Problem> {
+    let (exit_status, outcome) = execute(dir, collector.key, action_seq, capability, arguments)?;
+    session::append(dir, collector, |state| {
+        Ok((
+            Body::Result {
+                action_seq,
+                exit_status,
+                outcome,
+            },
+            Some(state.entries - 1),
+            String::new(),
+        ))
+    })
+}
+
+/// The operator's own action: recorded by the operator, run immediately, its
+/// result signed by the collector. No budget applies.
+pub fn act(
+    dir: &Path,
+    operator: &Writer,
+    collector: &Writer,
+    capability: &str,
+    arguments: &str,
+    note: String,
+) -> Result<(Entry, Entry), Problem> {
+    if session_capability::plan(capability, arguments).is_none() {
+        return Err(Problem::InvalidDirective);
+    }
+    let action = session::append(dir, operator, |state| {
+        Ok((
+            Body::Action {
+                request_id: None,
+                capability: capability.to_owned(),
+                arguments: arguments.to_owned(),
+            },
+            Some(state.entries - 1),
+            note.clone(),
+        ))
+    })?;
+    let result = record_result(dir, collector, action.seq, capability, arguments)?;
+    Ok((action, result))
+}
+
+/// `session::verify`, plus every relayed request and every result document:
+/// a relayed entry must match the agent's stored, agent-signed request field
+/// for field, and a result's document must verify as the collector's.
+pub fn verify(
+    dir: &Path,
+    allowed: &Path,
+    operator: &str,
+    receipt: Option<&Path>,
+) -> Result<State, Problem> {
+    let state = session::verify(dir, allowed, operator, receipt)?;
+    let (log, _) = session::load(dir)?;
+    let mut actions = std::collections::BTreeMap::new();
+    for stored in &log {
+        let entry = &stored.entry;
+        let relayed = match &entry.body {
+            Body::Question {
+                request_id: Some(id),
+            } => Some((id, Ask::Question)),
+            Body::Action {
+                request_id,
+                capability,
+                arguments,
+            } => {
+                actions.insert(entry.seq, (capability.clone(), arguments.clone()));
+                request_id.as_ref().map(|id| {
+                    (
+                        id,
+                        Ask::Action {
+                            capability: capability.clone(),
+                            arguments: arguments.clone(),
+                        },
+                    )
+                })
+            }
+            _ => None,
+        };
+        if let Some((id, ask)) = relayed {
+            let record =
+                signature::read_regular(&stored_request(dir, id), session::MAX_RECORD_BYTES)
+                    .map_err(|_| Problem::Request(entry.seq))?;
+            let (bytes, signature) =
+                session::split_record(&record).ok_or(Problem::Request(entry.seq))?;
+            let request = Request::parse(bytes).ok_or(Problem::Request(entry.seq))?;
+            session::verify_signature(bytes, signature, allowed, &state.header.agent, entry.seq)
+                .map_err(|problem| match problem {
+                    Problem::Tool => Problem::Tool,
+                    _ => Problem::Request(entry.seq),
+                })?;
+            let matches = request.session_id == state.session_id
+                && request.request_id == *id
+                && request.principal == state.header.agent
+                && Some(request.based_on) == entry.based_on
+                && request.ask == ask
+                && request.note == entry.note;
+            if !matches {
+                return Err(Problem::Request(entry.seq));
+            }
+        }
+        if let Body::Result {
+            action_seq,
+            outcome,
+            ..
+        } = &entry.body
+            && outcome.has_document()
+        {
+            let (capability, arguments) = actions
+                .get(action_seq)
+                .ok_or(Problem::Document(entry.seq))?;
+            let family = session_capability::plan(capability, arguments)
+                .ok_or(Problem::Document(entry.seq))?
+                .family;
+            let expected = match family {
+                Family::Capture => Kind::Capture,
+                Family::Investigation => Kind::Investigation,
+            };
+            let path = document_path(dir, *action_seq);
+            let document =
+                signature::read_document(&path).map_err(|_| Problem::Document(entry.seq))?;
+            let mut signature_path = path.into_os_string();
+            signature_path.push(".sig");
+            let trust = Trust {
+                allowed_signers: allowed,
+                principal: &state.header.collector,
+                revocations: None,
+            };
+            match signature::verify(&document, Path::new(&signature_path), &trust) {
+                Ok(kind) if kind == expected => {}
+                Err(signature::Failure::Tool) => return Err(Problem::Tool),
+                _ => return Err(Problem::Document(entry.seq)),
+            }
+        }
+    }
+    Ok(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request() -> Request {
+        Request {
+            session_id: "ab".repeat(32),
+            request_id: "cd".repeat(32),
+            principal: "agent".to_owned(),
+            based_on: 3,
+            ask: Ask::Action {
+                capability: "memory-headroom".to_owned(),
+                arguments: "1024".to_owned(),
+            },
+            note: "check \"headroom\" \\ first".to_owned(),
+        }
+    }
+
+    #[test]
+    fn requests_round_trip_and_refuse_anything_else() {
+        let action = request();
+        let question = Request {
+            ask: Ask::Question,
+            ..request()
+        };
+        for item in [&action, &question] {
+            let text = item.render();
+            assert!(text.contains("\"kind\":\"request\""));
+            assert_eq!(
+                Request::parse(text.as_bytes()).as_ref(),
+                Some(item),
+                "{text}"
+            );
+        }
+        let text = action.render();
+        for bad in [
+            text.replacen("\"kind\":\"request\"", "\"kind\":\"action\"", 1),
+            text.replacen("\"request\":\"action\"", "\"request\":\"close\"", 1),
+            text.replacen("\"based_on\":3", "\"based_on\":03", 1),
+            text.replacen(",", ", ", 1),
+            text.trim_end().to_owned(),
+            text.replacen("\"note\":\"", "\"note\":\"\\u001b", 1),
+            text.replacen(&"cd".repeat(32), "short", 1),
+            text.replacen("\"principal\":\"agent\"", "\"principal\":\"-agent\"", 1),
+            text.replacen("\"capability\":", "\"extra\":1,\"capability\":", 1),
+        ] {
+            assert_eq!(Request::parse(bad.as_bytes()), None, "{bad:?}");
+        }
+        // A request is never an admissible log entry.
+        assert_eq!(session::Entry::parse(text.as_bytes()), None);
+    }
+
+    fn state(level: Level, budget: u64) -> State {
+        let header = session::Header {
+            operator: "operator".to_owned(),
+            agent: "agent".to_owned(),
+            collector: "collector".to_owned(),
+            separation: Separation::SameUser,
+            autonomy: Level::Assisted,
+            budget,
+        };
+        State {
+            session_id: "ab".repeat(32),
+            header,
+            entries: 5,
+            level,
+            budget,
+            delegated_until: None,
+            closed: false,
+            last_directive: None,
+            pending: Default::default(),
+            requests: Default::default(),
+        }
+    }
+
+    #[test]
+    fn decisions_follow_level_budget_capability_and_precedence() {
+        let admit = |state: &State, request: &Request| decide(state, request).is_ok();
+        assert!(admit(&state(Level::Assisted, 1), &request()));
+        assert_eq!(
+            decide(&state(Level::Assisted, 0), &request()),
+            Err(Refusal::Budget)
+        );
+        assert_eq!(
+            decide(&state(Level::Advisory, 1), &request()),
+            Err(Refusal::Autonomy)
+        );
+        assert_eq!(
+            decide(&state(Level::Manual, 1), &request()),
+            Err(Refusal::Autonomy)
+        );
+        let mut stopped = state(Level::Manual, 1);
+        stopped.last_directive = Some(4);
+        assert_eq!(
+            decide(&stopped, &request()),
+            Err(Refusal::SupersededByDirective)
+        );
+        let bind = Request {
+            ask: Ask::Action {
+                capability: "capture".to_owned(),
+                arguments: "host bind-boot".to_owned(),
+            },
+            ..request()
+        };
+        assert_eq!(
+            decide(&state(Level::Assisted, 1), &bind),
+            Err(Refusal::OperatorOnly)
+        );
+        assert!(admit(&state(Level::Delegated, 1), &bind));
+        let shell = Request {
+            ask: Ask::Action {
+                capability: "inspect".to_owned(),
+                arguments: String::new(),
+            },
+            ..request()
+        };
+        assert_eq!(
+            decide(&state(Level::Delegated, 9), &shell),
+            Err(Refusal::Capability)
+        );
+        let future = Request {
+            based_on: 5,
+            ..request()
+        };
+        assert_eq!(
+            decide(&state(Level::Assisted, 1), &future),
+            Err(Refusal::Stale)
+        );
+        let foreign = Request {
+            session_id: "ef".repeat(32),
+            ..request()
+        };
+        assert_eq!(
+            decide(&state(Level::Assisted, 1), &foreign),
+            Err(Refusal::SessionMismatch)
+        );
+        let mut seen = state(Level::Assisted, 1);
+        seen.requests.insert("cd".repeat(32));
+        assert_eq!(decide(&seen, &request()), Err(Refusal::Replayed));
+        let question = Request {
+            ask: Ask::Question,
+            ..request()
+        };
+        assert!(admit(&state(Level::Advisory, 0), &question));
+        assert_eq!(
+            decide(&state(Level::Manual, 0), &question),
+            Err(Refusal::Autonomy)
+        );
+    }
+}

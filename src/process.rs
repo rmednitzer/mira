@@ -1,5 +1,6 @@
 //! One bounded, shell-free subprocess runner for the fixed-argv tools MIRA
-//! executes (systemctl, journalctl, ssh-keygen). Callers own argv and interpret status.
+//! executes (systemctl, journalctl, ssh-keygen, and MIRA itself for session
+//! actions). Callers own argv and interpret status.
 use std::{
     io::{self, Read, Write},
     os::{fd::OwnedFd, unix::net::UnixStream},
@@ -27,6 +28,29 @@ pub(crate) fn run_bounded(
     stderr: Stderr,
     timeout: Duration,
     limit: usize,
+) -> io::Result<(ExitStatus, Vec<u8>)> {
+    run(command, input, stderr, timeout, limit, false)
+}
+
+/// As [`run_bounded`], but stdout is always drained to EOF, whatever the exit
+/// status: MIRA's own commands still print a complete document when they
+/// report unavailable evidence (exit 1) or an indeterminate outcome (exit 3).
+pub(crate) fn run_drained(
+    command: &mut Command,
+    stderr: Stderr,
+    timeout: Duration,
+    limit: usize,
+) -> io::Result<(ExitStatus, Vec<u8>)> {
+    run(command, None, stderr, timeout, limit, true)
+}
+
+fn run(
+    command: &mut Command,
+    input: Option<&[u8]>,
+    stderr: Stderr,
+    timeout: Duration,
+    limit: usize,
+    drain: bool,
 ) -> io::Result<(ExitStatus, Vec<u8>)> {
     let (mut reader, writer) = UnixStream::pair()?;
     reader.set_nonblocking(true)?;
@@ -101,7 +125,7 @@ pub(crate) fn run_bounded(
                 status = child.try_wait()?;
             }
             if let Some(status) = status
-                && (eof || !status.success())
+                && (eof || (!drain && !status.success()))
             {
                 return Ok((status, bytes));
             }

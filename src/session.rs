@@ -7,9 +7,10 @@
 //! its exact bytes, so MIRA reads its own format without a general JSON
 //! parser. Roles come from the operator-signed header, never from the entry
 //! that claims one.
+use crate::session_capability::{self, Outcome};
 use crate::signature::{self, Failure, Trust};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::{self, OpenOptions},
     io::{self, Write},
     os::unix::fs::{DirBuilderExt, OpenOptionsExt},
@@ -20,7 +21,7 @@ pub const SESSION_VERSION: u32 = 1;
 pub const MAX_ENTRIES: u64 = 4096;
 const MAX_ENTRY_BYTES: u64 = 8192;
 /// One record: the entry line followed by its armored SSHSIG signature.
-const MAX_RECORD_BYTES: u64 = MAX_ENTRY_BYTES + signature::MAX_SIGNATURE_BYTES as u64;
+pub(crate) const MAX_RECORD_BYTES: u64 = MAX_ENTRY_BYTES + signature::MAX_SIGNATURE_BYTES as u64;
 pub const MAX_TEXT_BYTES: usize = 1024;
 const ENTRIES: &str = "entries";
 const PENDING: &str = ".pending-";
@@ -105,11 +106,86 @@ pub enum Directive {
     DelegateUntil(u64),
 }
 
+/// Why the broker refused an agent request. Each is a fixed reason.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    Signature,
+    Malformed,
+    SessionMismatch,
+    Replayed,
+    Stale,
+    Autonomy,
+    SupersededByDirective,
+    Budget,
+    Capability,
+    OperatorOnly,
+    Owner,
+}
+
+impl Refusal {
+    const ALL: [Self; 11] = [
+        Self::Signature,
+        Self::Malformed,
+        Self::SessionMismatch,
+        Self::Replayed,
+        Self::Stale,
+        Self::Autonomy,
+        Self::SupersededByDirective,
+        Self::Budget,
+        Self::Capability,
+        Self::OperatorOnly,
+        Self::Owner,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Signature => "signature",
+            Self::Malformed => "malformed",
+            Self::SessionMismatch => "session_mismatch",
+            Self::Replayed => "replayed",
+            Self::Stale => "stale",
+            Self::Autonomy => "autonomy",
+            Self::SupersededByDirective => "superseded_by_directive",
+            Self::Budget => "budget",
+            Self::Capability => "capability",
+            Self::OperatorOnly => "operator_only",
+            Self::Owner => "owner",
+        }
+    }
+
+    fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|reason| reason.as_str() == text)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Body {
     Header(Header),
-    Question,
+    /// From the operator (no request), or relayed by the collector for an
+    /// agent request stored under `requests/`.
+    Question {
+        request_id: Option<String>,
+    },
     Directive(Directive),
+    /// One closed capability: the operator's own (no request), or an agent
+    /// request the broker admitted and relays.
+    Action {
+        request_id: Option<String>,
+        capability: String,
+        arguments: String,
+    },
+    /// The executed action's exit status and fixed outcome; the collector-signed
+    /// document, when there is one, is `documents/<action_seq>.json`.
+    Result {
+        action_seq: u64,
+        exit_status: Option<u64>,
+        outcome: Outcome,
+    },
+    /// An agent request the broker refused, with a fixed reason.
+    Refusal {
+        request_id: String,
+        reason: Refusal,
+    },
     /// The operator's conclusion is the note; the count includes this entry.
     Close {
         entry_count: u64,
@@ -120,8 +196,11 @@ impl Body {
     fn kind(&self) -> &'static str {
         match self {
             Self::Header(_) => "header",
-            Self::Question => "question",
+            Self::Question { .. } => "question",
             Self::Directive(_) => "directive",
+            Self::Action { .. } => "action",
+            Self::Result { .. } => "result",
+            Self::Refusal { .. } => "refusal",
             Self::Close { .. } => "close",
         }
     }
@@ -146,6 +225,10 @@ fn number(value: Option<u64>) -> String {
     value.map_or_else(|| "null".to_owned(), |value| value.to_string())
 }
 
+fn optional_quoted(value: Option<&str>) -> String {
+    value.map_or_else(|| "null".to_owned(), quoted)
+}
+
 impl Entry {
     /// The canonical bytes, with the trailing newline that is signed.
     pub fn render(&self) -> String {
@@ -159,7 +242,33 @@ impl Entry {
                 quoted(header.autonomy.as_str()),
                 header.budget
             ),
-            Body::Question => String::new(),
+            Body::Question { request_id } => {
+                format!("\"request_id\":{},", optional_quoted(request_id.as_deref()))
+            }
+            Body::Action {
+                request_id,
+                capability,
+                arguments,
+            } => format!(
+                "\"request_id\":{},\"capability\":{},\"arguments\":{},",
+                optional_quoted(request_id.as_deref()),
+                quoted(capability),
+                quoted(arguments)
+            ),
+            Body::Result {
+                action_seq,
+                exit_status,
+                outcome,
+            } => format!(
+                "\"action_seq\":{action_seq},\"exit_status\":{},\"outcome\":{},",
+                number(*exit_status),
+                quoted(outcome.as_str())
+            ),
+            Body::Refusal { request_id, reason } => format!(
+                "\"request_id\":{},\"reason\":{},",
+                quoted(request_id),
+                quoted(reason.as_str())
+            ),
             Body::Directive(directive) => {
                 let (name, level, budget, until) = match directive {
                     Directive::Stop => ("stop", None, None, None),
@@ -205,6 +314,11 @@ impl Entry {
             Value::Null => Some(None),
             Value::Str(_) => None,
         };
+        let optional_string = |key: &str| match fields.get(key)? {
+            Value::Str(value) => Some(Some(value.clone())),
+            Value::Null => Some(None),
+            Value::Uint(_) => None,
+        };
         let body = match string("kind")?.as_str() {
             "header" => Body::Header(Header {
                 operator: string("operator")?,
@@ -214,7 +328,23 @@ impl Entry {
                 autonomy: Level::parse(&string("autonomy")?)?,
                 budget: uint("budget")?,
             }),
-            "question" => Body::Question,
+            "question" => Body::Question {
+                request_id: optional_string("request_id")?,
+            },
+            "action" => Body::Action {
+                request_id: optional_string("request_id")?,
+                capability: string("capability")?,
+                arguments: string("arguments")?,
+            },
+            "result" => Body::Result {
+                action_seq: uint("action_seq")?,
+                exit_status: optional("exit_status")?,
+                outcome: Outcome::parse(&string("outcome")?)?,
+            },
+            "refusal" => Body::Refusal {
+                request_id: string("request_id")?,
+                reason: Refusal::parse(&string("reason")?)?,
+            },
             "directive" => {
                 let level = match fields.get("level")? {
                     Value::Str(level) => Some(Level::parse(level)?),
@@ -277,7 +407,7 @@ pub fn validate_text(text: &str) -> io::Result<()> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum Value {
+pub(crate) enum Value {
     Str(String),
     Uint(u64),
     Null,
@@ -286,7 +416,7 @@ enum Value {
 /// A strict parser for one flat JSON object of strings, unsigned integers and
 /// nulls. Duplicate keys, nesting, signs, fractions and whitespace are refused;
 /// the canonical re-render check in `Entry::parse` fixes the order.
-fn parse_flat(text: &str) -> Option<BTreeMap<String, Value>> {
+pub(crate) fn parse_flat(text: &str) -> Option<BTreeMap<String, Value>> {
     let mut chars = text.char_indices().peekable();
     let mut fields = BTreeMap::new();
     if chars.next()?.1 != '{' {
@@ -374,9 +504,16 @@ pub struct State {
     pub header: Header,
     pub entries: u64,
     pub level: Level,
+    /// Agent actions remaining; each admitted agent action consumes one.
     pub budget: u64,
     pub delegated_until: Option<u64>,
     pub closed: bool,
+    /// The last directive that changed the level or budget.
+    pub last_directive: Option<u64>,
+    /// Actions without a result yet, by sequence number.
+    pub pending: BTreeMap<u64, (String, String)>,
+    /// Every agent request ID already admitted or refused.
+    pub requests: BTreeSet<String>,
 }
 
 /// Why a session is not valid or an append is refused.
@@ -408,6 +545,12 @@ pub enum Problem {
     Receipt,
     /// The header names another operator than the verifier expects.
     Operator,
+    /// A relayed entry's stored agent request is missing, unsigned or differs.
+    Request(u64),
+    /// A result's document is missing or not signed by the collector.
+    Document(u64),
+    /// The request ID already has an entry; the request is discarded.
+    Replayed,
     /// The session directory or a file in it could not be read or written.
     Io,
     /// `ssh-keygen` is missing or failed to run.
@@ -432,6 +575,13 @@ impl Problem {
             }
             Self::Receipt => "close receipt does not match the session".to_owned(),
             Self::Operator => "session operator is not the expected principal".to_owned(),
+            Self::Request(seq) => {
+                format!("agent request relayed by entry {seq} missing or altered")
+            }
+            Self::Document(seq) => {
+                format!("document of result {seq} missing or not signed by the collector")
+            }
+            Self::Replayed => "request already recorded".to_owned(),
             Self::Io => "session directory unreadable or unwritable".to_owned(),
             Self::Tool => "ssh-keygen unavailable".to_owned(),
         }
@@ -452,7 +602,7 @@ pub struct Stored {
 pub type Log = Vec<Stored>;
 
 /// Split a record into the entry line (with its newline) and the signature.
-fn split_record(record: &[u8]) -> Option<(&[u8], &[u8])> {
+pub(crate) fn split_record(record: &[u8]) -> Option<(&[u8], &[u8])> {
     let end = record.iter().position(|byte| *byte == b'\n')? + 1;
     let (bytes, signature) = record.split_at(end);
     (signature.starts_with(signature::ARMOR)
@@ -540,6 +690,9 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
             budget: header.budget,
             delegated_until: None,
             closed: false,
+            last_directive: None,
+            pending: BTreeMap::new(),
+            requests: BTreeSet::new(),
         });
     };
     if entry.session_id != state.session_id {
@@ -557,25 +710,89 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
         state.delegated_until = None;
     }
     let operator = entry.principal == state.header.operator;
+    let collector = entry.principal == state.header.collector;
+    // A relayed request ID must be well formed and never seen before.
+    let fresh = |state: &State, id: &str| is_session_id(id) && !state.requests.contains(id);
     match &entry.body {
         Body::Header(_) => return Err(Problem::Malformed(seq)),
-        Body::Question if operator || entry.principal == state.header.agent => {}
-        Body::Directive(directive) if operator => match directive {
-            Directive::Stop => {
-                state.level = Level::Manual;
-                state.delegated_until = None;
+        Body::Question { request_id: None } if operator => {}
+        Body::Question {
+            request_id: Some(id),
+        } if collector => {
+            if !fresh(&state, id) || state.level == Level::Manual {
+                return Err(Problem::Malformed(seq));
             }
-            Directive::SetLevel(level) if *level != Level::Delegated => {
-                state.level = *level;
-                state.delegated_until = None;
+            state.requests.insert(id.clone());
+        }
+        Body::Directive(directive) if operator => {
+            match directive {
+                Directive::Stop => {
+                    state.level = Level::Manual;
+                    state.delegated_until = None;
+                }
+                Directive::SetLevel(level) if *level != Level::Delegated => {
+                    state.level = *level;
+                    state.delegated_until = None;
+                }
+                Directive::SetBudget(budget) => state.budget = *budget,
+                Directive::DelegateUntil(until) if *until > seq => {
+                    state.level = Level::Delegated;
+                    state.delegated_until = Some(*until);
+                }
+                _ => return Err(Problem::Malformed(seq)),
             }
-            Directive::SetBudget(budget) => state.budget = *budget,
-            Directive::DelegateUntil(until) if *until > seq => {
-                state.level = Level::Delegated;
-                state.delegated_until = Some(*until);
+            state.last_directive = Some(seq);
+        }
+        Body::Action {
+            request_id,
+            capability,
+            arguments,
+        } => {
+            let plan =
+                session_capability::plan(capability, arguments).ok_or(Problem::Malformed(seq))?;
+            match request_id {
+                None if operator => {}
+                Some(id) if collector => {
+                    let allowed = match state.level {
+                        Level::Assisted => !plan.operator_only,
+                        Level::Delegated => true,
+                        Level::Manual | Level::Advisory => false,
+                    };
+                    if !fresh(&state, id) || !allowed || state.budget == 0 {
+                        return Err(Problem::Malformed(seq));
+                    }
+                    state.budget -= 1;
+                    state.requests.insert(id.clone());
+                }
+                _ => return Err(Problem::Role(seq)),
             }
-            _ => return Err(Problem::Malformed(seq)),
-        },
+            state
+                .pending
+                .insert(seq, (capability.clone(), arguments.clone()));
+        }
+        Body::Result {
+            action_seq,
+            exit_status,
+            outcome,
+        } if collector => {
+            let (capability, arguments) = state
+                .pending
+                .remove(action_seq)
+                .ok_or(Problem::Malformed(seq))?;
+            let family = session_capability::plan(&capability, &arguments)
+                .ok_or(Problem::Malformed(seq))?
+                .family;
+            let status = exit_status.and_then(|status| i32::try_from(status).ok());
+            if Outcome::of(family, status) != *outcome {
+                return Err(Problem::Malformed(seq));
+            }
+        }
+        Body::Refusal { request_id, .. } if collector => {
+            if !fresh(&state, request_id) {
+                return Err(Problem::Malformed(seq));
+            }
+            state.requests.insert(request_id.clone());
+        }
         Body::Close { entry_count } if operator => {
             if *entry_count != seq + 1 {
                 return Err(Problem::AfterClose(seq));
@@ -595,7 +812,7 @@ pub struct Writer<'a> {
     pub principal: &'a str,
 }
 
-fn verify_signature(
+pub(crate) fn verify_signature(
     bytes: &[u8],
     signature: &[u8],
     allowed: &Path,
@@ -616,9 +833,10 @@ fn verify_signature(
     }
 }
 
-fn pending_name(dir: &Path, extension: &str) -> PathBuf {
+/// A fresh pending name inside `directory` (one of the session's directories).
+pub(crate) fn pending_name(directory: &Path, extension: &str) -> PathBuf {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    dir.join(ENTRIES).join(format!(
+    directory.join(format!(
         "{PENDING}{}-{}-{}.{extension}",
         std::process::id(),
         NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
@@ -628,11 +846,13 @@ fn pending_name(dir: &Path, extension: &str) -> PathBuf {
     ))
 }
 
-fn write_new(path: &Path, bytes: &[u8]) -> io::Result<()> {
+/// Files are readable by the session's group, so a separate agent user in it
+/// can read the log and documents; directory modes keep everyone else out.
+pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
-        .mode(0o600)
+        .mode(0o640)
         .open(path)?;
     file.write_all(bytes)?;
     file.sync_all()
@@ -683,8 +903,8 @@ pub fn append(
 /// claimed this sequence number first.
 fn claim(dir: &Path, writer: &Writer, entry: &Entry) -> Result<bool, Problem> {
     let bytes = entry.render();
-    let pending_sig = pending_name(dir, "sig");
-    let pending_record = pending_name(dir, "entry");
+    let pending_sig = pending_name(&dir.join(ENTRIES), "sig");
+    let pending_record = pending_name(&dir.join(ENTRIES), "entry");
     let result = (|| {
         signature::sign(bytes.as_bytes(), writer.key, &pending_sig).map_err(
             |failure| match failure {
@@ -716,15 +936,36 @@ fn claim(dir: &Path, writer: &Writer, entry: &Entry) -> Result<bool, Problem> {
     result
 }
 
-/// Create the session directory exclusively and write the operator-signed
-/// header as entry 0. The header must verify for the operator before use.
+pub const DOCUMENTS: &str = "documents";
+pub const REQUESTS: &str = "requests";
+pub const INBOX: &str = "inbox";
+
+/// The numeric ID of a group from `/etc/group`, read bounded.
+pub fn group_id(name: &str) -> Option<u32> {
+    let bytes = signature::read_regular(Path::new("/etc/group"), 1024 * 1024).ok()?;
+    std::str::from_utf8(&bytes).ok()?.lines().find_map(|line| {
+        let mut fields = line.split(':');
+        (fields.next()? == name).then(|| fields.nth(1)?.parse().ok())?
+    })
+}
+
+/// Create the session directory exclusively, with its layout, and write the
+/// operator-signed header as entry 0. The header must verify for the operator.
+///
+/// `same_user`: every directory is 0700. `separate_user`: the session belongs
+/// to `group`; the agent's group can read the log, documents and stored
+/// requests (setgid 2750) and write only to `inbox/` (setgid 2770).
 pub fn start(
     dir: &Path,
     writer: &Writer,
     header: Header,
     question: String,
+    group: Option<u32>,
 ) -> Result<Entry, Problem> {
     validate_text(&question).map_err(|_| Problem::Text)?;
+    if (header.separation == Separation::SeparateUser) != group.is_some() {
+        return Err(Problem::InvalidDirective);
+    }
     let session_id = crate::challenge::random_hex().map_err(|_| Problem::Io)?;
     let entry = Entry {
         session_id,
@@ -738,15 +979,37 @@ pub fn start(
     let mut builder = fs::DirBuilder::new();
     builder.mode(0o700);
     builder.create(dir).map_err(|_| Problem::Io)?;
-    let result = builder
-        .create(dir.join(ENTRIES))
-        .map_err(|_| Problem::Io)
+    let subdirectories = [ENTRIES, DOCUMENTS, REQUESTS, INBOX];
+    let layout = || -> Result<(), Problem> {
+        for name in subdirectories {
+            builder.create(dir.join(name)).map_err(|_| Problem::Io)?;
+        }
+        if let Some(group) = group {
+            use std::os::unix::fs::{PermissionsExt, chown};
+            let modes = [
+                (dir.to_path_buf(), 0o750),
+                (dir.join(ENTRIES), 0o2750),
+                (dir.join(DOCUMENTS), 0o2750),
+                (dir.join(REQUESTS), 0o2750),
+                (dir.join(INBOX), 0o2770),
+            ];
+            for (path, mode) in modes {
+                chown(&path, None, Some(group)).map_err(|_| Problem::Io)?;
+                fs::set_permissions(&path, fs::Permissions::from_mode(mode))
+                    .map_err(|_| Problem::Io)?;
+            }
+        }
+        Ok(())
+    };
+    let result = layout()
         .and_then(|()| claim(dir, writer, &entry))
         .and_then(|claimed| claimed.then_some(entry).ok_or(Problem::Io));
     if result.is_err() {
-        // Only the two directories this call created, and only if empty:
+        // Only the directories this call created, and only if empty:
         // remove_dir never deletes contents or follows a substituted link.
-        let _ = fs::remove_dir(dir.join(ENTRIES));
+        for name in subdirectories {
+            let _ = fs::remove_dir(dir.join(name));
+        }
         let _ = fs::remove_dir(dir);
     }
     result
@@ -842,7 +1105,28 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
                 header.collector,
                 header.separation.as_str()
             ),
-            Body::Question => "question".to_owned(),
+            Body::Question { request_id: None } => "question".to_owned(),
+            Body::Question {
+                request_id: Some(_),
+            } => "question (agent request)".to_owned(),
+            Body::Action {
+                request_id,
+                capability,
+                arguments,
+            } => format!(
+                "action {capability} {arguments}{}",
+                if request_id.is_some() {
+                    " (agent request)"
+                } else {
+                    ""
+                }
+            ),
+            Body::Result {
+                action_seq,
+                outcome,
+                ..
+            } => format!("result of {action_seq:06}: {}", outcome.as_str()),
+            Body::Refusal { reason, .. } => format!("refusal {}", reason.as_str()),
             Body::Directive(Directive::Stop) => "directive stop".to_owned(),
             Body::Directive(Directive::SetLevel(level)) => {
                 format!("directive level {}", level.as_str())
@@ -917,7 +1201,7 @@ mod tests {
     fn every_kind_round_trips_canonically() {
         let entries = [
             header(),
-            next(1, "agent", Body::Question),
+            next(1, "operator", Body::Question { request_id: None }),
             next(2, "operator", Body::Directive(Directive::Stop)),
             next(
                 3,
@@ -1044,9 +1328,17 @@ mod tests {
                 Level::Delegated,
                 3,
             ),
-            (next(3, "agent", Body::Question), Level::Delegated, 3),
+            (
+                next(3, "operator", Body::Question { request_id: None }),
+                Level::Delegated,
+                3,
+            ),
             // Delegation covered entries up to 3 and lapses at 4.
-            (next(4, "operator", Body::Question), Level::Assisted, 3),
+            (
+                next(4, "operator", Body::Question { request_id: None }),
+                Level::Assisted,
+                3,
+            ),
             (
                 next(5, "operator", Body::Directive(Directive::Stop)),
                 Level::Manual,
@@ -1074,7 +1366,10 @@ mod tests {
             Err(Problem::Role(7))
         );
         assert_eq!(
-            fold(Some(state.clone()), &next(7, "collector", Body::Question)),
+            fold(
+                Some(state.clone()),
+                &next(7, "collector", Body::Question { request_id: None })
+            ),
             Err(Problem::Role(7))
         );
         assert_eq!(
@@ -1109,7 +1404,10 @@ mod tests {
         .unwrap();
         assert!(closed.closed);
         assert_eq!(
-            fold(Some(closed), &next(8, "operator", Body::Question)),
+            fold(
+                Some(closed),
+                &next(8, "operator", Body::Question { request_id: None })
+            ),
             Err(Problem::AfterClose(8))
         );
     }
@@ -1121,7 +1419,10 @@ mod tests {
         let state = fold(None, &header()).unwrap();
         assert_eq!(fold(Some(state), &other), Err(Problem::Malformed(1)));
         assert_eq!(
-            fold(None, &next(1, "operator", Body::Question)),
+            fold(
+                None,
+                &next(1, "operator", Body::Question { request_id: None })
+            ),
             Err(Problem::Malformed(1))
         );
         for change in [
@@ -1143,14 +1444,302 @@ mod tests {
     #[test]
     fn entries_must_reference_earlier_entries_and_this_session() {
         let state = fold(None, &header()).unwrap();
-        let mut forward = next(1, "operator", Body::Question);
+        let mut forward = next(1, "operator", Body::Question { request_id: None });
         forward.based_on = Some(1);
         assert_eq!(
             fold(Some(state.clone()), &forward),
             Err(Problem::Malformed(1))
         );
-        let mut foreign = next(1, "operator", Body::Question);
+        let mut foreign = next(1, "operator", Body::Question { request_id: None });
         foreign.session_id = ID.replace('0', "1");
         assert_eq!(fold(Some(state), &foreign), Err(Problem::Mismatch(1)));
+    }
+
+    fn request(n: u8) -> Option<String> {
+        Some(format!("{n:02x}").repeat(32))
+    }
+
+    fn action(
+        seq: u64,
+        principal: &str,
+        request_id: Option<String>,
+        capability: &str,
+        arguments: &str,
+    ) -> Entry {
+        next(
+            seq,
+            principal,
+            Body::Action {
+                request_id,
+                capability: capability.to_owned(),
+                arguments: arguments.to_owned(),
+            },
+        )
+    }
+
+    #[test]
+    fn new_kinds_round_trip_canonically() {
+        for body in [
+            Body::Question {
+                request_id: request(1),
+            },
+            Body::Action {
+                request_id: request(2),
+                capability: "memory-headroom".to_owned(),
+                arguments: "1024".to_owned(),
+            },
+            Body::Action {
+                request_id: None,
+                capability: "capture".to_owned(),
+                arguments: "host bind-boot".to_owned(),
+            },
+            Body::Result {
+                action_seq: 3,
+                exit_status: Some(1),
+                outcome: Outcome::NotSatisfied,
+            },
+            Body::Result {
+                action_seq: 3,
+                exit_status: None,
+                outcome: Outcome::RunnerError,
+            },
+            Body::Refusal {
+                request_id: request(4).unwrap(),
+                reason: Refusal::SupersededByDirective,
+            },
+        ] {
+            let entry = next(5, "collector", body);
+            let text = entry.render();
+            assert_eq!(
+                Entry::parse(text.as_bytes()).as_ref(),
+                Some(&entry),
+                "{text}"
+            );
+        }
+        let refusal = next(
+            5,
+            "collector",
+            Body::Refusal {
+                request_id: request(4).unwrap(),
+                reason: Refusal::Budget,
+            },
+        )
+        .render();
+        assert_eq!(
+            Entry::parse(refusal.replace("\"budget\"", "\"bribe\"").as_bytes()),
+            None
+        );
+    }
+
+    #[test]
+    fn agent_actions_follow_autonomy_budget_and_capability() {
+        let mut header_entry = header();
+        if let Body::Header(h) = &mut header_entry.body {
+            h.budget = 1;
+        }
+        let state = fold(None, &header_entry).unwrap();
+        // The agent never writes the log itself.
+        assert_eq!(
+            fold(
+                Some(state.clone()),
+                &action(1, "agent", request(1), "memory-headroom", "1")
+            ),
+            Err(Problem::Role(1))
+        );
+        // Relayed by the collector, within budget: admitted and charged.
+        let after = fold(
+            Some(state.clone()),
+            &action(1, "collector", request(1), "memory-headroom", "1"),
+        )
+        .unwrap();
+        assert_eq!(after.budget, 0);
+        assert!(after.pending.contains_key(&1));
+        // Budget exhausted.
+        assert_eq!(
+            fold(
+                Some(after.clone()),
+                &action(2, "collector", request(2), "memory-headroom", "1")
+            ),
+            Err(Problem::Malformed(2))
+        );
+        // A replayed request ID, a capability outside the set, and an
+        // operator-only capture are refused at the state level too.
+        assert_eq!(
+            fold(
+                Some(state.clone()),
+                &action(1, "collector", None, "memory-headroom", "1")
+            ),
+            Err(Problem::Role(1))
+        );
+        assert!(
+            fold(
+                Some(state.clone()),
+                &action(1, "collector", request(1), "inspect", "")
+            )
+            .is_err()
+        );
+        assert!(
+            fold(
+                Some(state.clone()),
+                &action(1, "collector", request(1), "capture", "host bind-boot")
+            )
+            .is_err()
+        );
+        let replay = fold(
+            Some(after),
+            &next(2, "operator", Body::Directive(Directive::SetBudget(5))),
+        )
+        .unwrap();
+        assert!(
+            fold(
+                Some(replay),
+                &action(3, "collector", request(1), "memory-headroom", "1")
+            )
+            .is_err()
+        );
+        // Advisory and manual allow no agent actions; delegation allows bind-boot.
+        for level in [Level::Advisory, Level::Manual] {
+            let set = fold(
+                Some(state.clone()),
+                &next(1, "operator", Body::Directive(Directive::SetLevel(level))),
+            )
+            .unwrap();
+            assert!(
+                fold(
+                    Some(set),
+                    &action(2, "collector", request(1), "memory-headroom", "1")
+                )
+                .is_err()
+            );
+        }
+        let delegated = fold(
+            Some(state.clone()),
+            &next(1, "operator", Body::Directive(Directive::DelegateUntil(5))),
+        )
+        .unwrap();
+        assert!(
+            fold(
+                Some(delegated),
+                &action(2, "collector", request(1), "capture", "host bind-boot")
+            )
+            .is_ok()
+        );
+        // The operator's own actions need no budget and may be operator-only.
+        let own = fold(
+            Some(state),
+            &action(1, "operator", None, "capture", "host bind-boot"),
+        )
+        .unwrap();
+        assert_eq!(own.budget, 1);
+    }
+
+    #[test]
+    fn results_must_answer_a_pending_action_with_the_fixed_outcome() {
+        let state = fold(None, &header()).unwrap();
+        let state = fold(
+            Some(state),
+            &action(1, "operator", None, "memory-headroom", "1"),
+        )
+        .unwrap();
+        let result = |seq, action_seq, exit_status, outcome| {
+            next(
+                seq,
+                "collector",
+                Body::Result {
+                    action_seq,
+                    exit_status,
+                    outcome,
+                },
+            )
+        };
+        // The outcome must be the one the exit status maps to.
+        assert!(
+            fold(
+                Some(state.clone()),
+                &result(2, 1, Some(0), Outcome::NotSatisfied)
+            )
+            .is_err()
+        );
+        assert!(
+            fold(
+                Some(state.clone()),
+                &result(2, 1, Some(0), Outcome::CompleteAvailable)
+            )
+            .is_err()
+        );
+        // Only the collector writes results, and only for a pending action.
+        let mut forged = result(2, 1, Some(0), Outcome::Satisfied);
+        forged.principal = "operator".to_owned();
+        assert_eq!(fold(Some(state.clone()), &forged), Err(Problem::Role(2)));
+        assert!(
+            fold(
+                Some(state.clone()),
+                &result(2, 7, Some(0), Outcome::Satisfied)
+            )
+            .is_err()
+        );
+        let done = fold(Some(state), &result(2, 1, Some(0), Outcome::Satisfied)).unwrap();
+        assert!(done.pending.is_empty());
+        assert!(fold(Some(done), &result(3, 1, Some(0), Outcome::Satisfied)).is_err());
+    }
+
+    #[test]
+    fn relayed_questions_and_refusals_consume_their_request_ids() {
+        let state = fold(None, &header()).unwrap();
+        let asked = fold(
+            Some(state.clone()),
+            &next(
+                1,
+                "collector",
+                Body::Question {
+                    request_id: request(1),
+                },
+            ),
+        )
+        .unwrap();
+        let refusal = |seq, id: Option<String>| {
+            next(
+                seq,
+                "collector",
+                Body::Refusal {
+                    request_id: id.unwrap(),
+                    reason: Refusal::Budget,
+                },
+            )
+        };
+        assert!(fold(Some(asked.clone()), &refusal(2, request(1))).is_err());
+        assert!(fold(Some(asked), &refusal(2, request(2))).is_ok());
+        // Questions relay only above manual; the operator's carry no request.
+        let manual = fold(
+            Some(state.clone()),
+            &next(1, "operator", Body::Directive(Directive::Stop)),
+        )
+        .unwrap();
+        assert!(
+            fold(
+                Some(manual),
+                &next(
+                    2,
+                    "collector",
+                    Body::Question {
+                        request_id: request(1)
+                    }
+                )
+            )
+            .is_err()
+        );
+        assert_eq!(
+            fold(
+                Some(state),
+                &next(
+                    1,
+                    "operator",
+                    Body::Question {
+                        request_id: request(1)
+                    }
+                )
+            ),
+            Err(Problem::Role(1))
+        );
     }
 }

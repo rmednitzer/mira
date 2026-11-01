@@ -1,10 +1,11 @@
-//! `mira session` subcommands (ADR 0015 stage 1a). Exit codes: 0 done or
-//! verified, 1 refused by the session state or not verified, 2 usage, 4 tool,
-//! signing or I/O failure.
+//! `mira session` subcommands (ADR 0015 stages 1a and 1b). Exit codes: 0 done
+//! or verified, 1 refused by the session state or not verified, 2 usage, 4
+//! tool, signing or I/O failure.
 use mira::session::{self, Body, Directive, Header, Level, Problem, Separation, Writer};
+use mira::session_broker::{self, Ask, Handled};
 use std::{collections::BTreeMap, path::Path};
 
-pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--autonomy manual|advisory|assisted] [--budget N] --question TEXT | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE --operator NAME [--expect-close PATH]";
+pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--separation same_user | --separation separate_user --agent-group GROUP] [--autonomy manual|advisory|assisted] [--budget N] --question TEXT | mira session run DIR --allowed-signers FILE --key COLLECTOR-KEY [--once] | mira session act DIR --allowed-signers FILE --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT] | mira session request DIR --allowed-signers FILE --key AGENT-KEY (--capability NAME [--arguments TOKENS] | --question) --text TEXT | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE --operator NAME [--expect-close PATH]";
 
 fn usage() -> ! {
     eprintln!("Usage: {USAGE}");
@@ -111,6 +112,9 @@ pub fn run(args: &[String]) {
         "ask" => ask(dir, rest),
         "direct" => direct(dir, rest),
         "close" => close(dir, rest),
+        "request" => request(dir, rest),
+        "run" => run_broker(dir, rest),
+        "act" => act(dir, rest),
         "show" => show(dir, rest),
         "verify" => verify(dir, rest),
         _ => usage(),
@@ -129,15 +133,31 @@ fn start(dir: &Path, rest: &[String]) {
             "--autonomy",
             "--budget",
             "--question",
+            "--separation",
+            "--agent-group",
         ],
         &[],
     );
     let operator = principal(options.required("--operator"));
+    let (separation, group) = match (options.get("--separation"), options.get("--agent-group")) {
+        (None | Some("same_user"), None) => (Separation::SameUser, None),
+        (Some("separate_user"), Some(name)) => (
+            Separation::SeparateUser,
+            Some(
+                session::group_id(name)
+                    .unwrap_or_else(|| fail("agent group not found in /etc/group", 2)),
+            ),
+        ),
+        _ => fail(
+            "--separation separate_user requires --agent-group GROUP, and only it",
+            2,
+        ),
+    };
     let header = Header {
         operator: operator.clone(),
         agent: principal(options.required("--agent")),
         collector: principal(options.required("--collector")),
-        separation: Separation::SameUser,
+        separation,
         autonomy: options.get("--autonomy").map_or(Level::Assisted, |level| {
             Level::settable(level)
                 .unwrap_or_else(|| fail("autonomy must be manual, advisory or assisted", 2))
@@ -158,7 +178,7 @@ fn start(dir: &Path, rest: &[String]) {
         key: Path::new(options.required("--key")),
         principal: &operator,
     };
-    match session::start(dir, &writer, header, question) {
+    match session::start(dir, &writer, header, question, group) {
         Ok(_) => println!("MIRA session: started at {}", dir.display()),
         Err(Problem::Io) => fail("session directory exists or cannot be created", 4),
         Err(problem) => write_failure(problem),
@@ -186,7 +206,11 @@ fn ask(dir: &Path, rest: &[String]) {
     let options = Options::parse(rest, &["--allowed-signers", "--key", "--text"], &[]);
     let note = text(options.required("--text"));
     let entry = as_operator(dir, &options, |state| {
-        Ok((Body::Question, Some(state.entries - 1), note.clone()))
+        Ok((
+            Body::Question { request_id: None },
+            Some(state.entries - 1),
+            note.clone(),
+        ))
     });
     println!("MIRA session: question {:06}", entry.seq);
 }
@@ -294,7 +318,7 @@ fn verify(dir: &Path, rest: &[String]) {
     );
     let allowed = Path::new(options.required("--allowed-signers"));
     let operator = principal(options.required("--operator"));
-    match session::verify(
+    match session_broker::verify(
         dir,
         allowed,
         &operator,
@@ -310,5 +334,140 @@ fn verify(dir: &Path, rest: &[String]) {
             println!("MIRA session: not verified ({})", problem.reason());
             std::process::exit(1)
         }
+    }
+}
+
+fn capability(options: &Options) -> (String, String) {
+    let capability = options.required("--capability").to_owned();
+    let arguments = options.get("--arguments").unwrap_or_default().to_owned();
+    if mira::session_capability::plan(&capability, &arguments).is_none() {
+        fail(
+            "capability or arguments outside the closed set; see mira session documentation",
+            2,
+        );
+    }
+    (capability, arguments)
+}
+
+fn request(dir: &Path, rest: &[String]) {
+    let options = Options::parse(
+        rest,
+        &[
+            "--allowed-signers",
+            "--key",
+            "--capability",
+            "--arguments",
+            "--text",
+        ],
+        &["--question"],
+    );
+    let ask = match (options.has("--question"), options.has("--capability")) {
+        (true, false) if !options.has("--arguments") => Ask::Question,
+        (false, true) => {
+            let (capability, arguments) = capability(&options);
+            Ask::Action {
+                capability,
+                arguments,
+            }
+        }
+        _ => usage(),
+    };
+    let note = text(options.required("--text"));
+    let state = session::load(dir)
+        .map(|(_, state)| state)
+        .unwrap_or_else(|problem| write_failure(problem));
+    let writer = Writer {
+        allowed_signers: Path::new(options.required("--allowed-signers")),
+        key: Path::new(options.required("--key")),
+        principal: &state.header.agent,
+    };
+    match session_broker::submit(dir, &writer, ask, note) {
+        Ok(_) => println!("MIRA session: request submitted"),
+        Err(problem) => write_failure(problem),
+    }
+}
+
+fn run_broker(dir: &Path, rest: &[String]) {
+    let options = Options::parse(rest, &["--allowed-signers", "--key"], &["--once"]);
+    let state = session::load(dir)
+        .map(|(_, state)| state)
+        .unwrap_or_else(|problem| write_failure(problem));
+    let writer = Writer {
+        allowed_signers: Path::new(options.required("--allowed-signers")),
+        key: Path::new(options.required("--key")),
+        principal: &state.header.collector,
+    };
+    if let Err(problem) = session_broker::check_key(dir, &writer) {
+        write_failure(problem);
+    }
+    loop {
+        match session_broker::run_once(dir, &writer) {
+            Ok(handled) => {
+                for item in handled {
+                    match item {
+                        Handled::Admitted(entry) => {
+                            println!("MIRA session: admitted request as {:06}", entry.seq)
+                        }
+                        Handled::Refused(reason) => {
+                            println!("MIRA session: refused request ({})", reason.as_str())
+                        }
+                        Handled::Discarded => println!("MIRA session: discarded replayed request"),
+                    }
+                }
+            }
+            Err(Problem::Closed) => {
+                println!("MIRA session: closed; broker stopped");
+                return;
+            }
+            Err(problem) => write_failure(problem),
+        }
+        if options.has("--once") {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+}
+
+fn act(dir: &Path, rest: &[String]) {
+    let options = Options::parse(
+        rest,
+        &[
+            "--allowed-signers",
+            "--key",
+            "--collector-key",
+            "--capability",
+            "--arguments",
+            "--text",
+        ],
+        &[],
+    );
+    let (capability, arguments) = capability(&options);
+    let note = options.get("--text").map(text).unwrap_or_default();
+    let state = session::load(dir)
+        .map(|(_, state)| state)
+        .unwrap_or_else(|problem| write_failure(problem));
+    let allowed = Path::new(options.required("--allowed-signers"));
+    let operator = Writer {
+        allowed_signers: allowed,
+        key: Path::new(options.required("--key")),
+        principal: &state.header.operator,
+    };
+    let collector = Writer {
+        allowed_signers: allowed,
+        key: Path::new(options.required("--collector-key")),
+        principal: &state.header.collector,
+    };
+    match session_broker::act(dir, &operator, &collector, &capability, &arguments, note) {
+        Ok((action, result)) => {
+            let outcome = match result.body {
+                Body::Result { outcome, .. } => outcome.as_str(),
+                _ => "unknown",
+            };
+            println!(
+                "MIRA session: action {:06} result {:06} {outcome}",
+                action.seq, result.seq
+            );
+        }
+        Err(problem) => write_failure(problem),
     }
 }

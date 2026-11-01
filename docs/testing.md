@@ -59,7 +59,7 @@ The direct uptime parser uses integer whole seconds, including values above 2^53
 
 ## Packaging checks
 
-Native Ubuntu 26.04 amd64/arm64 CI builds and inspects the package, checks checksums, executes the extracted CLI, exercises isolated dpkg install/reinstall/remove/purge, and runs lintian. It checks evidence-v1/v2, investigation-v1/v2, memory-headroom-v1, pressure-ceiling-v1, package-installed-v1, uptime-minimum-v1, kernel-release-v1, journal-events-v1, capture-v1/v2/v3, challenge-v1 and session-v1 schemas and their packaged guides, rejects systemd units, maintainer scripts and the native test helper in the package, and asserts package-root/document permissions. Archive metadata must advertise exactly `Suggests: systemd, default-dbus-system-bus | dbus-system-bus, openssh-client` and no `Recommends`; native ELF requirements remain generated in `Depends`. See the [runtime relationship rationale](debian-packaging.md#runtime-package-relationships).
+Native Ubuntu 26.04 amd64/arm64 CI builds and inspects the package, checks checksums, executes the extracted CLI, exercises isolated dpkg install/reinstall/remove/purge, and runs lintian. It checks evidence-v1/v2, investigation-v1/v2, memory-headroom-v1, pressure-ceiling-v1, package-installed-v1, uptime-minimum-v1, kernel-release-v1, journal-events-v1, capture-v1/v2/v3, challenge-v1, session-v1 and session-request-v1 schemas and their packaged guides, rejects systemd units, maintainer scripts and the native test helper in the package, and asserts package-root/document permissions. Archive metadata must advertise exactly `Suggests: systemd, default-dbus-system-bus | dbus-system-bus, openssh-client` and no `Recommends`; native ELF requirements remain generated in `Depends`. See the [runtime relationship rationale](debian-packaging.md#runtime-package-relationships).
 
 Repeated assembly compares the same binary under ordinary and restrictive (`077`) invoking umasks. The builder normalizes its own umask to `022`; source timestamps use exported `SOURCE_DATE_EPOCH`. This verifies archive assembly under those conditions. A separate fresh-build test compiles twice from independent git archives and target directories, varies source/target paths, timezone and umask, and compares raw binaries and full packages against the selected artifacts. Its scope is one native runner/compiler/system dependency environment, not independent-host or hermetic compilation. The isolated dpkg root bypasses dependency enforcement. A separate native disposable Ubuntu 26.04 container installs the exact package through apt without bypassing dependencies, checks installed binary bytes and runs the installed demo/capture contract. Its receipt binds source commit/tree, package/binary digests and container image identity. This is container loader/dependency evidence; clean physical-host behavior, genuine upgrades/downgrades and signed release provenance remain release gates.
 
@@ -192,6 +192,24 @@ Unit tests in `src/session.rs`:
 `scripts/validate_session.py`:
 - checks the closed `session-v1` schema, canonical layout and state rules with its own implementation
 - builds a real session through the CLI, re-admits each entry, recomputes the state, compares it with `show --json`, verifies each signature with `ssh-keygen` directly, checks the receipt, and requires both a changed byte and a verifier expecting another operator to fail
+
+Stage 1b (broker):
+- **Unit tests:**
+  - every capability's fixed argument vector, and refusal of anything outside the set, option-shaped, mis-spaced or oversized
+  - the exit-status-to-outcome table
+  - request records round-trip, refuse non-canonical input, and are never admissible as log entries
+  - each admission decision: budget, level, `superseded_by_directive`, `operator_only`, capability, stale, session mismatch, replay, and questions by level
+  - fold rules: the agent never writes the log; budget is charged once per relayed action; results must answer a pending action with the mapped outcome; request IDs are used once
+- **`tests/session_broker.rs`** (real `ssh-keygen`):
+  - an admitted request runs once, and its collector-signed document verifies with plain `mira verify`
+  - refusals by autonomy, budget, `operator_only` and directive precedence, and admission under delegation
+  - forged, out-of-set, option-shaped and garbage requests never run; non-request files are ignored; replays are discarded
+  - operator `act` with no budget, a recorded template refusal, and refusal of the agent's key as collector or broker
+  - `verify` rejects an edited or re-signed stored request, an edited, agent-re-signed or missing document
+  - a closed session stops the broker and refuses requests
+  - invalid requests are usage errors before signing, and other keys never reach the inbox
+  - `separate_user` modes and group, and the refusal of inbox files owned by the broker's own user
+- **`scripts/validate_session.py`:** restates the capability table, outcome mapping and fold rules. It runs a real broker flow (request, admission, refusal, operator capture, close) and checks every entry, stored request and document signature with `ssh-keygen` directly.
 
 ## Representative host qualification
 

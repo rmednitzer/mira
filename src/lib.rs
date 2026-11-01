@@ -18,6 +18,8 @@ pub mod packages;
 pub mod pressure_investigation;
 mod process;
 pub mod session;
+pub mod session_broker;
+pub mod session_capability;
 pub mod signature;
 pub mod systemd;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

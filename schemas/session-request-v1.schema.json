@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/session-request-v1.schema.json",
+  "title": "MIRA shared-workspace agent request v1 (ADR 0015 stage 1b)",
+  "$comment": "Written by the agent into inbox/, signed under the session namespace; stored by the broker under requests/. kind is always request, which is never a log entry kind.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_version",
+    "session_id",
+    "kind",
+    "request_id",
+    "principal",
+    "based_on",
+    "request",
+    "capability",
+    "arguments",
+    "note"
+  ],
+  "properties": {
+    "session_version": {
+      "const": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+    },
+    "kind": {
+      "const": "request"
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+    },
+    "principal": {
+      "type": "string",
+      "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+    },
+    "based_on": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4095
+    },
+    "request": {
+      "enum": [
+        "action",
+        "question"
+      ]
+    },
+    "capability": {
+      "anyOf": [
+        {
+          "enum": [
+            "capture",
+            "service-active",
+            "service-active/v1",
+            "service-active/v2",
+            "memory-headroom",
+            "pressure-ceiling",
+            "package-installed",
+            "uptime-minimum",
+            "kernel-release",
+            "journal-events"
+          ]
+        },
+        {
+          "const": null
+        }
+      ]
+    },
+    "arguments": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(?!.*\\n)(|[A-Za-z0-9._:+@,/=][A-Za-z0-9._:+@,/=-]*( [A-Za-z0-9._:+@,/=][A-Za-z0-9._:+@,/=-]*)*)$"
+        },
+        {
+          "const": null
+        }
+      ]
+    },
+    "note": {
+      "type": "string",
+      "maxLength": 1024,
+      "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069])"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "request": {
+          "const": "action"
+        },
+        "capability": {
+          "enum": [
+            "capture",
+            "service-active",
+            "service-active/v1",
+            "service-active/v2",
+            "memory-headroom",
+            "pressure-ceiling",
+            "package-installed",
+            "uptime-minimum",
+            "kernel-release",
+            "journal-events"
+          ]
+        },
+        "arguments": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(?!.*\\n)(|[A-Za-z0-9._:+@,/=][A-Za-z0-9._:+@,/=-]*( [A-Za-z0-9._:+@,/=][A-Za-z0-9._:+@,/=-]*)*)$"
+        }
+      }
+    },
+    {
+      "properties": {
+        "request": {
+          "const": "question"
+        },
+        "capability": {
+          "const": null
+        },
+        "arguments": {
+          "const": null
+        }
+      }
+    }
+  ]
+}

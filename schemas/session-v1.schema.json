@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/session-v1.schema.json",
-  "title": "MIRA shared-workspace session entry v1 (ADR 0015, stage 1a kinds)",
-  "$comment": "One entry per file, signed under mira-session-v1@rmednitzer.github.io by the principal it names. Consumers must also check the canonical byte layout, contiguous sequence numbers, one session_id, roles from the header and the state rules, as scripts/validate_session.py does.",
+  "title": "MIRA shared-workspace session entry v1 (ADR 0015, stages 1a and 1b)",
+  "$comment": "One entry per record file, signed under mira-session-v1@rmednitzer.github.io by the principal it names. Consumers must also check the canonical byte layout, contiguous sequence numbers, one session_id, roles from the header, the state rules and relayed requests, as scripts/validate_session.py does.",
   "oneOf": [
     {
       "type": "object",
@@ -90,7 +90,8 @@
         "principal",
         "based_on",
         "note",
-        "kind"
+        "kind",
+        "request_id"
       ],
       "properties": {
         "session_version": {
@@ -124,6 +125,17 @@
         },
         "kind": {
           "const": "question"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
         }
       }
     },
@@ -301,6 +313,233 @@
           }
         }
       ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_version",
+        "session_id",
+        "seq",
+        "principal",
+        "based_on",
+        "note",
+        "kind",
+        "request_id",
+        "capability",
+        "arguments"
+      ],
+      "properties": {
+        "session_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "principal": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "based_on": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069])"
+        },
+        "kind": {
+          "const": "action"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "capability": {
+          "enum": [
+            "capture",
+            "service-active",
+            "service-active/v1",
+            "service-active/v2",
+            "memory-headroom",
+            "pressure-ceiling",
+            "package-installed",
+            "uptime-minimum",
+            "kernel-release",
+            "journal-events"
+          ]
+        },
+        "arguments": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(?!.*\\n)(|[A-Za-z0-9._:+@,/=][A-Za-z0-9._:+@,/=-]*( [A-Za-z0-9._:+@,/=][A-Za-z0-9._:+@,/=-]*)*)$"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_version",
+        "session_id",
+        "seq",
+        "principal",
+        "based_on",
+        "note",
+        "kind",
+        "action_seq",
+        "exit_status",
+        "outcome"
+      ],
+      "properties": {
+        "session_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "principal": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "based_on": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069])"
+        },
+        "kind": {
+          "const": "result"
+        },
+        "action_seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4095
+        },
+        "exit_status": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "satisfied",
+            "not_satisfied",
+            "indeterminate",
+            "complete_available",
+            "complete_unavailable",
+            "refused_arguments",
+            "signing_failed",
+            "runner_error"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_version",
+        "session_id",
+        "seq",
+        "principal",
+        "based_on",
+        "note",
+        "kind",
+        "request_id",
+        "reason"
+      ],
+      "properties": {
+        "session_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "principal": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "based_on": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069])"
+        },
+        "kind": {
+          "const": "refusal"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+        },
+        "reason": {
+          "enum": [
+            "signature",
+            "malformed",
+            "session_mismatch",
+            "replayed",
+            "stale",
+            "autonomy",
+            "superseded_by_directive",
+            "budget",
+            "capability",
+            "operator_only",
+            "owner"
+          ]
+        }
+      }
     },
     {
       "type": "object",
