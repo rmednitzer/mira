@@ -35,7 +35,7 @@ From the research basis:
    - inferences are labelled as such
    - verifying a claim is cheap
    - forcing functions are available
-6. **Injection-resistant by construction** (Greshake; Rule of Two; OWASP LLM06; CaMeL): the agent reads untrusted, private host evidence, so it gets no state-changing capability and no external channel. Enforcement lives in `mira`, not in the model.
+6. **Injection-resistant by construction** (Greshake; Rule of Two; OWASP LLM06; CaMeL): the agent reads untrusted, private host evidence, so it gets no state-changing capability and no external channel. Enforcement lives in an operator-side `mira` process that the agent does not control, never in the model or in anything the agent runs.
 7. **Existing boundaries hold:**
    - read-only collection
    - no network
@@ -54,50 +54,63 @@ From the research basis:
 | C. Embed a model client in `mira` | Adds network, credentials and a provider dependency to the core, against SEC-02 and the offline-first rule. Rejected |
 | D. A chat UI first, structure later | Persuasive narrative without checkable structure is exactly what the over-reliance studies warn against. Rejected |
 | E. Port the grid simulation as is | Its actors are claimed labels and its world is a grid. It keeps the right semantics but lacks identities and evidence |
-| F. **A signed, append-only investigation session. The operator and the agent are distinct key-holding principals acting only through `mira`'s closed read-only capabilities, under ported arbitration rules, with machine-checked findings. The model runs outside `mira`** | Meets the criteria. Its value is unproven until evaluated (stage 3) |
+| F. **A signed, append-only investigation session with a single writer side. The agent is a key-holding principal that can only submit requests. An operator-run broker executes them within `mira`'s closed read-only capabilities and ported arbitration rules, and signs every result with a key the agent cannot use. Findings are machine-checked against those results. The model runs outside `mira`** | Meets the criteria. Its value is unproven until evaluated (stage 3) |
 
 ## Decision (option F)
 
-### Principals and roles
+### Principals, keys and the broker
 
-A session has exactly two principals, each identified by an OpenSSH signing key ([ADR 0011](0011-host-identity-and-capture-integrity.md)):
-- **operator:** a human, who owns the session.
-- **agent:** a process, scripted or model-driven.
+Enforcement must run in a process the agent does not control. If the agent invoked `mira` itself, a modified binary could skip every check. If it held a key that signs results, it could fabricate a result and a matching report without collecting anything. So the session has three keys, and its log has a single writer side. The operator's `allowed_signers` file, kept outside the session directory and passed to every session command, binds the principal names to keys. Roles come from the operator-signed header, never from an entry that claims one.
 
-The operator's `allowed_signers` file binds both principal names to keys. The operator keeps that file outside the session directory, and every session command takes it as an argument. Every entry is signed under a new namespace, `mira-session-v1@rmednitzer.github.io`. A role comes from the operator-signed session header, never from the entry that claims it. This replaces the grid kernel's caller-claimed `Actor` with verifiable identity.
+| Principal | Holder | Signs |
+|---|---|---|
+| operator | the human | Header, decisions, directives, close, and the operator's own entries |
+| collector | the operator's account; used only by `mira session run` | Every action result and its document, and the envelope that records each agent request in the log |
+| agent | the agent process, under its own OS user | Only its requests: intent with action, finding, question, proposal |
 
-### Session layout
+`mira session run DIR` is the **broker**. It is a foreground process the operator starts in their own terminal, not a service, and it stops on `close` or interrupt. It is the only component that executes actions for the agent. For each signed agent request in the session's inbox, it:
+1. verifies the agent's signature;
+2. checks the autonomy level, the budget, the closed capability set and the argument syntax;
+3. runs the action with the collector key and stores the collector-signed document;
+4. appends the agent's original signed bytes, the outcome and the result to the log, inside a collector-signed envelope, or appends a refusal with a fixed reason;
+5. removes the request from the inbox.
 
-`mira session start DIR ...` creates `DIR` exclusively. It is mode 0700 when both parties run as the operator's user, or, with `--shared-group GROUP`, group-writable and setgid for a dedicated group shared with a separate agent user. It writes:
-- `entries/NNNNNN.json` with `.sig`: one entry per file. The file is created exclusively, so two writers can never take the same sequence number. The loser of a race re-reads the state and retries at the next number.
-- `documents/NNNNNN.json` with `.sig`: the exact signed capture or report produced by an action entry.
+All new signatures use a new namespace, `mira-session-v1@rmednitzer.github.io`.
 
-Entry 0 is the header, signed by the operator. It holds:
-- a 256-bit session ID from `/dev/urandom`
-- both principal names and roles
-- the operator's question
-- the initial autonomy level and the agent's action budget
+### Session layout and separation
 
-Every entry carries the session ID, its sequence number, its kind, its principal and `based_on`, the sequence number of the latest entry its author had seen. The entry layout is fixed and the free-text note comes last, so `mira` can read the state fields of its own entries without a general JSON parser. A closed `session-v1` schema and an independent Python validator check entries as well.
+`mira session start DIR ...` creates `DIR` exclusively, with:
+- `entries/` and `documents/`: the ordered log and the signed result documents. They are written only by operator-side processes (the operator's session commands and the broker), are owned by the operator's user, and can be read by the agent's group but not written by it.
+- `inbox/`: group-writable for a dedicated agent group (`--agent-group GROUP`). The agent drops its signed requests here.
+
+In the log, each entry is one file, `entries/NNNNNN.json` with `.sig`, created exclusively, so the operator's commands and the broker can never take the same sequence number. Entry 0 is the operator-signed header. It holds a 256-bit session ID from `/dev/urandom`, the three principal names and roles, the operator's question, the initial autonomy level, the agent's action budget, and the separation mode. Every entry carries the session ID, its sequence number, its kind, its principal and `based_on`, the sequence number of the latest entry its author had seen. The fixed layout puts the free-text note last, so `mira` can read the state fields of its own entries without a general JSON parser. A closed `session-v1` schema and an independent Python validator check entries as well.
+
+**Separation modes.**
+- **`separate_user`** is required for any model-driven agent. The agent's OS user cannot write `entries/` or `documents/`, and cannot read or use the operator's or collector's keys. The broker confirms that each inbox file belongs to the agent's user and not to its own.
+- **`same_user`** is for trusted scripted agents in tests and demonstrations only. Nothing then stops the agent from writing the log or using the collector key. `show` and `verify` label such a session "not separated", and it supports no claim that the agent was contained.
 
 **Integrity without a new hash primitive.** Each entry's signature covers its session ID and sequence number:
-- modification and replay are detected
-- an entry copied in from another session fails
-- a deleted middle entry leaves a gap that is detected
-- an operator-signed `close` entry records the final count, so truncating a closed session is detected
+- modification and cross-session replay are detected
+- a missing middle entry leaves a gap that is detected
+- a `close` entry, signed by the operator, records the final count
 
-Truncating the tail of an open session is not detectable. `mira session verify DIR --allowed-signers FILE` checks everything.
+Deleting the close entry, and any tail before it, would leave something indistinguishable from an open session. Two protections cover that:
+- under `separate_user`, the agent cannot delete log entries at all
+- `mira session close --receipt PATH` writes the signed close record, exclusively, to a path outside `DIR`; `mira session verify DIR --allowed-signers FILE --expect-close PATH` then detects truncation or a removed close
+
+Without a receipt, the guarantee is narrower: missing entries are detected only while the close entry survives.
 
 ### Entry kinds
 
 | Kind | Who | Meaning |
 |---|---|---|
-| `header` | operator | Session ID, principals, question, initial autonomy and budget |
-| `intent` | both | What the author is about to do and why. Written in the same step as each agent action, so intent always precedes action |
-| `action` / `result` | both | One closed capability with validated arguments, run by `mira`. The result names the signed document and records the outcome `mira` itself computed (template, outcome, reason, availability), so nothing is re-parsed later |
-| `finding` | both | A claim from a closed vocabulary, citing entries, with a confidence label and a bounded, unchecked note |
-| `question` | both | Asks the other party, the dialog for resolving uncertainty. It queues and never interrupts |
-| `proposal` | agent | An action outside the agent's current autonomy, awaiting a decision |
+| `header` | operator | Session ID, principals, question, autonomy, budget, separation mode |
+| `intent` + `action` | agent request, or operator | What the author is about to do and why, then one closed capability with arguments. An agent submits both in one request, so intent always precedes action |
+| `result` | collector | The collector-signed document, and the template, outcome, reason and evidence availability that the broker itself computed |
+| `finding` | agent request, or operator | A claim from a closed vocabulary, citing entries, with a confidence label and a bounded, unchecked note |
+| `question` | agent request, or operator | Asks the other party, the dialog for resolving uncertainty. It queues and never interrupts |
+| `proposal` | agent request | An action outside the agent's current autonomy, awaiting a decision |
+| `refusal` | collector | An agent request that failed verification, autonomy, budget, capability or claim checks, with a fixed reason |
 | `decision` | operator | Approves or rejects a proposal; accepts, rejects or marks a finding uncertain. Records the operator's own assessment |
 | `directive` | operator | Changes the autonomy level or budget, grants delegation with an expiry, or stops the agent |
 | `close` | operator | The operator's conclusion, which may cite findings, and the final entry count |
@@ -108,7 +121,7 @@ These are exactly the existing signable, read-only commands, with their existing
 - `capture` with the `host/v1` or `host-pressure/v1` profile (always with a timeline)
 - the seven `investigate` templates with `--json`
 
-There is no shell, no file read, no network, no `verify`, no `challenge`, no `session` recursion and no new capability. `capture --bind-boot` collects a linkable identifier, so it is **operator-only**: the agent can only propose it, or use it under delegation. `mira` executes each action in the invoking process, so it runs under the acting party's own account and permissions: a separate agent user sees what that user may read, and any difference shows up as recorded evidence gaps. `mira` signs the resulting document with the acting principal's key and stores it. The agent never runs host commands itself.
+There is no shell, no file read, no network, no `verify`, no `challenge`, no `session` recursion and no new capability. `capture --bind-boot` collects a linkable identifier, so it is **operator-only**: the agent can only propose it, or request it under delegation. The broker executes every agent action in the operator's process, under the operator's permissions, and signs the result with the collector key. The agent never runs a host command and never signs a result.
 
 ### Autonomy levels (ported from the grid kernel)
 
@@ -122,7 +135,7 @@ There is no shell, no file read, no network, no `verify`, no `challenge`, no `se
 The decision column never moves. Only the operator decides on proposals and findings and closes the session.
 
 The kernel's invariants carry over as enforced rules, each with tests:
-- **Operator precedence.** A `stop` directive sets the level to `manual` from its sequence number on. An agent action or proposal started on an earlier `based_on` is still recorded but marked `superseded_by_directive`.
+- **Operator precedence.** A `stop` directive sets the level to `manual` from its sequence number on. The broker refuses any agent request it has not yet executed, with reason `superseded_by_directive`, even if the request was submitted earlier.
 - **Expiry.** A delegation grant ends after an entry count or an operator-clock deadline set in the directive. After that the level reverts to `assisted`.
 - **Staleness.** When the operator decides on a proposal whose `based_on` is older than a newer result for the same capability and arguments, `mira` flags it stale, and approving it requires `--despite-stale`.
 - **Terminal immutability.** After `close`, every append is refused.
@@ -130,60 +143,60 @@ The kernel's invariants carry over as enforced rules, each with tests:
 
 ### Grounded findings
 
-Claim vocabulary, version 1:
+Claim vocabulary, version 1. Checks use only `result` entries signed by the collector. Those record the outcome and the evidence availability the broker computed, not anything the agent reported.
 
-| Claim | Checked by `mira` against the cited results |
+| Claim | Checked against the cited collector results |
 |---|---|
 | `expectation_satisfied` | Every cited result is a report with outcome `satisfied` |
 | `expectation_not_satisfied` | At least one cited result has outcome `not_satisfied` |
-| `evidence_unavailable` | At least one cited result is indeterminate, or a capture with an unavailable source |
+| `expectation_indeterminate` | At least one cited result has outcome `indeterminate`, for any reason, including a transition in progress or an incomplete installation on evidence that was collected |
+| `evidence_unavailable` | At least one cited result records unavailable evidence (status `unavailable` with a failure reason), or a capture with an unavailable source. An indeterminate assessment over collected evidence does not satisfy it |
 | `hypothesis` | Never checked; requires a confidence label (`low`, `medium` or `high`); always shown as inference |
 | `no_finding` | Nothing to check |
 
-A checkable claim whose citations do not support it is refused when it is appended, so the agent cannot post a false checked claim. `mira session show DIR` renders every finding with its principal, claim, check status (`checked` or `inference`), confidence, citations and staleness. Agent notes are labelled unchecked and escaped. Optional forcing: `mira session decide --own-assessment` records the operator's own view first, and a header flag can require that before agent findings are shown.
+The broker refuses a checkable claim that its citations do not support. `show` and `verify` recompute every check from the log, so a check result is never taken on trust from an entry. `mira session show DIR` renders every finding with its principal, claim, check status (`checked` or `inference`), confidence, citations and staleness. Agent notes are labelled unchecked and escaped. Optional forcing: `mira session decide --own-assessment` records the operator's own view first, and a header flag can require that before agent findings are shown.
 
 ### The agent boundary
 
-`mira` never calls a model and opens no socket. An agent is any process that uses only the `mira session` subcommands with its own key. Stage 1 ships a deterministic scripted agent as test tooling. A model harness (stage 2) is separate optional tooling. Per AGENTS.md, it records the model identifier, provider, prompt revision, parameters, raw output and status as session documents. Host evidence is private and attacker-influenceable, so under the Rule of Two:
+`mira` never calls a model and opens no socket. An agent is any process that reads the session and submits signed requests to its inbox with its own key. The agent-side command `mira session request` signs and drops a request; nothing it does is trusted until the broker has verified and recorded it. Stage 1 ships a deterministic scripted agent as test tooling. A model harness (stage 2) is separate optional tooling. Per AGENTS.md, it records the model identifier, provider, prompt revision, parameters, raw output and status as session documents. Host evidence is private and attacker-influenceable, so under the Rule of Two:
 - real sessions use **local** models only
 - hosted models see synthetic or public sessions only (existing policy)
 - the agent never gets a state-changing or communicating capability
 
 ### Operator interface
 
-`mira session` subcommands: `start`, `act`, `note`, `ask`, `propose`, `decide`, `direct`, `close`, `show [--json]`, `pending` and `verify`. `show` is the shared view: timeline, pending questions and proposals, findings with check labels, current autonomy and budget. The CLI is the first interface. Registered adaptive views remain Phase 4.
+`mira session` subcommands. Operator side: `start`, `run` (the broker), `act`, `note`, `ask`, `decide`, `direct`, `close [--receipt PATH]`, `show [--json]`, `pending` and `verify [--expect-close PATH]`. Agent side: `request`. `show` is the shared view: timeline, pending questions and proposals, findings with check labels, current autonomy and budget. The CLI is the first interface. Registered adaptive views remain Phase 4.
 
 ## Trust, privacy and failure analysis
 
-- **New boundary TB8, the agent principal.** The agent is untrusted. Its effect is bounded by `mira`'s enforcement:
-  - closed read-only capabilities
-  - an autonomy level and budget from operator-signed entries
-  - claim checks
-  - no decision rights
-
-  The worst case is a wrong but labelled `hypothesis`, a refused checked claim, a wasted budget, or a proposal the operator rejects.
-- **Prompt injection.** Host strings reach the model through documents. They can steer the agent's text and choices, but they cannot widen its capabilities or bypass checks. The design does not claim the agent's reasoning is uncorrupted, only that corruption cannot act or pose as checked.
-- **Same-user agents.** An agent running under the operator's account can read and write the session directory and may reach the operator's key. Signatures make forged operator entries detectable but cannot stop file deletion or tampering. For model agents, the operator should run the agent as a separate unprivileged user that has only its own key. The operator's key should be passphrase-protected in `ssh-agent` with confirmation, or held on a FIDO2 token. Stage 1 documents this and tests detection, not prevention.
+- **New boundary TB8, the agent principal.** The agent is untrusted. It can only submit signed requests. A broker it does not control enforces the closed read-only capability set, the operator-signed autonomy level and budget, and the claim checks. Only collector-signed results count as evidence, and the agent has no decision rights. The worst case is a wrong but labelled `hypothesis`, a refused request, a wasted budget, or a proposal the operator rejects.
+- **Forged results.** An agent cannot produce a result that counts as evidence. It holds no collector key, cannot write the log or documents under `separate_user`, and cannot make the broker sign anything it did not collect itself. A modified `mira` on the agent side gains nothing, because nothing it writes is trusted.
+- **Prompt injection.** Host strings reach the model through documents. They can steer the agent's text and requests, but they cannot widen its capabilities or bypass the broker's checks. The design does not claim the agent's reasoning is uncorrupted, only that corruption cannot act or pose as checked.
+- **Same-user sessions.** Under `same_user`, the agent shares the operator's account, can write the log and may reach the keys. Signatures then make tampering detectable but not preventable, and such a session is labelled "not separated". It is limited to trusted scripted agents.
+- **Operator keys.** The operator's key should be passphrase-protected in `ssh-agent` with confirmation, or on a FIDO2 token. The collector key is unattended by design, so it must be readable only by the operator's user and used only by the broker.
 - **Over-reliance.** It is mitigated (closed claims, check labels, inference labels, cheap citations, optional forcing) but not eliminated, as the studies report. Stage 3 measures it.
 - **Disclosure.** A session holds host evidence and may hold the boot ID under delegation. It is private by default (mode 0700, or a dedicated group shared only with the agent user) and must not go to hosted services.
-- **Availability.** Without an agent, a session is an operator's signed investigation log. Without `ssh-keygen`, sessions fail closed (exit 4).
+- **Availability.** Without an agent, a session is an operator's signed investigation log. If the broker stops, agent requests wait in the inbox and nothing runs. Without `ssh-keygen`, sessions fail closed (exit 4).
 - **Resources.** At most 4096 entries per session, notes of at most 1 KiB, documents under the existing 1 MiB bound, and every action is already bounded.
 
 ## Stages and acceptance
 
 ### Stage 1: session core and scripted agent
 
-Rust: the session layout and its subcommands, with tests run against the real `ssh-keygen`:
-- every entry kind, the exclusive-creation race between two writers, and gap and truncation detection after `close`
-- cross-session replay
+Rust: the session layout, the broker and the subcommands, with tests run against the real `ssh-keygen`:
+- every entry kind and every refusal reason
+- the exclusive-creation race between the operator's commands and the broker
+- gap detection; truncation and close removal detected with `--expect-close`; cross-session replay
 - the role taken from the header, never from a claimed entry
+- an agent-signed `result`, or a document not signed by the collector, never counting as evidence
+- an inbox file owned by the broker's own user refused under `separate_user`
 - every autonomy level, with budget exhaustion, expiry, `stop` precedence, a stale decision, and terminal refusal
-- every claim kind, checked and refused
+- every claim kind, checked and refused, including `expectation_indeterminate` against `evidence_unavailable` on a transition and on an incomplete installation
 - operator-only `--bind-boot`
 - refusal of any capability outside the closed set
 - unchanged existing commands
 
-Independent tooling: a `session-v1` schema and a validator that recomputes autonomy, staleness and claim checks; a deterministic scripted agent; a qualification group gated on `ssh_keygen`.
+Independent tooling: a `session-v1` schema and a validator that recomputes autonomy, staleness and claim checks; a deterministic scripted agent; a qualification group gated on `ssh_keygen`. A live separate-user test runs where the host permits creating a test user. Otherwise it is recorded as not applicable.
 
 ### Stage 2: local model harness
 
@@ -210,8 +223,8 @@ The roadmap moves the shared workspace ahead of security-advisory correlation, a
 ## Review questions
 
 1. **Default autonomy:** `assisted` (the agent gathers evidence within a budget) or `advisory` (the agent only proposes)? The proposal is `assisted`, the intermediate level the out-of-the-loop research favours.
-2. **Separate OS user for model agents:** recommended (proposed) or required?
-3. **Integrity primitive:** per-entry signatures with sequence numbers and a signed close, or a hash chain? A chain needs either a `sha256sum` subprocess or a first crate, which ADR 0011's criteria exclude.
+2. **Separate OS user:** required for model agents (proposed), since without it nothing contains the agent. Should `same_user` exist at all, beyond tests?
+3. **Integrity primitive:** per-entry signatures with sequence numbers, a signed close and an external close receipt (proposed), or a hash chain? A chain needs either a `sha256sum` subprocess or a first crate, which ADR 0011's criteria exclude.
 4. **Forcing functions:** opt-in (proposed), or required before closing?
 5. **Roadmap order:** workspace before advisory correlation (proposed)?
 

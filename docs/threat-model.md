@@ -86,15 +86,15 @@ Implemented ([ADR 0012](adr/0012-bounded-journal-events.md)): MIRA reads journal
 
 ### Planned shared workspace boundary
 
-Status: design only ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.md)); no session, agent or model harness is implemented. TB8 is the agent principal: an untrusted process with its own signing key that acts only through `mira session` subcommands.
+Status: design only ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.md)); no session, agent or model harness is implemented. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.
 
 | Plausible threat | Planned control and verification |
 |---|---|
 | Prompt injection through host evidence (journal unit names, dpkg strings, service states) steering the agent | The agent reads untrusted, private data, so under the Rule of Two it has no state-changing or communicating capability. Its actions are the closed read-only set, enforced by `mira`. Hostile-content fixtures must show that it cannot widen capabilities or post a false checked claim |
-| Agent claims the operator role, or forges a decision | Roles come from the operator-signed header. Every entry is signed under its own namespace and verified against the operator's `allowed_signers` |
+| Agent claims the operator role, forges a decision, or fabricates a result | Roles come from the operator-signed header. Every entry is signed under its own namespace and verified against the operator's `allowed_signers`. Only collector-signed results count as evidence. Under `separate_user`, the agent cannot write the log or documents or use the operator or collector keys, and a modified agent-side `mira` gains nothing |
 | Excessive agency or runaway acquisition | Autonomy level, budget and expiry come from operator directives and are checked on every entry. `stop` takes precedence. Each action is already bounded |
 | Over-reliance on persuasive or wrong agent output | Closed claim vocabulary; checkable claims verified at append time; inference labelled with confidence; bounded, escaped, unchecked notes; optional forcing; measured in stage 3 |
-| Session tampering by a same-user agent (deleting entries, reading the operator's key) | Signatures and sequence numbers detect modification, replay, gaps and post-close truncation, but not open-session tail truncation. A separate agent user and an `ssh-agent`-confirmed or FIDO2 operator key are recommended. Detection is tested; prevention is not claimed |
+| Session tampering (deleting entries, removing the close, reading keys) | `separate_user`, required for model agents, makes the log unwritable by the agent. Signatures and sequence numbers detect modification, replay and gaps. An external close receipt detects truncation or a removed close. `same_user` sessions are labelled "not separated" and limited to trusted scripted agents |
 | Host evidence leaking to a hosted model | Real sessions use local models only; hosted models see synthetic or public sessions only; `mira` itself never calls a model |
 
 These are design hypotheses, not verified controls.
