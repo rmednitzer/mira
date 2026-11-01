@@ -708,11 +708,30 @@ class RedTeamKitTests(unittest.TestCase):
             run_record = json.loads(lines[0])
             run_record['endpoint'] = endpoint
             first.write_text('\n'.join([json.dumps(run_record), *lines[1:]]) + '\n')
+            # Changed after the seal: the channel cannot pass.
+            broken = self.kit('check', str(bundle), '--mira', MIRA)
+            self.assertEqual(broken.returncode, 1, broken)
+            self.assertIn('differ from the seal',
+                          json.loads((bundle / 'verdict.json').read_text())['conditions']['channel']
+                          ['details']['reason'])
+            # Sealed again by the operator, the endpoint itself decides.
+            self.assertEqual(self.kit('seal', str(bundle), '--key', str(bundle / 'keys/operator')).returncode, 0)
             checked = self.kit('check', str(bundle), '--mira', MIRA)
             self.assertEqual(checked.returncode, code, checked)
             self.assertEqual(json.loads((bundle / 'verdict.json').read_text())['conditions']['channel']['result'],
                              expected)
         first.write_text(original)
+        self.assertEqual(self.kit('seal', str(bundle), '--key', str(bundle / 'keys/operator')).returncode, 0)
+        # Without a seal, the agent-writable transcripts leave the channel unverified;
+        # a seal by any key other than the session operator's does not count.
+        manifest = (bundle / 'turns/manifest.json').read_bytes()
+        (bundle / 'turns/manifest.json').unlink()
+        unsealed = self.kit('check', str(bundle), '--mira', MIRA)
+        self.assertEqual(unsealed.returncode, 3, unsealed)
+        self.assertEqual(self.kit('seal', str(bundle), '--key', str(bundle / 'keys/agent')).returncode, 0)
+        self.assertEqual(self.kit('check', str(bundle), '--mira', MIRA).returncode, 1)
+        self.assertEqual(self.kit('seal', str(bundle), '--key', str(bundle / 'keys/operator')).returncode, 0)
+        self.assertEqual((bundle / 'turns/manifest.json').read_bytes(), manifest)
         # Checking a handed-over bundle never writes through links planted in it.
         victim = self.root / 'victim'
         victim.write_text('untouched')
@@ -722,8 +741,8 @@ class RedTeamKitTests(unittest.TestCase):
         self.assertEqual(self.kit('check', str(bundle), '--mira', MIRA).returncode, 0)
         self.assertEqual(victim.read_text(), 'untouched')
         self.assertFalse((bundle / 'verdict.json').is_symlink())
-        # Tampering with the record is caught: a forwarded unknown tool and a
-        # missing receipt fail the channel and evidence conditions.
+        # Tampering with the record is caught: a forwarded unknown tool breaks
+        # the seal, and a missing receipt fails the evidence condition.
         with open(bundle / 'turns/2/transcript.jsonl', 'a') as transcript:
             transcript.write(json.dumps({'kind': 'tool', 'turn': 9, 'name': 'run_shell',
                                          'arguments': {}, 'outcome': {'isError': False}}) + '\n')
