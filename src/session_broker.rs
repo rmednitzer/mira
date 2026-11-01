@@ -206,7 +206,7 @@ fn decide(state: &State, request: &Request) -> Result<Body, Refusal> {
     };
     match &request.ask {
         Ask::Question => {
-            if state.level == Level::Manual {
+            if state.effective_level() == Level::Manual {
                 return Err(refused_by_level());
             }
             Ok(Body::Question {
@@ -219,7 +219,8 @@ fn decide(state: &State, request: &Request) -> Result<Body, Refusal> {
         } => {
             let plan =
                 session_capability::plan(capability, arguments).ok_or(Refusal::Capability)?;
-            match state.level {
+            // The level that applies to the entry about to be written.
+            match state.effective_level() {
                 Level::Manual | Level::Advisory => return Err(refused_by_level()),
                 Level::Assisted if plan.operator_only => return Err(Refusal::OperatorOnly),
                 _ => {}
@@ -244,7 +245,7 @@ fn execute(
     action_seq: u64,
     capability: &str,
     arguments: &str,
-) -> Result<(Option<u64>, Outcome), Problem> {
+) -> Result<(Option<u64>, Outcome, Option<String>), Problem> {
     let plan = session_capability::plan(capability, arguments).ok_or(Problem::Io)?;
     let document = document_path(dir, action_seq);
     let mut signature_path = document.clone().into_os_string();
@@ -267,11 +268,21 @@ fn execute(
         Err(_) => (None, Vec::new()),
     };
     let outcome = Outcome::of(plan.family, code);
-    if outcome.has_document() {
-        session::write_new(&document, &stdout).map_err(|_| Problem::Io)?;
-    }
     let exit_status = code.and_then(|code| u64::try_from(code).ok());
-    Ok((exit_status, outcome))
+    if !outcome.has_document() {
+        return Ok((exit_status, outcome, None));
+    }
+    session::write_new(&document, &stdout).map_err(|_| Problem::Io)?;
+    // The result commits to this document through the collector's signature.
+    // The signature file is made group-readable whatever the umask.
+    use std::os::unix::fs::PermissionsExt;
+    let _ = fs::set_permissions(&signature_path, fs::Permissions::from_mode(0o640));
+    let signature = signature::read_regular(Path::new(&signature_path), 4096)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .filter(|text| session::is_armored_signature(text))
+        .ok_or(Problem::Io)?;
+    Ok((exit_status, outcome, Some(signature)))
 }
 
 /// The broker's result for one inbox file.
@@ -383,11 +394,24 @@ fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<H
         Err(_) => return refuse(Refusal::Signature),
     }
     // Keep the agent's exact signed record where the agent cannot change it.
+    // A stored copy without a log entry is a request a previous broker stored
+    // but never recorded, for example after an interruption: resume it.
     match session::write_new(&stored_request(dir, &request_id), &record) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            remove();
-            return Ok(Handled::Discarded);
+            let (_, current) = session::load(dir)?;
+            if current.requests.contains(&request_id) {
+                remove();
+                return Ok(Handled::Discarded);
+            }
+            let stored = signature::read_regular(
+                &stored_request(dir, &request_id),
+                session::MAX_RECORD_BYTES,
+            )
+            .map_err(|_| Problem::Io)?;
+            if stored != record {
+                return refuse(Refusal::Malformed);
+            }
         }
         Err(_) => return Err(Problem::Io),
     }
@@ -446,19 +470,31 @@ fn record_result(
     action_seq: u64,
     capability: &str,
     arguments: &str,
-) -> Result<Entry, Problem> {
-    let (exit_status, outcome) = execute(dir, collector.key, action_seq, capability, arguments)?;
-    session::append(dir, collector, |state| {
+) -> Result<Option<Entry>, Problem> {
+    let (exit_status, outcome, document_signature) =
+        execute(dir, collector.key, action_seq, capability, arguments)?;
+    let appended = session::append(dir, collector, |state| {
+        // Abandoned by the operator while it ran: there is nothing to record.
+        if !state.pending.contains_key(&action_seq) {
+            return Err(Problem::Abandoned);
+        }
         Ok((
             Body::Result {
                 action_seq,
                 exit_status,
                 outcome,
+                document_signature: document_signature.clone(),
             },
             Some(state.entries - 1),
             String::new(),
         ))
-    })
+    });
+    match appended {
+        Ok(entry) => Ok(Some(entry)),
+        // Closing requires every action to be finished or abandoned first.
+        Err(Problem::Abandoned | Problem::Closed) => Ok(None),
+        Err(problem) => Err(problem),
+    }
 }
 
 /// The operator's own action: recorded by the operator, run immediately, its
@@ -470,7 +506,7 @@ pub fn act(
     capability: &str,
     arguments: &str,
     note: String,
-) -> Result<(Entry, Entry), Problem> {
+) -> Result<(Entry, Option<Entry>), Problem> {
     if session_capability::plan(capability, arguments).is_none() {
         return Err(Problem::InvalidDirective);
     }
@@ -549,10 +585,9 @@ pub fn verify(
         }
         if let Body::Result {
             action_seq,
-            outcome,
+            document_signature: Some(committed),
             ..
         } = &entry.body
-            && outcome.has_document()
         {
             let (capability, arguments) = actions
                 .get(action_seq)
@@ -567,14 +602,21 @@ pub fn verify(
             let path = document_path(dir, *action_seq);
             let document =
                 signature::read_document(&path).map_err(|_| Problem::Document(entry.seq))?;
+            // The signature file must be the one the collector-signed result
+            // commits to, and that signature must cover these exact bytes.
             let mut signature_path = path.into_os_string();
             signature_path.push(".sig");
+            let on_disk = signature::read_regular(Path::new(&signature_path), 4096)
+                .map_err(|_| Problem::Document(entry.seq))?;
+            if on_disk != committed.as_bytes() {
+                return Err(Problem::Document(entry.seq));
+            }
             let trust = Trust {
                 allowed_signers: allowed,
                 principal: &state.header.collector,
                 revocations: None,
             };
-            match signature::verify(&document, Path::new(&signature_path), &trust) {
+            match signature::verify_staged(&document, committed.as_bytes(), &trust) {
                 Ok(kind) if kind == expected => {}
                 Err(signature::Failure::Tool) => return Err(Problem::Tool),
                 _ => return Err(Problem::Document(entry.seq)),
@@ -732,5 +774,23 @@ mod tests {
             decide(&state(Level::Manual, 0), &question),
             Err(Refusal::Autonomy)
         );
+    }
+
+    #[test]
+    fn decisions_use_the_level_of_the_entry_being_written() {
+        // Delegation covers entries up to 4; the next entry would be 5.
+        let mut lapsing = state(Level::Delegated, 1);
+        lapsing.delegated_until = Some(4);
+        let bind = Request {
+            ask: Ask::Action {
+                capability: "capture".to_owned(),
+                arguments: "host bind-boot".to_owned(),
+            },
+            ..request()
+        };
+        assert_eq!(decide(&lapsing, &bind), Err(Refusal::OperatorOnly));
+        assert!(decide(&lapsing, &request()).is_ok());
+        lapsing.delegated_until = Some(5);
+        assert!(decide(&lapsing, &bind).is_ok());
     }
 }

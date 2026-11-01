@@ -62,7 +62,7 @@ mira session verify DIR --allowed-signers SIGNERS --operator NAME [--expect-clos
   - delegate until a later sequence number, after which the level returns to `assisted`
 
   Delegation ends after a number of entries. The operator-clock deadline the ADR also allows is not implemented.
-- **`close`** appends your conclusion and the final entry count. After it, every append is refused. With `--receipt PATH`, the close record (entry and signature) is also written, exclusively, to `PATH`. That path must be in an existing directory outside the session, resolved through symbolic links. An existing path, a path inside the session or a missing directory is refused before anything is written.
+- **`close`** appends your conclusion and the final entry count. After it, every append is refused. While an action is still pending (admitted but without a result), `close` refuses, because a result could otherwise arrive after the immutable close. `--abandon-pending` first appends an operator-signed `abandon` entry for each pending action, for example after an interrupted broker; a broker that later finishes such an action records nothing. With `--receipt PATH`, the close record (entry and signature) is also written, exclusively, to `PATH`. That path must be in an existing directory outside the session, resolved through symbolic links. An existing path, a path inside the session or a missing directory is refused before anything is written.
 - **`show`** prints the timeline and current state, or the state alone with `--json`. It reads the log's structure but does not check signatures. No command prints the session ID; it is in entry 0 for anyone who reads the log.
 - **`verify`** checks everything against the operator you name with `--operator`, including every relayed agent request and every result document. It never takes the operator from the session's own header: any key in `allowed_signers`, the agent's included, could otherwise write a header naming itself operator and sign a counterfeit session. It checks:
   - the header names exactly that operator
@@ -73,7 +73,7 @@ mira session verify DIR --allowed-signers SIGNERS --operator NAME [--expect-clos
   - nothing after the close
   - every signature, under the session namespace, for the principal the entry names
   - each relayed `action` or `question` against the agent's stored request: signed by the agent and identical in session, request ID, `based_on`, capability, arguments and note
-  - each result's document: present, and signed by the collector under its capture or investigation namespace
+  - each result's document: present, signed by the collector under its capture or investigation namespace, with exactly the signature the result commits to
 
   With `--expect-close PATH`, the receipt must also match the session's final entry byte for byte. This detects a removed close entry or a truncated tail.
 
@@ -131,7 +131,11 @@ A request whose ID already has an entry is discarded rather than recorded twice.
 |---|---|---|
 | 0 `complete_available`, 1 `complete_unavailable` | 0 `satisfied`, 1 `not_satisfied`, 3 `indeterminate` | 2 `refused_arguments`, 4 `signing_failed`, anything else `runner_error` |
 
-Only the first two columns produce a document. Each admitted agent action consumes one unit of budget, even if the template then refuses its arguments.
+Only the first two columns produce a document. A result with a document carries the collector's exact armored signature over it, so the collector-signed entry commits to those bytes. Another genuine collector-signed document cannot be swapped in. Each admitted agent action consumes one unit of budget, even if the template then refuses its arguments.
+
+Decisions use the autonomy level that applies to the entry about to be written. A delegation that covers entries only up to the current last one has already lapsed for the next.
+
+If the broker stops after storing a request but before recording it, the next run resumes that request, provided the stored copy matches the inbox file. A request whose ID already has an entry is discarded.
 
 **The operator's own actions.** `mira session act` records an `action` signed by you and runs it immediately. The result is signed with the collector key you pass, and no budget applies.
 
@@ -145,13 +149,13 @@ With `--separation separate_user --agent-group GROUP`, which is required for any
 | `entries/`, `documents/`, `requests/` | 2750 (setgid) | read |
 | `inbox/` | 2770 (setgid) | write requests |
 
-All files are created 0640, so the group can read them and nobody else can. The broker refuses any inbox file owned by its own user, because under `separate_user` such a file was not written by the agent.
+All files are created 0640, set through the open file descriptor so a restrictive umask cannot change it, so the group can read them and nobody else can. The broker refuses any inbox file owned by its own user, because under `separate_user` such a file was not written by the agent.
 
 `same_user` (the default) makes everything 0700. It is for trusted scripted agents in tests and demonstrations only. Nothing then stops an agent from writing the log or using the collector key, so such a session supports no claim that the agent was contained.
 
 ## How entries are written
 
-Each entry is one JSON line in a fixed field order, ending with a bounded free-text `note`. The schema is [`session-v1`](../schemas/session-v1.schema.json). `mira` accepts an entry only if rendering it again reproduces the exact bytes, so there is one way to write each entry. Notes are checked against the rules below on reading as well as writing.
+Each entry is one JSON line in a fixed field order, ending with a bounded free-text `note`. The schema is [`session-v1`](../schemas/session-v1.schema.json). `mira` accepts an entry only if rendering it again reproduces the exact bytes, so there is one way to write each entry. Notes are checked against the rules below on reading as well as writing. Operator questions written by stage 1a, without a `request_id` field, are still accepted in their original signed layout.
 
 Each entry is stored with its signature in a single record file, `entries/NNNNNN.entry`: the entry line, newline included, followed by the armored SSHSIG signature over exactly that line. To check one record by hand:
 

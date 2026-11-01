@@ -713,3 +713,229 @@ fn separate_user_sessions_are_group_shared_and_refuse_own_inbox_files() {
         assert!(!other.session().exists());
     }
 }
+
+fn admitted_seq(output: &str) -> u64 {
+    output
+        .strip_prefix("MIRA session: admitted request as ")
+        .and_then(|rest| rest.trim_end().parse().ok())
+        .unwrap_or_else(|| panic!("{output}"))
+}
+
+#[test]
+fn a_result_document_cannot_be_swapped_for_another_collector_signed_one() {
+    let dir = Dir::new();
+    assert!(dir.start(&[]).status.success());
+    for minimum in ["1", "2"] {
+        assert!(
+            dir.request(&[
+                "--capability",
+                "uptime-minimum",
+                "--arguments",
+                minimum,
+                "--text",
+                "up?"
+            ])
+            .status
+            .success()
+        );
+        admitted_seq(&stdout(&dir.broker()));
+    }
+    assert!(dir.verify().status.success());
+    // Both documents are genuine, same family, signed by the same collector.
+    let documents = dir.session().join("documents");
+    let (first, second) = (documents.join("000001.json"), documents.join("000003.json"));
+    let first_signature = documents.join("000001.json.sig");
+    let second_signature = documents.join("000003.json.sig");
+    fs::copy(&second, &first).unwrap();
+    fs::copy(&second_signature, &first_signature).unwrap();
+    not_verified(
+        &dir.verify(),
+        "document of result 2 missing or not signed by the collector",
+    );
+}
+
+#[test]
+fn shared_files_stay_group_readable_under_a_restrictive_umask() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = Dir::new();
+    let group = String::from_utf8(Command::new("id").arg("-gn").output().unwrap().stdout).unwrap();
+    let session = dir.session();
+    let signers = dir.path("signers");
+    // `sh -c 'umask 077 && exec "$0" "$@"' mira ARGS` runs mira under umask 077.
+    let masked = |args: &[&str]| {
+        Command::new("/bin/sh")
+            .args([
+                "-c",
+                "umask 077 && exec \"$0\" \"$@\"",
+                env!("CARGO_BIN_EXE_mira"),
+            ])
+            .args(args)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap()
+    };
+    let operator = dir.path("operator");
+    let started = masked(&[
+        "session",
+        "start",
+        session.to_str().unwrap(),
+        "--allowed-signers",
+        signers.to_str().unwrap(),
+        "--key",
+        operator.to_str().unwrap(),
+        "--operator",
+        "operator",
+        "--agent",
+        "agent",
+        "--collector",
+        "collector",
+        "--separation",
+        "separate_user",
+        "--agent-group",
+        group.trim(),
+        "--question",
+        "q",
+    ]);
+    assert!(started.status.success(), "{started:?}");
+    let agent = dir.path("agent");
+    let requested = masked(&[
+        "session",
+        "request",
+        session.to_str().unwrap(),
+        "--allowed-signers",
+        signers.to_str().unwrap(),
+        "--key",
+        agent.to_str().unwrap(),
+        "--question",
+        "--text",
+        "q",
+    ]);
+    assert!(requested.status.success(), "{requested:?}");
+    let mut files = vec![session.join("entries/000000.entry")];
+    files.extend(
+        fs::read_dir(session.join("inbox"))
+            .unwrap()
+            .map(|item| item.unwrap().path()),
+    );
+    for file in files {
+        let mode = fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o640, "{file:?}");
+    }
+}
+
+#[test]
+fn a_stored_request_without_a_log_entry_is_resumed_not_discarded() {
+    let dir = Dir::new();
+    assert!(dir.start(&[]).status.success());
+    assert!(
+        dir.request(&[
+            "--capability",
+            "uptime-minimum",
+            "--arguments",
+            "1",
+            "--text",
+            "resume me"
+        ])
+        .status
+        .success()
+    );
+    // A previous broker stored the request, then stopped before recording it.
+    let inbox: Vec<_> = fs::read_dir(dir.session().join("inbox"))
+        .unwrap()
+        .map(|item| item.unwrap().path())
+        .collect();
+    let name = inbox[0].file_name().unwrap().to_owned();
+    fs::copy(&inbox[0], dir.session().join("requests").join(&name)).unwrap();
+    let seq = admitted_seq(&stdout(&dir.broker()));
+    assert!(dir.line(seq).contains("\"note\":\"resume me\""));
+    assert!(dir.verify().status.success());
+    // A stored copy that differs from the inbox request is not trusted.
+    assert!(
+        dir.request(&[
+            "--capability",
+            "uptime-minimum",
+            "--arguments",
+            "1",
+            "--text",
+            "original"
+        ])
+        .status
+        .success()
+    );
+    let inbox: Vec<_> = fs::read_dir(dir.session().join("inbox"))
+        .unwrap()
+        .map(|item| item.unwrap().path())
+        .collect();
+    fs::write(
+        dir.session()
+            .join("requests")
+            .join(inbox[0].file_name().unwrap()),
+        "something else",
+    )
+    .unwrap();
+    assert_eq!(
+        stdout(&dir.broker()),
+        "MIRA session: refused request (malformed)\n"
+    );
+}
+
+#[test]
+fn escaped_unit_names_are_admitted_and_schema_valid() {
+    let dir = Dir::new();
+    assert!(dir.start(&[]).status.success());
+    // systemd escapes '-' inside instance names as \x2d.
+    assert!(
+        dir.request(&[
+            "--capability",
+            "service-active",
+            "--arguments",
+            "mira-test@a\\x2db.service",
+            "--text",
+            "escaped",
+        ])
+        .status
+        .success()
+    );
+    let seq = admitted_seq(&stdout(&dir.broker()));
+    assert!(
+        dir.line(seq)
+            .contains("\"arguments\":\"mira-test@a\\\\x2db.service\"")
+    );
+    assert!(dir.verify().status.success());
+}
+
+#[test]
+fn close_waits_for_pending_actions_and_can_abandon_them() {
+    let dir = Dir::new();
+    assert!(dir.start(&[]).status.success());
+    // An operator action whose result never arrived, as after an interrupted
+    // run: written and signed by hand with the operator's key.
+    let line = format!(
+        "{{\"session_version\":1,\"session_id\":\"{}\",\"seq\":1,\"kind\":\"action\",\"principal\":\"operator\",\"based_on\":0,\"request_id\":null,\"capability\":\"uptime-minimum\",\"arguments\":\"1\",\"note\":\"interrupted\"}}\n",
+        dir.session_id()
+    );
+    let mut record = line.as_bytes().to_vec();
+    record.extend(dir.sign(line.as_bytes(), "operator", SESSION));
+    fs::write(dir.session().join("entries/000001.entry"), record).unwrap();
+    assert!(dir.verify().status.success());
+    let refused = dir.command("close", "operator", &["--conclusion", "done"]);
+    assert_eq!(refused.status.code(), Some(1), "{refused:?}");
+    assert_eq!(
+        stdout(&refused),
+        "MIRA session: refused (actions are still pending; wait for their results or close with --abandon-pending)\n"
+    );
+    let closed = dir.command(
+        "close",
+        "operator",
+        &["--conclusion", "done", "--abandon-pending"],
+    );
+    assert_eq!(
+        stdout(&closed),
+        "MIRA session: abandoned 000001 at 000002\nMIRA session: closed at 000003\n",
+        "{closed:?}"
+    );
+    assert!(dir.line(2).contains(
+        "\"kind\":\"abandon\",\"principal\":\"operator\",\"based_on\":1,\"action_seq\":1,"
+    ));
+    assert!(stdout(&dir.verify()).starts_with("MIRA session: verified entries 4 closed"));
+}

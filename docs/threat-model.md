@@ -102,7 +102,8 @@ Stage 1b adds the broker:
 - `mira session run`, started by the operator, verifies them and enforces level, budget and the closed capability set against the state at append time, so a directive takes precedence
 - admitted actions run as MIRA itself, with a fixed argument vector built from a capability table whose tokens never start with `-`
 - results are signed with a collector key that the broker checks before starting
-- `verify` checks every relayed request against the agent's stored, agent-signed record and every result document against the collector
+- `verify` checks every relayed request against the agent's stored, agent-signed record. Each result document is checked against the collector's signature that the collector-signed result entry itself carries, so a different genuine document cannot be substituted
+- close requires every action to have a result or an operator-signed `abandon` entry, so no result can follow the immutable close
 - `separate_user` gives the agent's group read access to the log and write access to `inbox/` only, and the broker refuses inbox files owned by its own user
 
 Agent containment holds only under `separate_user` with a collector key the agent cannot read. A two-user deployment is not exercised in CI. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.

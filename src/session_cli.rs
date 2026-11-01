@@ -5,7 +5,7 @@ use mira::session::{self, Body, Directive, Header, Level, Problem, Separation, W
 use mira::session_broker::{self, Ask, Handled};
 use std::{collections::BTreeMap, path::Path};
 
-pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--separation same_user | --separation separate_user --agent-group GROUP] [--autonomy manual|advisory|assisted] [--budget N] --question TEXT | mira session run DIR --allowed-signers FILE --key COLLECTOR-KEY [--once] | mira session act DIR --allowed-signers FILE --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT] | mira session request DIR --allowed-signers FILE --key AGENT-KEY (--capability NAME [--arguments TOKENS] | --question) --text TEXT | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE --operator NAME [--expect-close PATH]";
+pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--separation same_user | --separation separate_user --agent-group GROUP] [--autonomy manual|advisory|assisted] [--budget N] --question TEXT | mira session run DIR --allowed-signers FILE --key COLLECTOR-KEY [--once] | mira session act DIR --allowed-signers FILE --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT] | mira session request DIR --allowed-signers FILE --key AGENT-KEY (--capability NAME [--arguments TOKENS] | --question) --text TEXT | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] [--abandon-pending] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE --operator NAME [--expect-close PATH]";
 
 fn usage() -> ! {
     eprintln!("Usage: {USAGE}");
@@ -84,7 +84,11 @@ fn decimal(value: &str) -> u64 {
 /// Map a write-side problem to its fixed diagnostic and exit status.
 fn write_failure(problem: Problem) -> ! {
     match problem {
-        Problem::Closed | Problem::InvalidDirective | Problem::Full | Problem::Text => {
+        Problem::Closed
+        | Problem::InvalidDirective
+        | Problem::Full
+        | Problem::Text
+        | Problem::Pending => {
             println!("MIRA session: refused ({})", problem.reason());
             std::process::exit(1)
         }
@@ -263,7 +267,7 @@ fn close(dir: &Path, rest: &[String]) {
     let options = Options::parse(
         rest,
         &["--allowed-signers", "--key", "--conclusion", "--receipt"],
-        &[],
+        &["--abandon-pending"],
     );
     let note = text(options.required("--conclusion"));
     // Refuse an existing receipt path before closing, so the close never
@@ -276,6 +280,27 @@ fn close(dir: &Path, rest: &[String]) {
             fail(
                 "receipt must be in an existing directory outside the session; nothing written",
                 2,
+            );
+        }
+    }
+    // Close needs every action finished or explicitly abandoned, so no result
+    // can arrive after the immutable close entry.
+    let (_, state) = session::load(dir).unwrap_or_else(|problem| write_failure(problem));
+    if !state.pending.is_empty() {
+        if !options.has("--abandon-pending") {
+            write_failure(Problem::Pending);
+        }
+        for action_seq in state.pending.keys().copied().collect::<Vec<_>>() {
+            let entry = as_operator(dir, &options, |state| {
+                Ok((
+                    Body::Abandon { action_seq },
+                    Some(state.entries - 1),
+                    String::new(),
+                ))
+            });
+            println!(
+                "MIRA session: abandoned {action_seq:06} at {:06}",
+                entry.seq
             );
         }
     }
@@ -458,7 +483,7 @@ fn act(dir: &Path, rest: &[String]) {
         principal: &state.header.collector,
     };
     match session_broker::act(dir, &operator, &collector, &capability, &arguments, note) {
-        Ok((action, result)) => {
+        Ok((action, Some(result))) => {
             let outcome = match result.body {
                 Body::Result { outcome, .. } => outcome.as_str(),
                 _ => "unknown",
@@ -466,6 +491,12 @@ fn act(dir: &Path, rest: &[String]) {
             println!(
                 "MIRA session: action {:06} result {:06} {outcome}",
                 action.seq, result.seq
+            );
+        }
+        Ok((action, None)) => {
+            println!(
+                "MIRA session: action {:06} abandoned before its result",
+                action.seq
             );
         }
         Err(problem) => write_failure(problem),

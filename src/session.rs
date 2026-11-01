@@ -166,6 +166,9 @@ pub enum Body {
     Question {
         request_id: Option<String>,
     },
+    /// An operator question in the stage 1a layout, which had no `request_id`;
+    /// accepted so signed 1a records keep verifying byte for byte.
+    LegacyQuestion,
     Directive(Directive),
     /// One closed capability: the operator's own (no request), or an agent
     /// request the broker admitted and relays.
@@ -174,12 +177,19 @@ pub enum Body {
         capability: String,
         arguments: String,
     },
-    /// The executed action's exit status and fixed outcome; the collector-signed
-    /// document, when there is one, is `documents/<action_seq>.json`.
+    /// The executed action's exit status and fixed outcome. When there is a
+    /// document, `documents/<action_seq>.json`, the entry commits to it by
+    /// carrying the collector's exact armored signature over its bytes.
     Result {
         action_seq: u64,
         exit_status: Option<u64>,
         outcome: Outcome,
+        document_signature: Option<String>,
+    },
+    /// The operator finalizes a pending action that will get no result, for
+    /// example after an interrupted broker, so the session can close honestly.
+    Abandon {
+        action_seq: u64,
     },
     /// An agent request the broker refused, with a fixed reason.
     Refusal {
@@ -196,7 +206,8 @@ impl Body {
     fn kind(&self) -> &'static str {
         match self {
             Self::Header(_) => "header",
-            Self::Question { .. } => "question",
+            Self::Question { .. } | Self::LegacyQuestion => "question",
+            Self::Abandon { .. } => "abandon",
             Self::Directive(_) => "directive",
             Self::Action { .. } => "action",
             Self::Result { .. } => "result",
@@ -245,6 +256,8 @@ impl Entry {
             Body::Question { request_id } => {
                 format!("\"request_id\":{},", optional_quoted(request_id.as_deref()))
             }
+            Body::LegacyQuestion => String::new(),
+            Body::Abandon { action_seq } => format!("\"action_seq\":{action_seq},"),
             Body::Action {
                 request_id,
                 capability,
@@ -259,10 +272,12 @@ impl Entry {
                 action_seq,
                 exit_status,
                 outcome,
+                document_signature,
             } => format!(
-                "\"action_seq\":{action_seq},\"exit_status\":{},\"outcome\":{},",
+                "\"action_seq\":{action_seq},\"exit_status\":{},\"outcome\":{},\"document_signature\":{},",
                 number(*exit_status),
-                quoted(outcome.as_str())
+                quoted(outcome.as_str()),
+                optional_quoted(document_signature.as_deref())
             ),
             Body::Refusal { request_id, reason } => format!(
                 "\"request_id\":{},\"reason\":{},",
@@ -328,8 +343,12 @@ impl Entry {
                 autonomy: Level::parse(&string("autonomy")?)?,
                 budget: uint("budget")?,
             }),
+            "question" if !fields.contains_key("request_id") => Body::LegacyQuestion,
             "question" => Body::Question {
                 request_id: optional_string("request_id")?,
+            },
+            "abandon" => Body::Abandon {
+                action_seq: uint("action_seq")?,
             },
             "action" => Body::Action {
                 request_id: optional_string("request_id")?,
@@ -340,6 +359,7 @@ impl Entry {
                 action_seq: uint("action_seq")?,
                 exit_status: optional("exit_status")?,
                 outcome: Outcome::parse(&string("outcome")?)?,
+                document_signature: optional_string("document_signature")?,
             },
             "refusal" => Body::Refusal {
                 request_id: string("request_id")?,
@@ -384,6 +404,16 @@ impl Entry {
             && entry.render().as_bytes() == bytes)
             .then_some(entry)
     }
+}
+
+/// An armored SSHSIG signature as `ssh-keygen -Y sign` writes it.
+pub fn is_armored_signature(text: &str) -> bool {
+    text.len() <= 4096
+        && text.starts_with("-----BEGIN SSH SIGNATURE-----\n")
+        && text.ends_with("-----END SSH SIGNATURE-----\n")
+        && text
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"+/=-\n ".contains(&byte))
 }
 
 pub fn is_session_id(text: &str) -> bool {
@@ -551,10 +581,25 @@ pub enum Problem {
     Document(u64),
     /// The request ID already has an entry; the request is discarded.
     Replayed,
+    /// The action was abandoned before its result could be recorded.
+    Abandoned,
+    /// Actions are still running; close needs each finished or abandoned.
+    Pending,
     /// The session directory or a file in it could not be read or written.
     Io,
     /// `ssh-keygen` is missing or failed to run.
     Tool,
+}
+
+impl State {
+    /// The level that applies to the entry about to be written: a delegation
+    /// covers entries up to `delegated_until` only, as `fold` applies it.
+    pub fn effective_level(&self) -> Level {
+        match self.delegated_until {
+            Some(until) if self.entries > until => Level::Assisted,
+            _ => self.level,
+        }
+    }
 }
 
 impl Problem {
@@ -582,6 +627,11 @@ impl Problem {
                 format!("document of result {seq} missing or not signed by the collector")
             }
             Self::Replayed => "request already recorded".to_owned(),
+            Self::Abandoned => "action abandoned before its result".to_owned(),
+            Self::Pending => {
+                "actions are still pending; wait for their results or close with --abandon-pending"
+                    .to_owned()
+            }
             Self::Io => "session directory unreadable or unwritable".to_owned(),
             Self::Tool => "ssh-keygen unavailable".to_owned(),
         }
@@ -715,7 +765,7 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
     let fresh = |state: &State, id: &str| is_session_id(id) && !state.requests.contains(id);
     match &entry.body {
         Body::Header(_) => return Err(Problem::Malformed(seq)),
-        Body::Question { request_id: None } if operator => {}
+        Body::Question { request_id: None } | Body::LegacyQuestion if operator => {}
         Body::Question {
             request_id: Some(id),
         } if collector => {
@@ -774,7 +824,17 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
             action_seq,
             exit_status,
             outcome,
+            document_signature,
         } if collector => {
+            // A document exists exactly when the outcome has one, and the entry
+            // then carries its signature.
+            if outcome.has_document()
+                != document_signature
+                    .as_deref()
+                    .is_some_and(is_armored_signature)
+            {
+                return Err(Problem::Malformed(seq));
+            }
             let (capability, arguments) = state
                 .pending
                 .remove(action_seq)
@@ -793,8 +853,16 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
             }
             state.requests.insert(request_id.clone());
         }
+        Body::Abandon { action_seq } if operator => {
+            state
+                .pending
+                .remove(action_seq)
+                .ok_or(Problem::Malformed(seq))?;
+        }
         Body::Close { entry_count } if operator => {
-            if *entry_count != seq + 1 {
+            // Nothing may be left running: every action has a result or was
+            // explicitly abandoned.
+            if *entry_count != seq + 1 || !state.pending.is_empty() {
                 return Err(Problem::AfterClose(seq));
             }
             state.closed = true;
@@ -849,11 +917,15 @@ pub(crate) fn pending_name(directory: &Path, extension: &str) -> PathBuf {
 /// Files are readable by the session's group, so a separate agent user in it
 /// can read the log and documents; directory modes keep everyone else out.
 pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o640)
         .open(path)?;
+    // The creation mode is masked by the umask; set it through the descriptor
+    // so a restrictive umask cannot hide shared files from the group.
+    file.set_permissions(fs::Permissions::from_mode(0o640))?;
     file.write_all(bytes)?;
     file.sync_all()
 }
@@ -1105,7 +1177,8 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
                 header.collector,
                 header.separation.as_str()
             ),
-            Body::Question { request_id: None } => "question".to_owned(),
+            Body::Question { request_id: None } | Body::LegacyQuestion => "question".to_owned(),
+            Body::Abandon { action_seq } => format!("abandon {action_seq:06}"),
             Body::Question {
                 request_id: Some(_),
             } => "question (agent request)".to_owned(),
@@ -1167,6 +1240,8 @@ mod tests {
     use super::*;
 
     const ID: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const SIGNATURE: &str =
+        "-----BEGIN SSH SIGNATURE-----\nU1NIU0lH\n-----END SSH SIGNATURE-----\n";
 
     fn header() -> Entry {
         Entry {
@@ -1497,12 +1572,15 @@ mod tests {
                 action_seq: 3,
                 exit_status: Some(1),
                 outcome: Outcome::NotSatisfied,
+                document_signature: Some(SIGNATURE.to_owned()),
             },
             Body::Result {
                 action_seq: 3,
                 exit_status: None,
                 outcome: Outcome::RunnerError,
+                document_signature: None,
             },
+            Body::Abandon { action_seq: 3 },
             Body::Refusal {
                 request_id: request(4).unwrap(),
                 reason: Refusal::SupersededByDirective,
@@ -1649,6 +1727,7 @@ mod tests {
                     action_seq,
                     exit_status,
                     outcome,
+                    document_signature: outcome.has_document().then(|| SIGNATURE.to_owned()),
                 },
             )
         };
@@ -1741,5 +1820,144 @@ mod tests {
             ),
             Err(Problem::Role(1))
         );
+    }
+
+    #[test]
+    fn stage_1a_questions_keep_their_signed_layout() {
+        // The exact layout stage 1a wrote, before questions had a request_id.
+        let old = format!(
+            "{{\"session_version\":1,\"session_id\":\"{ID}\",\"seq\":1,\"kind\":\"question\",\"principal\":\"operator\",\"based_on\":0,\"note\":\"journal visible?\"}}\n"
+        );
+        let entry = Entry::parse(old.as_bytes()).expect("1a question admitted");
+        assert_eq!(entry.body, Body::LegacyQuestion);
+        assert_eq!(entry.render(), old);
+        let state = fold(Some(fold(None, &header()).unwrap()), &entry).unwrap();
+        assert_eq!(state.entries, 2);
+        // Only the operator wrote 1a questions.
+        let mut relayed = entry.clone();
+        relayed.principal = "collector".to_owned();
+        assert!(fold(Some(fold(None, &header()).unwrap()), &relayed).is_err());
+    }
+
+    #[test]
+    fn results_commit_to_their_document_exactly_when_one_exists() {
+        let state = fold(None, &header()).unwrap();
+        let state = fold(
+            Some(state),
+            &action(1, "operator", None, "memory-headroom", "1"),
+        )
+        .unwrap();
+        let result = |outcome, document_signature: Option<&str>| {
+            next(
+                2,
+                "collector",
+                Body::Result {
+                    action_seq: 1,
+                    exit_status: Some(0),
+                    outcome,
+                    document_signature: document_signature.map(str::to_owned),
+                },
+            )
+        };
+        assert!(
+            fold(
+                Some(state.clone()),
+                &result(Outcome::Satisfied, Some(SIGNATURE))
+            )
+            .is_ok()
+        );
+        // A document outcome without its signature, or with something else.
+        assert!(fold(Some(state.clone()), &result(Outcome::Satisfied, None)).is_err());
+        assert!(
+            fold(
+                Some(state.clone()),
+                &result(Outcome::Satisfied, Some("not armored"))
+            )
+            .is_err()
+        );
+        let mut refused_arguments = result(Outcome::RefusedArguments, Some(SIGNATURE));
+        if let Body::Result { exit_status, .. } = &mut refused_arguments.body {
+            *exit_status = Some(2);
+        }
+        // No document, so no signature may be claimed.
+        assert!(fold(Some(state), &refused_arguments).is_err());
+    }
+
+    #[test]
+    fn close_waits_for_pending_actions_or_their_abandonment() {
+        let state = fold(None, &header()).unwrap();
+        let pending = fold(
+            Some(state),
+            &action(1, "operator", None, "uptime-minimum", "1"),
+        )
+        .unwrap();
+        assert_eq!(
+            fold(
+                Some(pending.clone()),
+                &next(2, "operator", Body::Close { entry_count: 3 })
+            ),
+            Err(Problem::AfterClose(2))
+        );
+        // Only the operator abandons, and only a pending action.
+        assert_eq!(
+            fold(
+                Some(pending.clone()),
+                &next(2, "collector", Body::Abandon { action_seq: 1 })
+            ),
+            Err(Problem::Role(2))
+        );
+        assert!(
+            fold(
+                Some(pending.clone()),
+                &next(2, "operator", Body::Abandon { action_seq: 7 })
+            )
+            .is_err()
+        );
+        let abandoned = fold(
+            Some(pending),
+            &next(2, "operator", Body::Abandon { action_seq: 1 }),
+        )
+        .unwrap();
+        assert!(abandoned.pending.is_empty());
+        // A result can no longer arrive for it, and the session can close.
+        let late = next(
+            3,
+            "collector",
+            Body::Result {
+                action_seq: 1,
+                exit_status: Some(0),
+                outcome: Outcome::Satisfied,
+                document_signature: Some(SIGNATURE.to_owned()),
+            },
+        );
+        assert!(fold(Some(abandoned.clone()), &late).is_err());
+        assert!(
+            fold(
+                Some(abandoned),
+                &next(3, "operator", Body::Close { entry_count: 4 })
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn the_effective_level_lapses_with_delegation() {
+        let state = fold(None, &header()).unwrap();
+        let delegated = fold(
+            Some(state),
+            &next(1, "operator", Body::Directive(Directive::DelegateUntil(2))),
+        )
+        .unwrap();
+        // The next entry is 2: still covered.
+        assert_eq!(delegated.effective_level(), Level::Delegated);
+        let covered = fold(
+            Some(delegated),
+            &next(2, "operator", Body::Question { request_id: None }),
+        )
+        .unwrap();
+        // The next entry is 3: outside the grant, although the folded state
+        // has not lapsed yet.
+        assert_eq!(covered.level, Level::Delegated);
+        assert_eq!(covered.effective_level(), Level::Assisted);
     }
 }

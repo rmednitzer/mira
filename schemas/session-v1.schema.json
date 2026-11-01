@@ -140,6 +140,54 @@
       }
     },
     {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_version",
+        "session_id",
+        "seq",
+        "principal",
+        "based_on",
+        "note",
+        "kind"
+      ],
+      "properties": {
+        "session_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "principal": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "based_on": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069])"
+        },
+        "kind": {
+          "const": "question"
+        }
+      },
+      "$comment": "Stage 1a layout of an operator question, without request_id."
+    },
+    {
       "allOf": [
         {
           "type": "object",
@@ -390,7 +438,7 @@
         "arguments": {
           "type": "string",
           "maxLength": 2048,
-          "pattern": "^(?!.*\\n)(|[A-Za-z0-9._:+@,/=][A-Za-z0-9._:+@,/=-]*( [A-Za-z0-9._:+@,/=][A-Za-z0-9._:+@,/=-]*)*)$"
+          "pattern": "^(?!.*\\n)(|[A-Za-z0-9._:+@,/=\\\\][A-Za-z0-9._:+@,/=\\\\-]*( [A-Za-z0-9._:+@,/=\\\\][A-Za-z0-9._:+@,/=\\\\-]*)*)$"
         }
       }
     },
@@ -407,7 +455,8 @@
         "kind",
         "action_seq",
         "exit_status",
-        "outcome"
+        "outcome",
+        "document_signature"
       ],
       "properties": {
         "session_version": {
@@ -469,6 +518,18 @@
             "refused_arguments",
             "signing_failed",
             "runner_error"
+          ]
+        },
+        "document_signature": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 4096,
+              "pattern": "^-----BEGIN SSH SIGNATURE-----\\n[A-Za-z0-9+/=\\n -]*-----END SSH SIGNATURE-----\\n$"
+            },
+            {
+              "const": null
+            }
           ]
         }
       }
@@ -538,6 +599,59 @@
             "operator_only",
             "owner"
           ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_version",
+        "session_id",
+        "seq",
+        "principal",
+        "based_on",
+        "note",
+        "kind",
+        "action_seq"
+      ],
+      "properties": {
+        "session_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[0-9a-f]{64}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "principal": {
+          "type": "string",
+          "pattern": "^(?!.*\\n)[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$"
+        },
+        "based_on": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069])"
+        },
+        "kind": {
+          "const": "abandon"
+        },
+        "action_seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4095
         }
       }
     },

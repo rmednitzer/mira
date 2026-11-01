@@ -209,6 +209,15 @@ Stage 1b (broker):
   - a closed session stops the broker and refuses requests
   - invalid requests are usage errors before signing, and other keys never reach the inbox
   - `separate_user` modes and group, and the refusal of inbox files owned by the broker's own user
+- **Review regressions:**
+  - a genuine collector-signed document swapped for another is detected
+  - files stay 0640 under `umask 077`
+  - a stored request with no log entry is resumed, and a differing stored copy is refused
+  - backslash-escaped unit names are admitted and schema-valid
+  - close refuses pending actions, and `--abandon-pending` finalizes them
+  - 1a operator questions keep their signed layout
+  - results claim a document signature exactly when they have a document
+  - decisions use the level of the entry being written
 - **`scripts/validate_session.py`:** restates the capability table, outcome mapping and fold rules. It runs a real broker flow (request, admission, refusal, operator capture, close) and checks every entry, stored request and document signature with `ssh-keygen` directly.
 
 ## Representative host qualification

@@ -29,14 +29,18 @@ FIELDS = {
     'question': ['request_id'],
     'directive': ['directive', 'level', 'budget', 'until_seq'],
     'action': ['request_id', 'capability', 'arguments'],
-    'result': ['action_seq', 'exit_status', 'outcome'],
+    'result': ['action_seq', 'exit_status', 'outcome', 'document_signature'],
+    'abandon': ['action_seq'],
     'refusal': ['request_id', 'reason'],
     'close': ['entry_count'],
 }
 REQUEST_ORDER = ['session_version', 'session_id', 'kind', 'request_id', 'principal', 'based_on',
                  'request', 'capability', 'arguments', 'note']
 ID = '0123456789abcdef' * 4
-TOKEN = re.compile(r'[A-Za-z0-9._:+@,/=][A-Za-z0-9._:+@,/=-]{0,255}')
+TOKEN = re.compile(r'[A-Za-z0-9._:+@,/=\\][A-Za-z0-9._:+@,/=\\-]{0,255}')
+SIGNATURE = '-----BEGIN SSH SIGNATURE-----\nU1NIU0lH\n-----END SSH SIGNATURE-----\n'
+DOCUMENT_OUTCOMES = {'satisfied', 'not_satisfied', 'indeterminate', 'complete_available',
+                     'complete_unavailable'}
 INVESTIGATIONS = {
     'service-active': 1, 'service-active/v1': 1, 'service-active/v2': 1,
     'memory-headroom': 1, 'pressure-ceiling': 2, 'package-installed': 1,
@@ -77,10 +81,17 @@ def canonical(entry, order):
     return (json.dumps(entry, ensure_ascii=False, separators=(',', ':')) + '\n').encode()
 
 
+def fields(entry):
+    # Stage 1a operator questions had no request_id; that layout stays valid.
+    if entry['kind'] == 'question' and 'request_id' not in entry:
+        return []
+    return FIELDS[entry['kind']]
+
+
 def admit(data):
     entry = strict_json(data)
     VALIDATOR.validate(entry)
-    if canonical(entry, COMMON + FIELDS[entry['kind']] + ['note']) != data:
+    if canonical(entry, COMMON + fields(entry) + ['note']) != data:
         raise ValueError('entry is not in canonical layout')
     return entry
 
@@ -133,7 +144,7 @@ def fold(state, entry):
         state['requests'].add(request_id)
 
     if kind == 'question':
-        if entry['request_id'] is None and operator:
+        if entry.get('request_id') is None and operator:
             pass
         elif entry['request_id'] is not None and collector and state['level'] != 'manual':
             fresh(entry['request_id'])
@@ -171,10 +182,15 @@ def fold(state, entry):
         family = state['pending'].pop(entry['action_seq'], None)
         if family is None or outcome(family, entry['exit_status']) != entry['outcome']:
             raise ValueError('result without a pending action or with another outcome')
+        if (entry['outcome'] in DOCUMENT_OUTCOMES) != (entry['document_signature'] is not None):
+            raise ValueError('document signature present exactly when there is a document')
+    elif kind == 'abandon' and operator:
+        if state['pending'].pop(entry['action_seq'], None) is None:
+            raise ValueError('abandoned action is not pending')
     elif kind == 'refusal' and collector:
         fresh(entry['request_id'])
     elif kind == 'close' and operator:
-        if entry['entry_count'] != seq + 1:
+        if entry['entry_count'] != seq + 1 or state['pending']:
             raise ValueError('close count does not match')
         state['closed'] = True
     else:
@@ -210,23 +226,29 @@ def check_fixtures():
         HEADER,
         entry('question', 1, request_id=None, note='Is "web" up? \\ ok'),
         entry('action', 2, 'collector', request_id=REQ, capability='memory-headroom', arguments='1024'),
-        entry('result', 3, 'collector', action_seq=2, exit_status=0, outcome='satisfied'),
+        entry('result', 3, 'collector', action_seq=2, exit_status=0, outcome='satisfied',
+              document_signature=SIGNATURE),
         entry('refusal', 4, 'collector', request_id='22' * 32, reason='budget'),
         entry('action', 5, request_id=None, capability='capture', arguments='host bind-boot'),
-        entry('result', 6, 'collector', action_seq=5, exit_status=None, outcome='runner_error'),
-        entry('directive', 7, directive='stop', level=None, budget=None, until_seq=None),
-        entry('directive', 8, directive='set_level', level='advisory', budget=None, until_seq=None),
-        entry('directive', 9, directive='set_budget', level=None, budget=0, until_seq=None),
-        entry('question', 10, 'collector', request_id='33' * 32),
-        entry('directive', 11, directive='delegate', level=None, budget=None, until_seq=19),
-        entry('close', 12, entry_count=13),
+        entry('result', 6, 'collector', action_seq=5, exit_status=None, outcome='runner_error',
+              document_signature=None),
+        # A stage 1a operator question: no request_id field at all.
+        entry('question', 7),
+        entry('directive', 8, directive='stop', level=None, budget=None, until_seq=None),
+        entry('directive', 9, directive='set_level', level='advisory', budget=None, until_seq=None),
+        entry('directive', 10, directive='set_budget', level=None, budget=0, until_seq=None),
+        entry('question', 11, 'collector', request_id='33' * 32),
+        entry('action', 12, request_id=None, capability='service-active', arguments='a@b\\x2dc.service'),
+        entry('abandon', 13, action_seq=12),
+        entry('directive', 14, directive='delegate', level=None, budget=None, until_seq=19),
+        entry('close', 15, entry_count=16),
     ]
     state = None
     for item in valid:
-        admit(canonical(item, COMMON + FIELDS[item['kind']] + ['note']))
+        admit(canonical(item, COMMON + fields(item) + ['note']))
         state = fold(state, item)
     if (state['entries'], state['level'], state['budget'], state['closed'], state['pending']) \
-            != (13, 'delegated', 0, True, {}):
+            != (16, 'delegated', 0, True, {}):
         raise ValueError('fixture state mismatch')
     for mutate in (
         lambda e: e.update(session_version=2),
@@ -260,8 +282,14 @@ def check_fixtures():
         (started, entry('action', 1, 'collector', request_id=REQ, capability='capture', arguments='host bind-boot')),
         (acted, entry('action', 2, 'collector', request_id='44' * 32, capability='uptime-minimum', arguments='1')),
         (acted, entry('refusal', 2, 'collector', request_id=REQ, reason='budget')),
-        (acted, entry('result', 2, 'collector', action_seq=1, exit_status=0, outcome='complete_available')),
-        (acted, entry('result', 2, 'operator', action_seq=1, exit_status=0, outcome='satisfied')),
+        (acted, entry('result', 2, 'collector', action_seq=1, exit_status=0, outcome='complete_available',
+                      document_signature=SIGNATURE)),
+        (acted, entry('result', 2, 'operator', action_seq=1, exit_status=0, outcome='satisfied',
+                      document_signature=SIGNATURE)),
+        (acted, entry('result', 2, 'collector', action_seq=1, exit_status=0, outcome='satisfied',
+                      document_signature=None)),
+        (acted, entry('close', 2, entry_count=3)),
+        (acted, entry('abandon', 2, 'collector', action_seq=1)),
         (started, entry('question', 1, 'collector', request_id=None)),
         (started, entry('question', 1, request_id=REQ)),
         (started, dict(entry('question', 1, request_id=None), session_id='1' * 64)),
@@ -328,6 +356,8 @@ def check_cli():
             ['run', str(session), *trust, '--key', str(temp / 'collector'), '--once'],
             ['act', str(session), *operator, '--collector-key', str(temp / 'collector'),
              '--capability', 'capture', '--arguments', 'host'],
+            ['act', str(session), *operator, '--collector-key', str(temp / 'collector'),
+             '--capability', 'service-active', '--arguments', 'mira-absent@a\\x2db.service'],
             ['ask', str(session), *operator, '--text', 'Journal visible?'],
             ['close', str(session), *operator, '--conclusion', 'no restart', '--receipt', str(temp / 'receipt')],
         ]
@@ -359,17 +389,22 @@ def check_cli():
             if item['kind'] == 'result' and item['outcome'] not in (
                     'refused_arguments', 'signing_failed', 'runner_error'):
                 document = (session / 'documents' / f'{item["action_seq"]:06}.json').read_bytes()
-                document_signature = (session / 'documents' / f'{item["action_seq"]:06}.json.sig').read_bytes()
+                # The result commits to the document through its exact signature.
+                document_signature = item['document_signature'].encode()
+                if (session / 'documents' / f'{item["action_seq"]:06}.json.sig').read_bytes() \
+                        != document_signature:
+                    raise ValueError('document signature file differs from the committed one')
                 family = 'capture' if document.startswith(b'{"capture_version":') else 'investigation'
                 if not ssh_verify(temp, document, document_signature, 'collector',
                                   DOCUMENT_NAMESPACES[family]):
                     raise ValueError('result document not signed by the collector')
-        if kinds != ['header', 'action', 'result', 'refusal', 'action', 'result', 'question', 'close']:
+        if kinds != ['header', 'action', 'result', 'refusal', 'action', 'result', 'action', 'result',
+                     'question', 'close']:
             raise ValueError(f'unexpected entry sequence {kinds}')
         if (state['budget'], state['closed'], state['pending']) != (0, True, {}):
             raise ValueError('independent state disagrees with the steps')
         shown = json.loads(mira('show', str(session), '--json').stdout)
-        if shown != {'session_version': 1, 'entries': 8, 'closed': True, 'autonomy': 'assisted',
+        if shown != {'session_version': 1, 'entries': 10, 'closed': True, 'autonomy': 'assisted',
                      'budget': 0, 'delegated_until': None}:
             raise ValueError('mira session show disagrees with the independent state')
         verified = mira('verify', str(session), *trust, '--operator', 'operator',
