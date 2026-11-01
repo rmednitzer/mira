@@ -23,6 +23,10 @@ const MAX_ENTRY_BYTES: u64 = 8192;
 /// One record: the entry line followed by its armored SSHSIG signature.
 pub(crate) const MAX_RECORD_BYTES: u64 = MAX_ENTRY_BYTES + signature::MAX_SIGNATURE_BYTES as u64;
 pub const MAX_TEXT_BYTES: usize = 1024;
+/// Entries the agent can never cause to be written, kept for the operator's
+/// stop, abandon and close and for pending results: an agent flooding the
+/// inbox can never leave the operator unable to end the session.
+pub const OPERATOR_RESERVE: u64 = 64;
 const ENTRIES: &str = "entries";
 const PENDING: &str = ".pending-";
 const APPEND_ATTEMPTS: usize = 8;
@@ -116,14 +120,13 @@ pub enum Refusal {
     Stale,
     Autonomy,
     SupersededByDirective,
-    Budget,
     Capability,
     OperatorOnly,
     Owner,
 }
 
 impl Refusal {
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 10] = [
         Self::Signature,
         Self::Malformed,
         Self::SessionMismatch,
@@ -131,7 +134,6 @@ impl Refusal {
         Self::Stale,
         Self::Autonomy,
         Self::SupersededByDirective,
-        Self::Budget,
         Self::Capability,
         Self::OperatorOnly,
         Self::Owner,
@@ -146,7 +148,6 @@ impl Refusal {
             Self::Stale => "stale",
             Self::Autonomy => "autonomy",
             Self::SupersededByDirective => "superseded_by_directive",
-            Self::Budget => "budget",
             Self::Capability => "capability",
             Self::OperatorOnly => "operator_only",
             Self::Owner => "owner",
@@ -585,6 +586,9 @@ pub enum Problem {
     Abandoned,
     /// Actions are still running; close needs each finished or abandoned.
     Pending,
+    /// No budget is left, or only the operator's reserve: nothing the agent
+    /// asks for can be recorded.
+    Unchargeable,
     /// The session directory or a file in it could not be read or written.
     Io,
     /// `ssh-keygen` is missing or failed to run.
@@ -628,6 +632,7 @@ impl Problem {
             }
             Self::Replayed => "request already recorded".to_owned(),
             Self::Abandoned => "action abandoned before its result".to_owned(),
+            Self::Unchargeable => "no budget left, or only the operator's reserve".to_owned(),
             Self::Pending => {
                 "actions are still pending; wait for their results or close with --abandon-pending"
                     .to_owned()
@@ -711,6 +716,12 @@ pub fn load(dir: &Path) -> Result<(Log, State), Problem> {
     Ok((log, state))
 }
 
+/// Whether one more agent-attributable entry (relayed request or refusal)
+/// may be written at `seq`: budget left, and outside the operator's reserve.
+pub fn chargeable(state: &State, seq: u64) -> bool {
+    state.budget > 0 && seq < MAX_ENTRIES - OPERATOR_RESERVE
+}
+
 /// Apply one entry to the state. Entry 0 must be the header; nothing follows
 /// the close entry; each kind may be written only by its role.
 pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
@@ -769,9 +780,10 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
         Body::Question {
             request_id: Some(id),
         } if collector => {
-            if !fresh(&state, id) || state.level == Level::Manual {
+            if !fresh(&state, id) || state.level == Level::Manual || !chargeable(&state, seq) {
                 return Err(Problem::Malformed(seq));
             }
+            state.budget -= 1;
             state.requests.insert(id.clone());
         }
         Body::Directive(directive) if operator => {
@@ -808,7 +820,7 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
                         Level::Delegated => true,
                         Level::Manual | Level::Advisory => false,
                     };
-                    if !fresh(&state, id) || !allowed || state.budget == 0 {
+                    if !fresh(&state, id) || !allowed || !chargeable(&state, seq) {
                         return Err(Problem::Malformed(seq));
                     }
                     state.budget -= 1;
@@ -848,9 +860,11 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
             }
         }
         Body::Refusal { request_id, .. } if collector => {
-            if !fresh(&state, request_id) {
+            // A refusal is still agent activity in the log: it costs budget.
+            if !fresh(&state, request_id) || !chargeable(&state, seq) {
                 return Err(Problem::Malformed(seq));
             }
+            state.budget -= 1;
             state.requests.insert(request_id.clone());
         }
         Body::Abandon { action_seq } if operator => {
@@ -1599,12 +1613,12 @@ mod tests {
             "collector",
             Body::Refusal {
                 request_id: request(4).unwrap(),
-                reason: Refusal::Budget,
+                reason: Refusal::Capability,
             },
         )
         .render();
         assert_eq!(
-            Entry::parse(refusal.replace("\"budget\"", "\"bribe\"").as_bytes()),
+            Entry::parse(refusal.replace("\"capability\"", "\"bribe\"").as_bytes()),
             None
         );
     }
@@ -1782,7 +1796,7 @@ mod tests {
                 "collector",
                 Body::Refusal {
                     request_id: id.unwrap(),
-                    reason: Refusal::Budget,
+                    reason: Refusal::Capability,
                 },
             )
         };
@@ -1959,5 +1973,95 @@ mod tests {
         // has not lapsed yet.
         assert_eq!(covered.level, Level::Delegated);
         assert_eq!(covered.effective_level(), Level::Assisted);
+    }
+
+    #[test]
+    fn every_agent_attributable_entry_costs_budget_outside_the_reserve() {
+        let mut header_entry = header();
+        if let Body::Header(h) = &mut header_entry.body {
+            h.budget = 2;
+        }
+        let state = fold(None, &header_entry).unwrap();
+        let asked = fold(
+            Some(state.clone()),
+            &next(
+                1,
+                "collector",
+                Body::Question {
+                    request_id: request(1),
+                },
+            ),
+        )
+        .unwrap();
+        assert_eq!(asked.budget, 1);
+        let refused = fold(
+            Some(asked),
+            &next(
+                2,
+                "collector",
+                Body::Refusal {
+                    request_id: request(2).unwrap(),
+                    reason: Refusal::Capability,
+                },
+            ),
+        )
+        .unwrap();
+        assert_eq!(refused.budget, 0);
+        // At zero, neither a question nor a refusal can be recorded.
+        assert!(
+            fold(
+                Some(refused.clone()),
+                &next(
+                    3,
+                    "collector",
+                    Body::Question {
+                        request_id: request(3)
+                    }
+                )
+            )
+            .is_err()
+        );
+        assert!(
+            fold(
+                Some(refused.clone()),
+                &next(
+                    3,
+                    "collector",
+                    Body::Refusal {
+                        request_id: request(3).unwrap(),
+                        reason: Refusal::Capability
+                    }
+                ),
+            )
+            .is_err()
+        );
+        // The operator's own entries are never charged.
+        assert!(
+            fold(
+                Some(refused),
+                &next(3, "operator", Body::Directive(Directive::Stop))
+            )
+            .is_ok()
+        );
+        // Inside the reserve, even a funded agent entry is refused.
+        let mut late = state;
+        late.budget = 5;
+        let edge = MAX_ENTRIES - OPERATOR_RESERVE;
+        assert!(chargeable(&late, edge - 1));
+        assert!(!chargeable(&late, edge));
+        late.entries = edge;
+        assert!(
+            fold(
+                Some(late),
+                &next(
+                    edge,
+                    "collector",
+                    Body::Question {
+                        request_id: request(4)
+                    }
+                )
+            )
+            .is_err()
+        );
     }
 }

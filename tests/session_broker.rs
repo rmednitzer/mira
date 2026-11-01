@@ -281,7 +281,7 @@ fn an_admitted_request_runs_once_and_yields_a_collector_signed_result() {
 #[test]
 fn refusals_follow_autonomy_budget_capability_and_precedence() {
     let dir = Dir::new();
-    assert!(dir.start(&["--budget", "1"]).status.success());
+    assert!(dir.start(&["--budget", "2"]).status.success());
     let ask = |capability: &str, arguments: &str| {
         let output = dir.request(&[
             "--capability",
@@ -299,12 +299,15 @@ fn refusals_follow_autonomy_budget_capability_and_precedence() {
         ask("capture", "host bind-boot"),
         "MIRA session: refused request (operator_only)\n"
     );
-    // One admitted action uses the whole budget.
+    // That refusal cost one unit; one admitted action uses the rest.
     assert!(ask("uptime-minimum", "1").starts_with("MIRA session: admitted request as "));
+    // With no budget left the request is dropped without an entry.
+    let before = dir.state();
     assert_eq!(
         ask("uptime-minimum", "1"),
-        "MIRA session: refused request (budget)\n"
+        "MIRA session: discarded request (no budget left, or only the operator's reserve)\n"
     );
+    assert_eq!(dir.state(), before);
     // A request written before a stop is superseded by it.
     assert!(
         dir.command("direct", "operator", &["--budget", "5"])
@@ -938,4 +941,97 @@ fn close_waits_for_pending_actions_and_can_abandon_them() {
         "\"kind\":\"abandon\",\"principal\":\"operator\",\"based_on\":1,\"action_seq\":1,"
     ));
     assert!(stdout(&dir.verify()).starts_with("MIRA session: verified entries 4 closed"));
+}
+
+#[test]
+fn an_agent_cannot_fill_the_log_with_questions_or_refused_requests() {
+    let dir = Dir::new();
+    assert!(
+        dir.start(&["--budget", "2", "--autonomy", "advisory"])
+            .status
+            .success()
+    );
+    // One question and one refused action spend the whole budget.
+    assert!(
+        dir.request(&["--question", "--text", "first"])
+            .status
+            .success()
+    );
+    assert!(stdout(&dir.broker()).starts_with("MIRA session: admitted request as "));
+    assert!(
+        dir.request(&[
+            "--capability",
+            "uptime-minimum",
+            "--arguments",
+            "1",
+            "--text",
+            "advisory"
+        ])
+        .status
+        .success()
+    );
+    assert_eq!(
+        stdout(&dir.broker()),
+        "MIRA session: refused request (autonomy)\n"
+    );
+    assert!(dir.state().contains("\"budget\":0,"));
+    // Everything after that is dropped unrecorded, however many arrive.
+    let before = dir.state();
+    for index in 0..5 {
+        assert!(
+            dir.request(&["--question", "--text", &format!("flood {index}")])
+                .status
+                .success()
+        );
+    }
+    let ran = stdout(&dir.broker());
+    assert_eq!(ran.lines().count(), 5);
+    assert!(ran.lines().all(|line| line
+        == "MIRA session: discarded request (no budget left, or only the operator's reserve)"));
+    assert_eq!(dir.state(), before);
+    assert_eq!(
+        fs::read_dir(dir.session().join("inbox")).unwrap().count(),
+        0
+    );
+    // The operator can always stop and close.
+    assert!(
+        dir.command("direct", "operator", &["--stop"])
+            .status
+            .success()
+    );
+    assert!(
+        dir.command("close", "operator", &["--conclusion", "done"])
+            .status
+            .success()
+    );
+    assert!(stdout(&dir.verify()).ends_with(" closed\n"));
+}
+
+#[test]
+fn signature_files_are_never_group_writable_whatever_the_umask() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = Dir::new();
+    let signature = dir.path("capture.sig");
+    let key = dir.path("collector");
+    // umask 002 would leave a default-mode file group-writable.
+    let output = Command::new("/bin/sh")
+        .args([
+            "-c",
+            "umask 002 && exec \"$0\" \"$@\"",
+            env!("CARGO_BIN_EXE_mira"),
+        ])
+        .args([
+            "capture",
+            "x",
+            "--signature",
+            signature.to_str().unwrap(),
+            "--sign-with",
+            key.to_str().unwrap(),
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(matches!(output.status.code(), Some(0 | 1)), "{output:?}");
+    let mode = fs::metadata(&signature).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode & 0o022, 0, "mode {mode:o}");
 }

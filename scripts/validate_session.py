@@ -143,10 +143,18 @@ def fold(state, entry):
             raise ValueError('request ID used twice')
         state['requests'].add(request_id)
 
+    def charge():
+        # Every agent-attributable entry costs budget and stays out of the
+        # operator's reserve of the last 64 entries.
+        if state['budget'] == 0 or seq >= 4096 - 64:
+            raise ValueError('agent entry without budget or inside the reserve')
+        state['budget'] -= 1
+
     if kind == 'question':
         if entry.get('request_id') is None and operator:
             pass
         elif entry['request_id'] is not None and collector and state['level'] != 'manual':
+            charge()
             fresh(entry['request_id'])
         else:
             raise ValueError('question without the role or level for it')
@@ -171,9 +179,9 @@ def fold(state, entry):
             pass
         elif entry['request_id'] is not None and collector:
             allowed = state['level'] == 'delegated' or (state['level'] == 'assisted' and not planned[1])
-            if not allowed or state['budget'] == 0:
-                raise ValueError('agent action beyond autonomy or budget')
-            state['budget'] -= 1
+            if not allowed:
+                raise ValueError('agent action beyond autonomy')
+            charge()
             fresh(entry['request_id'])
         else:
             raise ValueError('action without the role for it')
@@ -188,6 +196,7 @@ def fold(state, entry):
         if state['pending'].pop(entry['action_seq'], None) is None:
             raise ValueError('abandoned action is not pending')
     elif kind == 'refusal' and collector:
+        charge()
         fresh(entry['request_id'])
     elif kind == 'close' and operator:
         if entry['entry_count'] != seq + 1 or state['pending']:
@@ -209,7 +218,7 @@ def entry(kind, seq, principal='operator', **fields):
 
 
 HEADER = entry('header', 0, operator='operator', agent='agent', collector='collector',
-               separation='same_user', autonomy='assisted', budget=1)
+               separation='same_user', autonomy='assisted', budget=3)
 REQ = '11' * 32
 
 
@@ -228,7 +237,7 @@ def check_fixtures():
         entry('action', 2, 'collector', request_id=REQ, capability='memory-headroom', arguments='1024'),
         entry('result', 3, 'collector', action_seq=2, exit_status=0, outcome='satisfied',
               document_signature=SIGNATURE),
-        entry('refusal', 4, 'collector', request_id='22' * 32, reason='budget'),
+        entry('refusal', 4, 'collector', request_id='22' * 32, reason='capability'),
         entry('action', 5, request_id=None, capability='capture', arguments='host bind-boot'),
         entry('result', 6, 'collector', action_seq=5, exit_status=None, outcome='runner_error',
               document_signature=None),
@@ -236,7 +245,7 @@ def check_fixtures():
         entry('question', 7),
         entry('directive', 8, directive='stop', level=None, budget=None, until_seq=None),
         entry('directive', 9, directive='set_level', level='advisory', budget=None, until_seq=None),
-        entry('directive', 10, directive='set_budget', level=None, budget=0, until_seq=None),
+        entry('directive', 10, directive='set_budget', level=None, budget=1, until_seq=None),
         entry('question', 11, 'collector', request_id='33' * 32),
         entry('action', 12, request_id=None, capability='service-active', arguments='a@b\\x2dc.service'),
         entry('abandon', 13, action_seq=12),
@@ -275,13 +284,16 @@ def check_fixtures():
     ):
         refused(VALIDATOR.validate, bad)
     started = fold(None, HEADER)
-    acted = fold(started, entry('action', 1, 'collector', request_id=REQ,
-                                capability='uptime-minimum', arguments='1'))
+    acted = fold(dict(started, budget=1), entry('action', 1, 'collector', request_id=REQ,
+                                                capability='uptime-minimum', arguments='1'))
     for state_, bad in (
         (started, entry('action', 1, 'agent', request_id=REQ, capability='uptime-minimum', arguments='1')),
         (started, entry('action', 1, 'collector', request_id=REQ, capability='capture', arguments='host bind-boot')),
         (acted, entry('action', 2, 'collector', request_id='44' * 32, capability='uptime-minimum', arguments='1')),
-        (acted, entry('refusal', 2, 'collector', request_id=REQ, reason='budget')),
+        (acted, entry('refusal', 2, 'collector', request_id=REQ, reason='capability')),
+        (acted, entry('refusal', 2, 'collector', request_id='55' * 32, reason='capability')),
+        (dict(started, budget=5, entries=4032),
+         entry('question', 4032, 'collector', request_id='66' * 32)),
         (acted, entry('result', 2, 'collector', action_seq=1, exit_status=0, outcome='complete_available',
                       document_signature=SIGNATURE)),
         (acted, entry('result', 2, 'operator', action_seq=1, exit_status=0, outcome='satisfied',
@@ -398,13 +410,14 @@ def check_cli():
                 if not ssh_verify(temp, document, document_signature, 'collector',
                                   DOCUMENT_NAMESPACES[family]):
                     raise ValueError('result document not signed by the collector')
-        if kinds != ['header', 'action', 'result', 'refusal', 'action', 'result', 'action', 'result',
+        # The second request finds no budget left and is dropped unrecorded.
+        if kinds != ['header', 'action', 'result', 'action', 'result', 'action', 'result',
                      'question', 'close']:
             raise ValueError(f'unexpected entry sequence {kinds}')
         if (state['budget'], state['closed'], state['pending']) != (0, True, {}):
             raise ValueError('independent state disagrees with the steps')
         shown = json.loads(mira('show', str(session), '--json').stdout)
-        if shown != {'session_version': 1, 'entries': 10, 'closed': True, 'autonomy': 'assisted',
+        if shown != {'session_version': 1, 'entries': 9, 'closed': True, 'autonomy': 'assisted',
                      'budget': 0, 'delegated_until': None}:
             raise ValueError('mira session show disagrees with the independent state')
         verified = mira('verify', str(session), *trust, '--operator', 'operator',

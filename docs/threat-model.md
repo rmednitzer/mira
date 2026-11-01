@@ -104,6 +104,8 @@ Stage 1b adds the broker:
 - results are signed with a collector key that the broker checks before starting
 - `verify` checks every relayed request against the agent's stored, agent-signed record. Each result document is checked against the collector's signature that the collector-signed result entry itself carries, so a different genuine document cannot be substituted
 - close requires every action to have a result or an operator-signed `abandon` entry, so no result can follow the immutable close
+- every agent-attributable entry (relayed request or refusal) costs budget, and the last 64 entries are reserved for the operator and results, so an agent cannot fill the log and block stop or close
+- signature files are created at most 0644 whatever the umask, so a group-shared `documents/` never lets the agent open one for writing
 - `separate_user` gives the agent's group read access to the log and write access to `inbox/` only, and the broker refuses inbox files owned by its own user
 
 Agent containment holds only under `separate_user` with a collector key the agent cannot read. A two-user deployment is not exercised in CI. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.

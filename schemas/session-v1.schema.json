@@ -594,7 +594,6 @@
             "stale",
             "autonomy",
             "superseded_by_directive",
-            "budget",
             "capability",
             "operator_only",
             "owner"

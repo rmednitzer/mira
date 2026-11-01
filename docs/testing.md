@@ -218,6 +218,8 @@ Stage 1b (broker):
   - 1a operator questions keep their signed layout
   - results claim a document signature exactly when they have a document
   - decisions use the level of the entry being written
+  - every agent-attributable entry costs budget, and the operator's reserve is never charged; with no budget left, a flood of requests is dropped unrecorded while stop and close still work
+  - signature files are not group-writable under `umask 002`
 - **`scripts/validate_session.py`:** restates the capability table, outcome mapping and fold rules. It runs a real broker flow (request, admission, refusal, operator capture, close) and checks every entry, stored request and document signature with `ssh-keygen` directly.
 
 ## Representative host qualification

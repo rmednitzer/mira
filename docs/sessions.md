@@ -108,9 +108,8 @@ You start the broker yourself with `mira session run`, in your own terminal; it 
 | `autonomy` | the level is `manual` (questions and actions) or `advisory` (actions) |
 | `superseded_by_directive` | as `autonomy`, but a directive arrived after the request was written |
 | `operator_only` | `capture` with `bind-boot`, below `delegated` |
-| `budget` | no budget left |
 
-A request whose ID already has an entry is discarded rather than recorded twice.
+**Budget.** Every entry the agent causes costs one unit: a relayed action, a relayed question, or a refusal. When no budget is left, the broker drops further requests without recording anything. A request whose ID already has an entry is also dropped rather than recorded twice. The last 64 of the 4,096 entries are reserved for you and for pending results, so an agent flooding the inbox can never leave you unable to stop, abandon or close.
 
 **Capabilities.** These are the agent's entire action set: exactly the existing read-only captures and investigations. Arguments are space-separated tokens. Each token comes from `A-Za-z0-9._:+@,/=-` and never starts with `-`, so a request cannot inject an option.
 
@@ -131,7 +130,7 @@ A request whose ID already has an entry is discarded rather than recorded twice.
 |---|---|---|
 | 0 `complete_available`, 1 `complete_unavailable` | 0 `satisfied`, 1 `not_satisfied`, 3 `indeterminate` | 2 `refused_arguments`, 4 `signing_failed`, anything else `runner_error` |
 
-Only the first two columns produce a document. A result with a document carries the collector's exact armored signature over it, so the collector-signed entry commits to those bytes. Another genuine collector-signed document cannot be swapped in. Each admitted agent action consumes one unit of budget, even if the template then refuses its arguments.
+Only the first two columns produce a document. A result with a document carries the collector's exact armored signature over it, so the collector-signed entry commits to those bytes. Another genuine collector-signed document cannot be swapped in. An admitted agent action costs its unit even if the template then refuses its arguments.
 
 Decisions use the autonomy level that applies to the entry about to be written. A delegation that covers entries only up to the current last one has already lapsed for the next.
 

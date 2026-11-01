@@ -225,9 +225,6 @@ fn decide(state: &State, request: &Request) -> Result<Body, Refusal> {
                 Level::Assisted if plan.operator_only => return Err(Refusal::OperatorOnly),
                 _ => {}
             }
-            if state.budget == 0 {
-                return Err(Refusal::Budget);
-            }
             Ok(Body::Action {
                 request_id: Some(request.request_id.clone()),
                 capability: capability.clone(),
@@ -285,13 +282,21 @@ fn execute(
     Ok((exit_status, outcome, Some(signature)))
 }
 
+/// Why a request was dropped without any entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Discard {
+    /// Its ID already has an entry; it is never recorded twice.
+    Replayed,
+    /// No budget is left, or only the operator's reserve of entries.
+    Unchargeable,
+}
+
 /// The broker's result for one inbox file.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Handled {
     Admitted(Entry),
     Refused(Refusal),
-    /// A request ID that already has an entry: discarded, not recorded again.
-    Discarded,
+    Discarded(Discard),
 }
 
 /// Check before any work that `collector.key` verifies as the header's
@@ -343,10 +348,19 @@ fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<H
     };
     if start.requests.contains(&request_id) {
         remove();
-        return Ok(Handled::Discarded);
+        return Ok(Handled::Discarded(Discard::Replayed));
+    }
+    // Every agent-attributable entry costs budget and stays outside the
+    // operator's reserve; past that, requests are dropped unrecorded.
+    if !session::chargeable(start, start.entries) {
+        remove();
+        return Ok(Handled::Discarded(Discard::Unchargeable));
     }
     let refuse = |reason: Refusal| -> Result<Handled, Problem> {
-        session::append(dir, collector, |state| {
+        let appended = session::append(dir, collector, |state| {
+            if !session::chargeable(state, state.entries) {
+                return Err(Problem::Unchargeable);
+            }
             Ok((
                 Body::Refusal {
                     request_id: request_id.clone(),
@@ -355,9 +369,13 @@ fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<H
                 Some(state.entries - 1),
                 String::new(),
             ))
-        })?;
+        });
         remove();
-        Ok(Handled::Refused(reason))
+        match appended {
+            Ok(_) => Ok(Handled::Refused(reason)),
+            Err(Problem::Unchargeable) => Ok(Handled::Discarded(Discard::Unchargeable)),
+            Err(problem) => Err(problem),
+        }
     };
     // Under separate_user an inbox file owned by the broker's own account was
     // not written by the agent's user, so it is refused before it is read.
@@ -402,7 +420,7 @@ fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<H
             let (_, current) = session::load(dir)?;
             if current.requests.contains(&request_id) {
                 remove();
-                return Ok(Handled::Discarded);
+                return Ok(Handled::Discarded(Discard::Replayed));
             }
             let stored = signature::read_regular(
                 &stored_request(dir, &request_id),
@@ -422,6 +440,9 @@ fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<H
         if state.requests.contains(&request_id) {
             return Err(Problem::Replayed);
         }
+        if !session::chargeable(state, state.entries) {
+            return Err(Problem::Unchargeable);
+        }
         let body = decide(state, &request).unwrap_or_else(|reason| Body::Refusal {
             request_id: request_id.clone(),
             reason,
@@ -440,7 +461,11 @@ fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<H
         Ok(entry) => entry,
         Err(Problem::Replayed) => {
             remove();
-            return Ok(Handled::Discarded);
+            return Ok(Handled::Discarded(Discard::Replayed));
+        }
+        Err(Problem::Unchargeable) => {
+            remove();
+            return Ok(Handled::Discarded(Discard::Unchargeable));
         }
         Err(problem) => {
             // Not recorded: drop the stored copy so the inbox request is
@@ -705,10 +730,6 @@ mod tests {
     fn decisions_follow_level_budget_capability_and_precedence() {
         let admit = |state: &State, request: &Request| decide(state, request).is_ok();
         assert!(admit(&state(Level::Assisted, 1), &request()));
-        assert_eq!(
-            decide(&state(Level::Assisted, 0), &request()),
-            Err(Refusal::Budget)
-        );
         assert_eq!(
             decide(&state(Level::Advisory, 1), &request()),
             Err(Refusal::Autonomy)

@@ -436,7 +436,12 @@ fn run_broker(dir: &Path, rest: &[String]) {
                         Handled::Refused(reason) => {
                             println!("MIRA session: refused request ({})", reason.as_str())
                         }
-                        Handled::Discarded => println!("MIRA session: discarded replayed request"),
+                        Handled::Discarded(session_broker::Discard::Replayed) => {
+                            println!("MIRA session: discarded replayed request")
+                        }
+                        Handled::Discarded(session_broker::Discard::Unchargeable) => println!(
+                            "MIRA session: discarded request (no budget left, or only the operator's reserve)"
+                        ),
                     }
                 }
             }
