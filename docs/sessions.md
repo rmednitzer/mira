@@ -5,8 +5,9 @@ A session is the shared, signed record in which an operator and an AI agent inve
 **Implemented:**
 - **Stage 1a:** the session log, operator entries, autonomy directives, closure with an external receipt, `show` and `verify`.
 - **Stage 1b:** agent requests, the broker that admits and runs them, the operator's own actions, collector-signed results, and the `separate_user` mode.
+- **Stage 1c:** findings checked against collector results, proposals, the operator's decisions with staleness, and a deterministic scripted agent ([`scripts/scripted_agent.py`](../scripts/scripted_agent.py)) for tests and demonstrations.
 
-**Not yet implemented (stage 1c):** findings with claim checks, decisions and proposals, and the scripted agent.
+**Not yet implemented:** the operator-clock delegation deadline and the optional own-assessment forcing function (`decide --own-assessment` and its header flag).
 
 The agent never writes the log. It submits signed requests, and the broker decides.
 
@@ -16,7 +17,7 @@ A session names three principals, each with its own OpenSSH signing key:
 
 | Principal | Holder | Signs |
 |---|---|---|
-| operator | you | Header, questions, directives, close, your own actions |
+| operator | you | Header, questions, directives, decisions, close, your own actions and findings |
 | agent | the agent process, under its own OS user | Only its requests, in `inbox/` |
 | collector | your account, used only by the broker and `act` | Relayed requests, results, refusals, and every result document |
 
@@ -38,7 +39,11 @@ mira session start DIR --allowed-signers SIGNERS --key KEY --operator NAME --age
   [--autonomy manual|advisory|assisted] [--budget N] --question TEXT
 mira session run DIR --allowed-signers SIGNERS --key COLLECTOR-KEY [--once]
 mira session act DIR --allowed-signers SIGNERS --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT]
-mira session request DIR --allowed-signers SIGNERS --key AGENT-KEY (--capability NAME [--arguments TOKENS] | --question) --text TEXT
+mira session request DIR --allowed-signers SIGNERS --key AGENT-KEY \
+  ([--propose] --capability NAME [--arguments TOKENS] | --question | --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...]) --text TEXT
+mira session find DIR --allowed-signers SIGNERS --key KEY --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...] --text TEXT
+mira session decide DIR --allowed-signers SIGNERS --key KEY --target SEQ \
+  (--approve [--despite-stale] --collector-key COLLECTOR-KEY | --reject | --accept | --uncertain) [--text TEXT]
 mira session ask DIR --allowed-signers SIGNERS --key KEY --text TEXT
 mira session direct DIR --allowed-signers SIGNERS --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT]
 mira session close DIR --allowed-signers SIGNERS --key KEY --conclusion TEXT [--receipt PATH]
@@ -63,7 +68,7 @@ mira session verify DIR --allowed-signers SIGNERS --operator NAME [--expect-clos
 
   Delegation ends after a number of entries. The operator-clock deadline the ADR also allows is not implemented.
 - **`close`** appends your conclusion and the final entry count. After it, every append is refused. While an action is still pending (admitted but without a result), `close` refuses, because a result could otherwise arrive after the immutable close. `--abandon-pending` first appends an operator-signed `abandon` entry for each pending action, for example after an interrupted broker; a broker that later finishes such an action records nothing. With `--receipt PATH`, the close record (entry and signature) is also written, exclusively and owner-only (0600 whatever the umask), to `PATH`. That path must be in an existing directory outside the session, resolved through symbolic links. An existing path, a path inside the session or a missing directory is refused before anything is written.
-- **`show`** prints the timeline and current state, or the state alone with `--json`. It reads the log's structure but does not check signatures. No command prints the session ID; it is in entry 0 for anyone who reads the log.
+- **`show`** prints the timeline and current state, or the state alone with `--json`, including the open proposals and agent findings. The timeline labels every finding `checked`, `inference` (a hypothesis) or `unchecked` (`no_finding`), with its confidence and citations, and marks it `stale` when a cited result has a newer result for the same action. Agent notes are shown as `[unchecked agent note]`. It reads the log's structure but does not check signatures. No command prints the session ID; it is in entry 0 for anyone who reads the log.
 - **`verify`** checks everything against the operator you name with `--operator`, including every relayed agent request and every result document. It never takes the operator from the session's own header: any key in `allowed_signers`, the agent's included, could otherwise write a header naming itself operator and sign a counterfeit session. It checks:
   - the header names exactly that operator
   - contiguous sequence numbers from 0, each with a signature
@@ -72,8 +77,9 @@ mira session verify DIR --allowed-signers SIGNERS --operator NAME [--expect-clos
   - every entry written by a principal with the role for its kind, as named in the header
   - nothing after the close
   - every signature, under the session namespace, for the principal the entry names
-  - each relayed `action` or `question` against the agent's stored request: signed by the agent and identical in session, request ID, `based_on`, capability, arguments and note
-  - each result's document: present, signed by the collector under its capture or investigation namespace, with exactly the signature the result commits to
+  - each relayed `action`, `question`, `finding` or `proposal` against the agent's stored request: signed by the agent and identical in session, request ID, `based_on`, kind, its fields and note
+  - each result's document: present, signed by the collector under its capture or investigation namespace, with exactly the signature the result commits to, and stating the assessment reason the result records
+  - every finding's claim against its cited results, and every decision against its target, recomputed from the log by the state rules
 
   The request and document checks run on the same in-memory entries whose signatures were checked; the log is never read a second time.
 
@@ -81,13 +87,13 @@ mira session verify DIR --allowed-signers SIGNERS --operator NAME [--expect-clos
 
 Exit codes:
 - **0:** done, or verified.
-- **1:** refused by the session state (closed, or a contradictory directive), an invalid session, or not verified. A fixed reason is printed.
+- **1:** refused by the session state (closed, a contradictory directive, an unsupported claim, a stale approval or a decision on nothing open), an invalid session, or not verified. A fixed reason is printed.
 - **2:** usage.
 - **4:** signing, `ssh-keygen` or I/O failure, including a key that is not listed for the operator.
 
 ## Agent requests and the broker
 
-The agent runs `mira session request` under its own key. It names one capability with its arguments, or asks a question, and states why. `mira` signs the request as the header's agent, checks that signature, and publishes the request in `inbox/` by one exclusive hard link. Nothing the agent writes is trusted until the broker has checked and recorded it.
+The agent runs `mira session request` under its own key. It names one capability with its arguments, proposes one for you to decide, posts a finding, or asks a question, and states why. `mira` signs the request as the header's agent, checks that signature, and publishes the request in `inbox/` by one exclusive hard link. Nothing the agent writes is trusted until the broker has checked and recorded it.
 
 You start the broker yourself with `mira session run`, in your own terminal; it is not a service. It checks its key as the collector before doing anything, then processes the inbox every 250 ms until the session is closed. With `--once` it makes one pass and stops.
 
@@ -99,7 +105,7 @@ The broker trusts only what it has verified itself:
 2. verifies the agent's signature (`signature`) and the exact request layout (`malformed`)
 3. stores the agent's signed record under `requests/`, where the agent cannot change it
 4. decides against the session state at that moment: the session ID, `based_on`, the request ID, the capability set, the autonomy level and the budget
-5. records the decision in a collector-signed entry: an `action` or `question` that relays the request, or a `refusal` with a fixed reason
+5. records the decision in a collector-signed entry: an `action`, `question`, `finding` or `proposal` that relays the request, or a `refusal` with a fixed reason
 6. for an admitted action, runs it and appends a `result`
 
 **Refusal reasons:**
@@ -115,8 +121,10 @@ The broker trusts only what it has verified itself:
 | `autonomy` | the level is `manual` (questions and actions) or `advisory` (actions) |
 | `superseded_by_directive` | as `autonomy`, but a directive arrived after the request was written |
 | `operator_only` | `capture` with `bind-boot`, below `delegated` |
+| `claim` | a finding whose cited results do not support its claim |
+| `proposals` | already 8 undecided proposals |
 
-**Budget.** Every entry the agent causes costs one unit: a relayed action, a relayed question, or a refusal. When no budget is left, the broker drops further requests without recording anything. A request whose ID already has an entry is also dropped rather than recorded twice. The last 64 of the 4,096 entries are reserved for you and for pending results, so an agent flooding the inbox can never leave you unable to stop, abandon or close.
+**Budget.** Every entry the agent causes costs one unit: a relayed action, question or finding, or a refusal. A proposal costs nothing, so an agent that has spent its budget can still propose; at most 8 proposals may be undecided at once. When no budget is left, the broker drops every further request except a proposal without recording anything. A request whose ID already has an entry is also dropped rather than recorded twice. The last 64 of the 4,096 entries are reserved for you and for pending results, so an agent flooding the inbox can never leave you unable to stop, abandon or close.
 
 **Capabilities.** These are the agent's entire action set: exactly the existing read-only captures and investigations. Arguments are space-separated tokens. Each token comes from `A-Za-z0-9._:+@,/=-` and never starts with `-`, so a request cannot inject an option.
 
@@ -143,7 +151,42 @@ Decisions use the autonomy level that applies to the entry about to be written. 
 
 If the broker stops after storing a request but before recording it, the next run resumes that request, provided the stored copy matches the inbox file. A request whose ID already has an entry is discarded.
 
-**The operator's own actions.** `mira session act` records an `action` signed by you and runs it immediately. The result is signed with the collector key you pass, and no budget applies.
+**The operator's own actions.** `mira session act` records an `action` signed by you and runs it immediately. The result is signed with the collector key you pass, and no budget applies. A wrong collector key is refused before anything is written.
+
+## Findings
+
+A finding is a claim from a closed vocabulary, citing results by sequence number. Checks use only the collector-signed `result` entries: the outcome the broker mapped from the exit status, and the assessment reason it read from the report it had just produced. Nothing the agent writes, its note included, is ever part of a check.
+
+| Claim | Supported when the cited results |
+|---|---|
+| `expectation_satisfied` | are all investigations with outcome `satisfied` (at least one) |
+| `expectation_not_satisfied` | include one with outcome `not_satisfied` |
+| `expectation_indeterminate` | include one with outcome `indeterminate`, for any reason |
+| `evidence_unavailable` | include a capture with `complete_unavailable`, or an investigation whose reason is `evidence_unavailable` |
+| `hypothesis` | are never checked; a confidence label (`low`, `medium`, `high`) is required, and it is always shown as inference |
+| `no_finding` | are none; nothing to check, and no confidence label |
+
+An indeterminate assessment over evidence that was collected, such as a service transition in progress or an incomplete package installation, supports `expectation_indeterminate` but not `evidence_unavailable`. Every citation must be a result, at most 16, in ascending order. A result written before stage 1c has no `reason` field; it still supports the outcome claims, but never `evidence_unavailable` for an investigation.
+
+The agent posts a finding with `request --claim`; the broker refuses one its citations do not support (`claim`). You post your own with `find`, which is checked the same way. Agent findings stay open until you decide on them; yours are not decided.
+
+## Proposals and decisions
+
+`request --propose` asks you to run an action, whatever the agent's level allows: for example `capture host bind-boot` under `assisted`, or anything under `advisory`. Only `manual` refuses proposals.
+
+`decide --target SEQ` records your decision on one open proposal or agent finding, once:
+- a finding takes `--accept`, `--reject` or `--uncertain`
+- a proposal takes `--reject`, or `--approve` with `--collector-key`. Approval appends the decision and then runs the proposal's action at once as your own, noted `approved proposal NNNNNN`. A wrong collector key is refused before the decision is written.
+
+A proposal is **stale** when a result for the same capability and arguments was recorded after the entry the proposal was based on: the agent proposed without seeing it. Approving a stale proposal is refused unless you pass `--despite-stale`, which the decision records as `approve_despite_stale`.
+
+## The scripted agent
+
+[`scripts/scripted_agent.py`](../scripts/scripted_agent.py) is a deterministic agent for tests and demonstrations, not a model. Each run takes at most one step through `mira session request`: request `memory-headroom 1`; once its result is recorded, post the finding that result supports, citing it; propose `capture host bind-boot`; ask a question; then stay idle. It waits while one of its requests is in the inbox or its action has no result yet.
+
+```sh
+python3 scripts/scripted_agent.py DIR --allowed-signers SIGNERS --key AGENT-KEY [--mira PATH]
+```
 
 ## Separation
 
@@ -166,7 +209,7 @@ The inbox is the one place the agent can write, so the broker bounds it:
 
 ## How entries are written
 
-Each entry is one JSON line in a fixed field order, ending with a bounded free-text `note`. The schema is [`session-v1`](../schemas/session-v1.schema.json). `mira` accepts an entry only if rendering it again reproduces the exact bytes, so there is one way to write each entry. Notes are checked against the rules below on reading as well as writing. Operator questions written by stage 1a, without a `request_id` field, are still accepted in their original signed layout.
+Each entry is one JSON line in a fixed field order, ending with a bounded free-text `note`. The schema is [`session-v1`](../schemas/session-v1.schema.json). `mira` accepts an entry only if rendering it again reproduces the exact bytes, so there is one way to write each entry. Notes are checked against the rules below on reading as well as writing. Operator questions written by stage 1a, without a `request_id` field, and results written by stage 1b, without a `reason` field, are still accepted in their original signed layout.
 
 Each entry is stored with its signature in a single record file, `entries/NNNNNN.entry`: the entry line, newline included, followed by the armored SSHSIG signature over exactly that line. To check one record by hand:
 
@@ -188,4 +231,4 @@ Notes are at most 1 KiB, on one line. They refuse control characters (C0, DEL, C
 
 A verified session shows that the operator you named, and the keys the operator's header lists, wrote these exact entries, in this order, each within its role. It does not show that anything in a note is true. Without a receipt it also does not show which session you are looking at: an older, genuine session by the same operator would verify too. The receipt pins the exact closed session.
 
-Truncating the tail of an open session is not detectable; a closed session with a receipt is. In stage 1a every entry is written by the operator's own account, so this stage makes no containment claim about agents. That comes with the broker and the `separate_user` mode in stage 1b.
+Truncating the tail of an open session is not detectable; a closed session with a receipt is. A `checked` finding shows that the collector's results support its claim, not that the claim answers your question: a satisfied memory check says nothing about a service. Containment of the agent holds only under `separate_user`, with a collector key the agent cannot read.

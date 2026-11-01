@@ -226,11 +226,20 @@ Stage 1b (broker):
   - an inbox flood (junk files, directories, stale and fresh pending files, and 70 request-shaped files) is handled in passes of at most 64 and purged, leaving only the agent's fresh pending file and its non-empty directory
 - **`scripts/validate_session.py`:** restates the capability table, outcome mapping and fold rules. It runs a real broker flow (request, admission, refusal, operator capture, close) and checks every entry, stored request and document signature with `ssh-keygen` directly.
 
+Stage 1c (findings, proposals, decisions):
+- **Unit tests:**
+  - every claim against synthetic collector results: satisfied needs all cited results satisfied; a transition in progress or an incomplete installation supports `expectation_indeterminate` but never `evidence_unavailable`; unavailable evidence from an investigation reason or a capture; a stage 1b result without a reason never supports `evidence_unavailable`; citations must be results; hypothesis needs confidence and `no_finding` takes none
+  - result reasons fit their family and outcome; the assessment reader takes only MIRA's fixed report layout, never an escaped host string
+  - proposals at zero budget, the bound of 8 open proposals, no proposals at `manual`; decisions by the operator only, once, with a verdict that fits the target; stale approval only with `approve_despite_stale`
+  - findings, proposals and decisions round-trip canonically as entries and requests, and non-canonical citations are refused
+- **`tests/session_broker.rs`** (real `ssh-keygen`): agent findings admitted or refused (`claim`) against real results, operator findings checked the same way, decisions once each, the timeline labels, and `verify` refusing an altered stored finding; proposals admitted at zero budget under `advisory`, approval running the action, a wrong collector key writing nothing, and a stale proposal approved only with `--despite-stale`; a stop superseding pending findings and proposals
+- **`scripts/validate_session.py`:** restates claims, verdicts, staleness and result reasons; its `scripted-agent` group runs `scripts/scripted_agent.py` against the real broker, recomputes the agent's claim from the signed report alone, decides, closes and verifies with the receipt. The `session` validator is a qualification group, gated on `ssh-keygen`.
+
 ## Representative host qualification
 
 The live checks above run on two GitHub-hosted runners and the development host. [ADR 0013](adr/0013-host-qualification-protocol.md) and the [qualification guide](qualification.md) define how they run on real hosts. `scripts/qualify_host.py` runs every validator's check groups against the checkout build or an installed binary and records passed, failed or not applicable per group, with fixed reasons such as `no_systemd`. It writes a `qualification-receipt-v1` receipt free of host identifiers.
 
-All eight validators share the contract in `scripts/validation_status.py`:
+All nine validators share the contract in `scripts/validation_status.py`:
 - the binary from `MIRA_BINARY`
 - exit 0 passed, 1 failed, 4 inconclusive
 - fixed groups through `--list-groups` and `--only`

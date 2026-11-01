@@ -53,6 +53,8 @@ VALIDATORS = (
     ('journal', 'validate_journal_investigation.py',
      {'fixtures': (), 'cli': (), 'live-visibility': ('journalctl',),
       'live-counts': ('journalctl', 'journal_visible')}),
+    ('session', 'validate_session.py',
+     {'fixtures': (), 'cli': ('ssh_keygen',), 'scripted-agent': ('ssh_keygen',)}),
 )
 NOT_APPLICABLE = {'systemd': 'no_systemd', 'journalctl': 'no_journal_access',
                   'journal_visible': 'no_journal_access', 'psi': 'no_psi', 'dpkg': 'no_dpkg',

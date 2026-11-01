@@ -47,7 +47,7 @@
         "required": ["validator", "group", "result", "reason", "duration_ms", "observation_gaps"],
         "additionalProperties": false,
         "properties": {
-          "validator": {"enum": ["evidence", "investigation", "capture", "memory", "pressure", "package", "host", "journal"]},
+          "validator": {"enum": ["evidence", "investigation", "capture", "memory", "pressure", "package", "host", "journal", "session"]},
           "group": {"type": "string", "pattern": "^(?!.*\\n)[a-z][a-z-]{0,31}$"},
           "result": {"enum": ["passed", "failed", "not_applicable"]},
           "reason": {"enum": [null, "validator_failed", "inconclusive", "runner_error", "no_systemd", "no_journal_access", "no_psi", "no_dpkg", "no_ssh_keygen", "no_boot_id"]},

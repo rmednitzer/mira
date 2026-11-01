@@ -33,6 +33,7 @@ Each validator declares fixed check groups (`--list-groups`) and runs a selectio
 | package | `fixtures`, `cli`, `live-dpkg` | `live-dpkg`: a readable dpkg status file (`no_dpkg`) |
 | host | `fixtures`, `cli`, `live` | none |
 | journal | `fixtures`, `cli`, `live-visibility`, `live-counts` | `live-visibility`: `journalctl` (`no_journal_access`); `live-counts`: also a visible PID 1 sentinel (`no_journal_access`) |
+| session | `fixtures`, `cli`, `scripted-agent` | `cli` and `scripted-agent`: `/usr/bin/ssh-keygen` (`no_ssh_keygen`) |
 
 Denial paths are never gated. A precondition never skips the check that validates MIRA's handling of that missing capability:
 - `journal live-visibility` compares MIRA's `journal_visible` and `journal_access_complete` answers with the validator's own, including when they are false.

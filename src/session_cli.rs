@@ -1,11 +1,14 @@
-//! `mira session` subcommands (ADR 0015 stages 1a and 1b). Exit codes: 0 done
+//! `mira session` subcommands (ADR 0015 stage 1). Exit codes: 0 done
 //! or verified, 1 refused by the session state or not verified, 2 usage, 4
 //! tool, signing or I/O failure.
-use mira::session::{self, Body, Directive, Header, Level, Problem, Separation, Writer};
+use mira::session::{
+    self, Body, Claim, Confidence, Directive, Header, Level, Open, Problem, Separation, Verdict,
+    Writer,
+};
 use mira::session_broker::{self, Ask, Handled};
 use std::{collections::BTreeMap, path::Path};
 
-pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--separation same_user | --separation separate_user --agent-group GROUP] [--autonomy manual|advisory|assisted] [--budget N] --question TEXT | mira session run DIR --allowed-signers FILE --key COLLECTOR-KEY [--once] | mira session act DIR --allowed-signers FILE --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT] | mira session request DIR --allowed-signers FILE --key AGENT-KEY (--capability NAME [--arguments TOKENS] | --question) --text TEXT | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] [--abandon-pending] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE --operator NAME [--expect-close PATH]";
+pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--separation same_user | --separation separate_user --agent-group GROUP] [--autonomy manual|advisory|assisted] [--budget N] --question TEXT | mira session run DIR --allowed-signers FILE --key COLLECTOR-KEY [--once] | mira session act DIR --allowed-signers FILE --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT] | mira session request DIR --allowed-signers FILE --key AGENT-KEY ([--propose] --capability NAME [--arguments TOKENS] | --question | --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...]) --text TEXT | mira session find DIR --allowed-signers FILE --key KEY --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...] --text TEXT | mira session decide DIR --allowed-signers FILE --key KEY --target SEQ (--approve [--despite-stale] --collector-key COLLECTOR-KEY | --reject | --accept | --uncertain) [--text TEXT] | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] [--abandon-pending] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE --operator NAME [--expect-close PATH]";
 
 fn usage() -> ! {
     eprintln!("Usage: {USAGE}");
@@ -76,6 +79,183 @@ fn principal(value: &str) -> String {
     value.to_owned()
 }
 
+fn find(dir: &Path, rest: &[String]) {
+    let options = Options::parse(
+        rest,
+        &[
+            "--allowed-signers",
+            "--key",
+            "--claim",
+            "--confidence",
+            "--cites",
+            "--text",
+        ],
+        &[],
+    );
+    let (claim, confidence, cites) = claim(&options);
+    let note = text(options.required("--text"));
+    let entry = as_operator(dir, &options, |state| {
+        if !session::supports(state, claim, confidence, &cites) {
+            return Err(Problem::Unsupported);
+        }
+        Ok((
+            Body::Finding {
+                request_id: None,
+                claim,
+                confidence,
+                cites: cites.clone(),
+            },
+            Some(state.entries - 1),
+            note.clone(),
+        ))
+    });
+    println!("MIRA session: finding {:06}", entry.seq);
+}
+
+/// Decide on an open proposal or agent finding. Approving a proposal runs
+/// its action at once as the operator's own, with the collector key.
+fn decide(dir: &Path, rest: &[String]) {
+    let dir = &canonical(dir);
+    let options = Options::parse(
+        rest,
+        &[
+            "--allowed-signers",
+            "--key",
+            "--target",
+            "--collector-key",
+            "--text",
+        ],
+        &[
+            "--approve",
+            "--despite-stale",
+            "--reject",
+            "--accept",
+            "--uncertain",
+        ],
+    );
+    let chosen: Vec<_> = ["--approve", "--reject", "--accept", "--uncertain"]
+        .into_iter()
+        .filter(|name| options.has(name))
+        .collect();
+    let approve = chosen == ["--approve"];
+    if chosen.len() != 1
+        || (options.has("--despite-stale") && !approve)
+        || options.has("--collector-key") != approve
+    {
+        usage();
+    }
+    let verdict = match chosen[0] {
+        "--approve" if options.has("--despite-stale") => Verdict::ApproveDespiteStale,
+        "--approve" => Verdict::Approve,
+        "--reject" => Verdict::Reject,
+        "--accept" => Verdict::Accept,
+        _ => Verdict::Uncertain,
+    };
+    let target = decimal(options.required("--target"));
+    let note = options.get("--text").map(text).unwrap_or_default();
+    let state = session::load(dir)
+        .map(|(_, state)| state)
+        .unwrap_or_else(|problem| write_failure(problem));
+    let allowed = Path::new(options.required("--allowed-signers"));
+    let operator = Writer {
+        allowed_signers: allowed,
+        key: Path::new(options.required("--key")),
+        principal: &state.header.operator,
+    };
+    let collector_key = options.get("--collector-key").map(Path::new);
+    let collector = collector_key.map(|key| Writer {
+        allowed_signers: allowed,
+        key,
+        principal: &state.header.collector,
+    });
+    // An approval must be able to run its action: a wrong collector key
+    // fails before the decision is written.
+    if let Some(collector) = &collector
+        && let Err(problem) = session_broker::check_key(dir, collector)
+    {
+        write_failure(problem);
+    }
+    let build = |state: &session::State| {
+        let fits = match state.open.get(&target) {
+            None => return Err(Problem::NotOpen),
+            Some(Open::Proposal {
+                capability,
+                arguments,
+                based_on,
+            }) => match verdict {
+                Verdict::Approve if session::stale(state, capability, arguments, *based_on) => {
+                    return Err(Problem::Stale);
+                }
+                Verdict::Approve | Verdict::ApproveDespiteStale | Verdict::Reject => true,
+                _ => false,
+            },
+            Some(Open::Finding) => {
+                !matches!(verdict, Verdict::Approve | Verdict::ApproveDespiteStale)
+            }
+        };
+        if !fits {
+            return Err(Problem::InvalidDirective);
+        }
+        Ok((
+            Body::Decision {
+                target_seq: target,
+                verdict,
+            },
+            Some(state.entries - 1),
+            note.clone(),
+        ))
+    };
+    let decision =
+        session::append(dir, &operator, build).unwrap_or_else(|problem| write_failure(problem));
+    println!(
+        "MIRA session: decision {:06} {} {target:06}",
+        decision.seq,
+        verdict.as_str()
+    );
+    let Some(collector) = collector else { return };
+    // The approved action is the proposal's, read from the log the decision
+    // was appended to.
+    let (log, _) = session::load(dir).unwrap_or_else(|problem| write_failure(problem));
+    let Some(Body::Proposal {
+        capability,
+        arguments,
+        ..
+    }) = log.get(target as usize).map(|stored| &stored.entry.body)
+    else {
+        write_failure(Problem::NotOpen)
+    };
+    match session_broker::act(
+        dir,
+        &operator,
+        &collector,
+        capability,
+        arguments,
+        format!("approved proposal {target:06}"),
+    ) {
+        Ok((action, result)) => report_action(&action, result.as_ref()),
+        Err(problem) => write_failure(problem),
+    }
+}
+
+fn report_action(action: &session::Entry, result: Option<&session::Entry>) {
+    match result {
+        Some(result) => {
+            let outcome = match &result.body {
+                Body::Result { outcome, .. } => outcome.as_str(),
+                _ => "unknown",
+            };
+            println!(
+                "MIRA session: action {:06} result {:06} {outcome}",
+                action.seq, result.seq
+            );
+        }
+        None => println!(
+            "MIRA session: action {:06} abandoned before its result",
+            action.seq
+        ),
+    }
+}
+
 fn decimal(value: &str) -> u64 {
     mira::challenge::parse_decimal(value.as_bytes())
         .unwrap_or_else(|| fail("numbers must be decimal integers of at most 16 digits", 2))
@@ -88,7 +268,10 @@ fn write_failure(problem: Problem) -> ! {
         | Problem::InvalidDirective
         | Problem::Full
         | Problem::Text
-        | Problem::Pending => {
+        | Problem::Pending
+        | Problem::Unsupported
+        | Problem::Stale
+        | Problem::NotOpen => {
             println!("MIRA session: refused ({})", problem.reason());
             std::process::exit(1)
         }
@@ -114,6 +297,8 @@ pub fn run(args: &[String]) {
     match sub.as_str() {
         "start" => start(dir, rest),
         "ask" => ask(dir, rest),
+        "find" => find(dir, rest),
+        "decide" => decide(dir, rest),
         "direct" => direct(dir, rest),
         "close" => close(dir, rest),
         "request" => request(dir, rest),
@@ -374,6 +559,29 @@ fn capability(options: &Options) -> (String, String) {
     (capability, arguments)
 }
 
+/// A claim with its labels and citations, from `--claim`, `--confidence`
+/// and `--cites`.
+fn claim(options: &Options) -> (Claim, Option<Confidence>, Vec<u64>) {
+    let claim = Claim::parse(options.required("--claim")).unwrap_or_else(|| {
+        fail(
+            "claim must be expectation_satisfied, expectation_not_satisfied, expectation_indeterminate, evidence_unavailable, hypothesis or no_finding",
+            2,
+        )
+    });
+    let confidence = options.get("--confidence").map(|value| {
+        Confidence::parse(value)
+            .unwrap_or_else(|| fail("confidence must be low, medium or high", 2))
+    });
+    let cites =
+        session::parse_cites(options.get("--cites").unwrap_or_default()).unwrap_or_else(|| {
+            fail(
+                "cites must be at most 16 ascending entry numbers separated by commas",
+                2,
+            )
+        });
+    (claim, confidence, cites)
+}
+
 fn request(dir: &Path, rest: &[String]) {
     let options = Options::parse(
         rest,
@@ -382,21 +590,49 @@ fn request(dir: &Path, rest: &[String]) {
             "--key",
             "--capability",
             "--arguments",
+            "--claim",
+            "--confidence",
+            "--cites",
             "--text",
         ],
-        &["--question"],
+        &["--question", "--propose"],
     );
-    let ask = match (options.has("--question"), options.has("--capability")) {
-        (true, false) if !options.has("--arguments") => Ask::Question,
-        (false, true) => {
+    let finding_options = ["--claim", "--confidence", "--cites"]
+        .iter()
+        .any(|name| options.has(name));
+    let ask = match (
+        options.has("--question"),
+        options.has("--capability"),
+        options.has("--claim"),
+    ) {
+        (true, false, false) if !options.has("--arguments") && !finding_options => Ask::Question,
+        (false, true, false) if !finding_options => {
             let (capability, arguments) = capability(&options);
-            Ask::Action {
-                capability,
-                arguments,
+            if options.has("--propose") {
+                Ask::Proposal {
+                    capability,
+                    arguments,
+                }
+            } else {
+                Ask::Action {
+                    capability,
+                    arguments,
+                }
+            }
+        }
+        (false, false, true) if !options.has("--arguments") => {
+            let (claim, confidence, cites) = claim(&options);
+            Ask::Finding {
+                claim,
+                confidence,
+                cites,
             }
         }
         _ => usage(),
     };
+    if options.has("--propose") && !matches!(ask, Ask::Proposal { .. }) {
+        usage();
+    }
     let note = text(options.required("--text"));
     let state = session::load(dir)
         .map(|(_, state)| state)
@@ -498,22 +734,7 @@ fn act(dir: &Path, rest: &[String]) {
         principal: &state.header.collector,
     };
     match session_broker::act(dir, &operator, &collector, &capability, &arguments, note) {
-        Ok((action, Some(result))) => {
-            let outcome = match result.body {
-                Body::Result { outcome, .. } => outcome.as_str(),
-                _ => "unknown",
-            };
-            println!(
-                "MIRA session: action {:06} result {:06} {outcome}",
-                action.seq, result.seq
-            );
-        }
-        Ok((action, None)) => {
-            println!(
-                "MIRA session: action {:06} abandoned before its result",
-                action.seq
-            );
-        }
+        Ok((action, result)) => report_action(&action, result.as_ref()),
         Err(problem) => write_failure(problem),
     }
 }

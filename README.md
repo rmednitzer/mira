@@ -75,7 +75,7 @@ Each template answers one narrow, explicit question and reports satisfied (exit 
 
 ### Shared sessions
 
-`mira session` records an investigation as a signed, append-only log of entries, each naming its principal ([sessions](docs/sessions.md)). The operator starts, directs and closes a session. An agent submits signed requests, and `mira session run`, a broker the operator starts, admits or refuses each one under the operator's autonomy level and budget, runs admitted actions and records collector-signed results. Findings with claim checks and a scripted agent come next.
+`mira session` records an investigation as a signed, append-only log of entries, each naming its principal ([sessions](docs/sessions.md)). The operator starts, directs and closes a session. An agent submits signed requests, and `mira session run`, a broker the operator starts, admits or refuses each one under the operator's autonomy level and budget, runs admitted actions and records collector-signed results. Findings are checked against those results before they are recorded, proposals wait for the operator's decision, and a deterministic scripted agent exercises the whole flow. A local model harness comes next.
 
 ### Qualification
 

@@ -1,6 +1,7 @@
-//! The session broker (ADR 0015 stage 1b) end to end, against the real
+//! The session broker (ADR 0015 stages 1b and 1c) end to end, against the real
 //! /usr/bin/ssh-keygen with throwaway keys: agent requests, admission,
-//! refusals, execution as MIRA itself, collector-signed results and verify.
+//! refusals, execution as MIRA itself, collector-signed results, checked
+//! findings, proposals, decisions and verify.
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -272,7 +273,7 @@ fn an_admitted_request_runs_once_and_yields_a_collector_signed_result() {
     let shown = stdout(&dir.mira(&["session", "show", dir.session().to_str().unwrap()]));
     assert!(
         shown.contains(
-            "000001 collector action memory-headroom 1 (agent request): check headroom first\n"
+            "000001 collector action memory-headroom 1 (agent request): [unchecked agent note] check headroom first\n"
         ),
         "{shown}"
     );
@@ -1357,4 +1358,345 @@ fn the_broker_keeps_the_path_it_resolved_when_a_link_is_switched() {
             .count(),
         0
     );
+}
+
+fn run(dir: &Dir) -> String {
+    let output = dir.broker();
+    assert!(output.status.success(), "{output:?}");
+    stdout(&output)
+}
+
+#[test]
+fn agent_findings_are_checked_against_collector_results() {
+    let dir = Dir::new();
+    assert!(dir.start(&[]).status.success());
+    // A satisfied result at 2, then a not-satisfied one at 4.
+    assert!(
+        dir.request(&[
+            "--capability",
+            "memory-headroom",
+            "--arguments",
+            "1",
+            "--text",
+            "any?"
+        ])
+        .status
+        .success()
+    );
+    run(&dir);
+    assert!(
+        dir.line(2)
+            .contains("\"outcome\":\"satisfied\",\"reason\":\"minimum_met\",")
+    );
+    let finding = |claim: &str, extra: &[&str]| {
+        let mut args = vec!["--claim", claim];
+        args.extend(extra);
+        args.extend(["--text", "my reading"]);
+        assert!(dir.request(&args).status.success());
+        run(&dir)
+    };
+    assert_eq!(
+        finding("expectation_satisfied", &["--cites", "2"]),
+        "MIRA session: admitted request as 000003\n"
+    );
+    // Unsupported by the cited result, citing an action, or a hypothesis
+    // without confidence: refused, never recorded as a finding.
+    for (claim, extra) in [
+        ("expectation_not_satisfied", &["--cites", "2"][..]),
+        ("expectation_satisfied", &["--cites", "1"]),
+        ("evidence_unavailable", &["--cites", "2"]),
+        ("hypothesis", &[]),
+    ] {
+        assert_eq!(
+            finding(claim, extra),
+            "MIRA session: refused request (claim)\n",
+            "{claim}"
+        );
+    }
+    assert!(
+        dir.request(&[
+            "--capability",
+            "memory-headroom",
+            "--arguments",
+            "9999999999999999",
+            "--text",
+            "a lot?"
+        ])
+        .status
+        .success()
+    );
+    run(&dir);
+    assert!(
+        dir.line(9)
+            .contains("\"outcome\":\"not_satisfied\",\"reason\":\"below_minimum\",")
+    );
+    assert_eq!(
+        finding("expectation_not_satisfied", &["--cites", "2,9"]),
+        "MIRA session: admitted request as 000010\n"
+    );
+    assert_eq!(
+        finding("hypothesis", &["--confidence", "low"]),
+        "MIRA session: admitted request as 000011\n"
+    );
+    assert!(
+        dir.state()
+            .contains("\"open_proposals\":[],\"open_findings\":[3,10,11]}")
+    );
+    // The operator's own finding is checked the same way, and is not open.
+    let find = |claim: &str, cites: &str| {
+        dir.command(
+            "find",
+            "operator",
+            &["--claim", claim, "--cites", cites, "--text", "mine"],
+        )
+    };
+    let unsupported = find("expectation_satisfied", "9");
+    assert_eq!(unsupported.status.code(), Some(1), "{unsupported:?}");
+    assert_eq!(
+        stdout(&unsupported),
+        "MIRA session: refused (the cited results do not support this claim)\n"
+    );
+    assert_eq!(
+        stdout(&find("expectation_satisfied", "2")),
+        "MIRA session: finding 000012\n"
+    );
+    // Each agent finding is decided once, with a finding verdict.
+    let decide = |target: &str, verdict: &str| {
+        dir.command("decide", "operator", &["--target", target, verdict])
+    };
+    assert_eq!(
+        stdout(&decide("3", "--accept")),
+        "MIRA session: decision 000013 accept 000003\n"
+    );
+    assert_eq!(
+        stdout(&decide("10", "--uncertain")),
+        "MIRA session: decision 000014 uncertain 000010\n"
+    );
+    for (target, code) in [("3", 1), ("12", 1), ("2", 1)] {
+        let again = decide(target, "--reject");
+        assert_eq!(again.status.code(), Some(code), "{target} {again:?}");
+        assert_eq!(
+            stdout(&again),
+            "MIRA session: refused (target is not an open proposal or agent finding)\n"
+        );
+    }
+    assert!(dir.state().contains("\"open_findings\":[11]}"));
+    let shown = stdout(&dir.mira(&["session", "show", dir.session().to_str().unwrap()]));
+    for line in [
+        "000003 collector finding expectation_satisfied checked confidence none cites 000002 (agent request): [unchecked agent note] my reading\n",
+        "000011 collector finding hypothesis inference confidence low cites none (agent request): [unchecked agent note] my reading\n",
+        "000012 operator finding expectation_satisfied checked confidence none cites 000002: mine\n",
+        "000013 operator decision accept on 000003: \n",
+    ] {
+        assert!(shown.contains(line), "{line}\n{shown}");
+    }
+    assert_eq!(
+        stdout(&dir.verify()),
+        "MIRA session: verified entries 15 open\n"
+    );
+    // The relayed finding must match the agent's signed request exactly.
+    let relayed = dir.line(3);
+    let id = relayed.split("\"request_id\":\"").nth(1).unwrap()[..64].to_owned();
+    let stored = dir.session().join(format!("requests/{id}.request"));
+    let record = fs::read(&stored).unwrap();
+    let altered =
+        String::from_utf8(record)
+            .unwrap()
+            .replacen("\"cites\":\"2\"", "\"cites\":\"9\"", 1);
+    fs::write(&stored, altered).unwrap();
+    not_verified(
+        &dir.verify(),
+        "agent request relayed by entry 3 missing or altered",
+    );
+}
+
+#[test]
+fn proposals_wait_for_the_operators_decision() {
+    let dir = Dir::new();
+    assert!(
+        dir.start(&["--autonomy", "advisory", "--budget", "0"])
+            .status
+            .success()
+    );
+    let propose = || {
+        assert!(
+            dir.request(&[
+                "--propose",
+                "--capability",
+                "memory-headroom",
+                "--arguments",
+                "1",
+                "--text",
+                "worth a look"
+            ])
+            .status
+            .success()
+        );
+    };
+    // At zero budget an advisory agent can still propose, and nothing else.
+    propose();
+    assert_eq!(run(&dir), "MIRA session: admitted request as 000001\n");
+    assert!(
+        dir.request(&[
+            "--capability",
+            "memory-headroom",
+            "--arguments",
+            "1",
+            "--text",
+            "x"
+        ])
+        .status
+        .success()
+    );
+    assert_eq!(
+        run(&dir),
+        "MIRA session: discarded request (no budget left, or only the operator's reserve)\n"
+    );
+    assert!(dir.state().contains("\"open_proposals\":[1],"));
+    // A dropped request leaves no stored copy behind: only the proposal's.
+    assert_eq!(
+        fs::read_dir(dir.session().join("requests"))
+            .unwrap()
+            .count(),
+        1
+    );
+    let collector = dir.path("collector");
+    let collector = collector.to_str().unwrap();
+    let decide = |extra: &[&str]| {
+        let mut args = vec!["--target", "1"];
+        args.extend(extra);
+        dir.command("decide", "operator", &args)
+    };
+    // A proposal takes a proposal verdict; approving needs the collector key.
+    assert_eq!(decide(&["--accept"]).status.code(), Some(1));
+    assert_eq!(decide(&["--approve"]).status.code(), Some(2));
+    assert_eq!(
+        decide(&["--reject", "--collector-key", collector])
+            .status
+            .code(),
+        Some(2)
+    );
+    let agent = dir.path("agent");
+    let wrong = decide(&["--approve", "--collector-key", agent.to_str().unwrap()]);
+    assert_eq!(wrong.status.code(), Some(4), "{wrong:?}");
+    assert!(dir.state().contains("\"entries\":2,"));
+    let approved = decide(&["--approve", "--collector-key", collector]);
+    assert_eq!(
+        stdout(&approved),
+        "MIRA session: decision 000002 approve 000001\nMIRA session: action 000003 result 000004 satisfied\n",
+        "{approved:?}"
+    );
+    assert!(
+        dir.line(3)
+            .contains("\"note\":\"approved proposal 000001\"")
+    );
+    // A proposal written before a newer result for its action is stale.
+    propose();
+    assert!(
+        dir.command(
+            "act",
+            "operator",
+            &[
+                "--collector-key",
+                collector,
+                "--capability",
+                "memory-headroom",
+                "--arguments",
+                "1"
+            ]
+        )
+        .status
+        .success()
+    );
+    assert_eq!(run(&dir), "MIRA session: admitted request as 000007\n");
+    let shown = stdout(&dir.mira(&["session", "show", dir.session().to_str().unwrap()]));
+    assert!(
+        shown.contains("000007 collector proposal memory-headroom 1 stale (agent request)"),
+        "{shown}"
+    );
+    let decide = |extra: &[&str]| {
+        let mut args = vec!["--target", "7"];
+        args.extend(extra);
+        dir.command("decide", "operator", &args)
+    };
+    let stale = decide(&["--approve", "--collector-key", collector]);
+    assert_eq!(stale.status.code(), Some(1), "{stale:?}");
+    assert_eq!(
+        stdout(&stale),
+        "MIRA session: refused (proposal is stale: a newer result exists for the same action; approve with --despite-stale)\n"
+    );
+    assert_eq!(
+        stdout(&decide(&[
+            "--approve",
+            "--despite-stale",
+            "--collector-key",
+            collector
+        ])),
+        "MIRA session: decision 000008 approve_despite_stale 000007\nMIRA session: action 000009 result 000010 satisfied\n"
+    );
+    assert!(
+        dir.state()
+            .contains("\"budget\":0,\"delegated_until\":null,\"open_proposals\":[],")
+    );
+    assert_eq!(
+        stdout(&dir.verify()),
+        "MIRA session: verified entries 11 open\n"
+    );
+}
+
+#[test]
+fn a_stopped_agent_can_neither_find_nor_propose() {
+    let dir = Dir::new();
+    assert!(dir.start(&[]).status.success());
+    assert!(
+        dir.request(&[
+            "--claim",
+            "hypothesis",
+            "--confidence",
+            "low",
+            "--text",
+            "maybe"
+        ])
+        .status
+        .success()
+    );
+    assert!(
+        dir.request(&[
+            "--propose",
+            "--capability",
+            "capture",
+            "--arguments",
+            "host",
+            "--text",
+            "p"
+        ])
+        .status
+        .success()
+    );
+    assert!(
+        dir.command("direct", "operator", &["--stop"])
+            .status
+            .success()
+    );
+    let output = run(&dir);
+    assert_eq!(
+        output,
+        "MIRA session: refused request (superseded_by_directive)\nMIRA session: refused request (superseded_by_directive)\n"
+    );
+    // Usage: a finding and an action at once, or a proposal without one.
+    for args in [
+        &[
+            "--claim",
+            "no_finding",
+            "--capability",
+            "capture",
+            "--text",
+            "x",
+        ][..],
+        &["--propose", "--question", "--text", "x"],
+        &["--claim", "no_finding", "--arguments", "1", "--text", "x"],
+        &["--question", "--cites", "1", "--text", "x"],
+    ] {
+        assert_eq!(dir.request(args).status.code(), Some(2), "{args:?}");
+    }
 }

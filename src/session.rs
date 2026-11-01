@@ -1,5 +1,6 @@
-//! Shared mixed-initiative investigation sessions (ADR 0015), stage 1a: the
-//! signed, append-only log, operator entries, directives and closure.
+//! Shared mixed-initiative investigation sessions (ADR 0015): the signed,
+//! append-only log, its entries, directives, grounded findings, proposals,
+//! decisions and closure.
 //!
 //! Every entry is one canonical JSON line signed under its own namespace by
 //! the principal it names, stored with its signature in one record file that
@@ -7,7 +8,7 @@
 //! its exact bytes, so MIRA reads its own format without a general JSON
 //! parser. Roles come from the operator-signed header, never from the entry
 //! that claims one.
-use crate::session_capability::{self, Outcome};
+use crate::session_capability::{self, Family, Outcome};
 use crate::signature::{self, Failure, Trust};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -27,6 +28,11 @@ pub const MAX_TEXT_BYTES: usize = 1024;
 /// stop, abandon and close and for pending results: an agent flooding the
 /// inbox can never leave the operator unable to end the session.
 pub const OPERATOR_RESERVE: u64 = 64;
+/// Undecided agent proposals at once. Proposals cost no budget, so that an
+/// agent at zero can still propose; this bound keeps them from flooding.
+pub const MAX_OPEN_PROPOSALS: usize = 8;
+/// Results one finding may cite.
+pub const MAX_CITES: usize = 16;
 const ENTRIES: &str = "entries";
 const PENDING: &str = ".pending-";
 const APPEND_ATTEMPTS: usize = 8;
@@ -123,10 +129,14 @@ pub enum Refusal {
     Capability,
     OperatorOnly,
     Owner,
+    /// A checkable claim its cited collector results do not support.
+    Claim,
+    /// Too many undecided proposals already.
+    Proposals,
 }
 
 impl Refusal {
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 12] = [
         Self::Signature,
         Self::Malformed,
         Self::SessionMismatch,
@@ -137,6 +147,8 @@ impl Refusal {
         Self::Capability,
         Self::OperatorOnly,
         Self::Owner,
+        Self::Claim,
+        Self::Proposals,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -151,12 +163,151 @@ impl Refusal {
             Self::Capability => "capability",
             Self::OperatorOnly => "operator_only",
             Self::Owner => "owner",
+            Self::Claim => "claim",
+            Self::Proposals => "proposals",
         }
     }
 
     fn parse(text: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|reason| reason.as_str() == text)
     }
+}
+
+/// Claim vocabulary, version 1 (ADR 0015). Every claim but `hypothesis` and
+/// `no_finding` is checked against collector-signed results only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Claim {
+    ExpectationSatisfied,
+    ExpectationNotSatisfied,
+    ExpectationIndeterminate,
+    EvidenceUnavailable,
+    Hypothesis,
+    NoFinding,
+}
+
+impl Claim {
+    const ALL: [Self; 6] = [
+        Self::ExpectationSatisfied,
+        Self::ExpectationNotSatisfied,
+        Self::ExpectationIndeterminate,
+        Self::EvidenceUnavailable,
+        Self::Hypothesis,
+        Self::NoFinding,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ExpectationSatisfied => "expectation_satisfied",
+            Self::ExpectationNotSatisfied => "expectation_not_satisfied",
+            Self::ExpectationIndeterminate => "expectation_indeterminate",
+            Self::EvidenceUnavailable => "evidence_unavailable",
+            Self::Hypothesis => "hypothesis",
+            Self::NoFinding => "no_finding",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|claim| claim.as_str() == text)
+    }
+
+    /// Whether the claim is checked against its citations.
+    pub fn checked(self) -> bool {
+        !matches!(self, Self::Hypothesis | Self::NoFinding)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Confidence {
+    Low,
+    Medium,
+    High,
+}
+
+impl Confidence {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        [Self::Low, Self::Medium, Self::High]
+            .into_iter()
+            .find(|confidence| confidence.as_str() == text)
+    }
+}
+
+/// The operator's decision on a proposal (approve, reject) or on an agent
+/// finding (accept, reject, uncertain).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Verdict {
+    Approve,
+    /// Approve a proposal although a newer result for the same action exists.
+    ApproveDespiteStale,
+    Reject,
+    Accept,
+    Uncertain,
+}
+
+impl Verdict {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Approve => "approve",
+            Self::ApproveDespiteStale => "approve_despite_stale",
+            Self::Reject => "reject",
+            Self::Accept => "accept",
+            Self::Uncertain => "uncertain",
+        }
+    }
+
+    fn parse(text: &str) -> Option<Self> {
+        [
+            Self::Approve,
+            Self::ApproveDespiteStale,
+            Self::Reject,
+            Self::Accept,
+            Self::Uncertain,
+        ]
+        .into_iter()
+        .find(|verdict| verdict.as_str() == text)
+    }
+}
+
+/// The assessment reason a result records, which the broker read from the
+/// document it just produced.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reason {
+    /// A result in the stage 1b layout, which had no `reason` field.
+    Unrecorded,
+    /// A capture, or an action without a document: there is no assessment.
+    NotApplicable,
+    /// The investigation report's `assessment.reason`.
+    Assessed(String),
+}
+
+/// Citations: strictly ascending sequence numbers, at most [`MAX_CITES`].
+fn render_cites(cites: &[u64]) -> String {
+    cites
+        .iter()
+        .map(u64::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+pub fn parse_cites(text: &str) -> Option<Vec<u64>> {
+    if text.is_empty() {
+        return Some(Vec::new());
+    }
+    let cites = text
+        .split(',')
+        .map(|item| crate::challenge::parse_decimal(item.as_bytes()))
+        .collect::<Option<Vec<u64>>>()?;
+    (cites.len() <= MAX_CITES
+        && cites.windows(2).all(|pair| pair[0] < pair[1])
+        && render_cites(&cites) == text)
+        .then_some(cites)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -185,7 +336,27 @@ pub enum Body {
         action_seq: u64,
         exit_status: Option<u64>,
         outcome: Outcome,
+        reason: Reason,
         document_signature: Option<String>,
+    },
+    /// A claim citing results: the operator's own (no request), or an agent
+    /// request the broker admitted after checking it.
+    Finding {
+        request_id: Option<String>,
+        claim: Claim,
+        confidence: Option<Confidence>,
+        cites: Vec<u64>,
+    },
+    /// An agent request for an action, relayed for the operator to decide.
+    Proposal {
+        request_id: String,
+        capability: String,
+        arguments: String,
+    },
+    /// The operator's decision on an open proposal or agent finding.
+    Decision {
+        target_seq: u64,
+        verdict: Verdict,
     },
     /// The operator finalizes a pending action that will get no result, for
     /// example after an interrupted broker, so the session can close honestly.
@@ -212,6 +383,9 @@ impl Body {
             Self::Directive(_) => "directive",
             Self::Action { .. } => "action",
             Self::Result { .. } => "result",
+            Self::Finding { .. } => "finding",
+            Self::Proposal { .. } => "proposal",
+            Self::Decision { .. } => "decision",
             Self::Refusal { .. } => "refusal",
             Self::Close { .. } => "close",
         }
@@ -273,12 +447,49 @@ impl Entry {
                 action_seq,
                 exit_status,
                 outcome,
+                reason,
                 document_signature,
+            } => {
+                let reason = match reason {
+                    Reason::Unrecorded => String::new(),
+                    Reason::NotApplicable => "\"reason\":null,".to_owned(),
+                    Reason::Assessed(reason) => format!("\"reason\":{},", quoted(reason)),
+                };
+                format!(
+                    "\"action_seq\":{action_seq},\"exit_status\":{},\"outcome\":{},{reason}\"document_signature\":{},",
+                    number(*exit_status),
+                    quoted(outcome.as_str()),
+                    optional_quoted(document_signature.as_deref())
+                )
+            }
+            Body::Finding {
+                request_id,
+                claim,
+                confidence,
+                cites,
             } => format!(
-                "\"action_seq\":{action_seq},\"exit_status\":{},\"outcome\":{},\"document_signature\":{},",
-                number(*exit_status),
-                quoted(outcome.as_str()),
-                optional_quoted(document_signature.as_deref())
+                "\"request_id\":{},\"claim\":{},\"confidence\":{},\"cites\":{},",
+                optional_quoted(request_id.as_deref()),
+                quoted(claim.as_str()),
+                optional_quoted(confidence.map(Confidence::as_str)),
+                quoted(&render_cites(cites))
+            ),
+            Body::Proposal {
+                request_id,
+                capability,
+                arguments,
+            } => format!(
+                "\"request_id\":{},\"capability\":{},\"arguments\":{},",
+                quoted(request_id),
+                quoted(capability),
+                quoted(arguments)
+            ),
+            Body::Decision {
+                target_seq,
+                verdict,
+            } => format!(
+                "\"target_seq\":{target_seq},\"verdict\":{},",
+                quoted(verdict.as_str())
             ),
             Body::Refusal { request_id, reason } => format!(
                 "\"request_id\":{},\"reason\":{},",
@@ -360,7 +571,31 @@ impl Entry {
                 action_seq: uint("action_seq")?,
                 exit_status: optional("exit_status")?,
                 outcome: Outcome::parse(&string("outcome")?)?,
+                reason: match fields.get("reason") {
+                    None => Reason::Unrecorded,
+                    Some(Value::Null) => Reason::NotApplicable,
+                    Some(Value::Str(reason)) => Reason::Assessed(reason.clone()),
+                    Some(Value::Uint(_)) => return None,
+                },
                 document_signature: optional_string("document_signature")?,
+            },
+            "finding" => Body::Finding {
+                request_id: optional_string("request_id")?,
+                claim: Claim::parse(&string("claim")?)?,
+                confidence: match optional_string("confidence")? {
+                    Some(confidence) => Some(Confidence::parse(&confidence)?),
+                    None => None,
+                },
+                cites: parse_cites(&string("cites")?)?,
+            },
+            "proposal" => Body::Proposal {
+                request_id: string("request_id")?,
+                capability: string("capability")?,
+                arguments: string("arguments")?,
+            },
+            "decision" => Body::Decision {
+                target_seq: uint("target_seq")?,
+                verdict: Verdict::parse(&string("verdict")?)?,
             },
             "refusal" => Body::Refusal {
                 request_id: string("request_id")?,
@@ -545,6 +780,80 @@ pub struct State {
     pub pending: BTreeMap<u64, (String, String)>,
     /// Every agent request ID already admitted or refused.
     pub requests: BTreeSet<String>,
+    /// Every recorded result, by its own sequence number.
+    pub results: BTreeMap<u64, Fact>,
+    /// Agent proposals and findings awaiting the operator's decision.
+    pub open: BTreeMap<u64, Open>,
+}
+
+/// A recorded result, as claim checks and staleness need it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Fact {
+    pub capability: String,
+    pub arguments: String,
+    pub family: Family,
+    pub outcome: Outcome,
+    pub reason: Reason,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Open {
+    Proposal {
+        capability: String,
+        arguments: String,
+        based_on: u64,
+    },
+    Finding,
+}
+
+/// Whether `cites` supports `claim`, judged only from collector results the
+/// log records. Every citation must be a result. A hypothesis needs a
+/// confidence label; `no_finding` takes neither label nor citations.
+pub fn supports(
+    state: &State,
+    claim: Claim,
+    confidence: Option<Confidence>,
+    cites: &[u64],
+) -> bool {
+    let Some(facts) = cites
+        .iter()
+        .map(|seq| state.results.get(seq))
+        .collect::<Option<Vec<_>>>()
+    else {
+        return false;
+    };
+    let any = |outcome: Outcome| facts.iter().any(|fact| fact.outcome == outcome);
+    match claim {
+        Claim::ExpectationSatisfied => {
+            !facts.is_empty() && facts.iter().all(|fact| fact.outcome == Outcome::Satisfied)
+        }
+        Claim::ExpectationNotSatisfied => any(Outcome::NotSatisfied),
+        Claim::ExpectationIndeterminate => any(Outcome::Indeterminate),
+        // Unavailable evidence, not an indeterminate assessment over evidence
+        // that was collected (a transition, an incomplete installation).
+        Claim::EvidenceUnavailable => facts.iter().any(|fact| {
+            fact.outcome == Outcome::CompleteUnavailable
+                || fact.reason == Reason::Assessed("evidence_unavailable".to_owned())
+        }),
+        Claim::Hypothesis => confidence.is_some(),
+        Claim::NoFinding => confidence.is_none() && facts.is_empty(),
+    }
+}
+
+/// Whether a result newer than `based_on` exists for the same action: a
+/// proposal written before it was seen is stale.
+pub fn stale(state: &State, capability: &str, arguments: &str, based_on: u64) -> bool {
+    state.results.iter().any(|(seq, fact)| {
+        *seq > based_on && fact.capability == capability && fact.arguments == arguments
+    })
+}
+
+/// An assessment reason as investigation reports spell it.
+fn reason_ok(text: &str) -> bool {
+    (1..=64).contains(&text.len())
+        && text
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
 }
 
 /// Why a session is not valid or an append is refused.
@@ -598,6 +907,12 @@ pub enum Problem {
     Io,
     /// `ssh-keygen` is missing or failed to run.
     Tool,
+    /// The cited results do not support the claim.
+    Unsupported,
+    /// A newer result exists for the proposal's action.
+    Stale,
+    /// The decision's target is not an open proposal or agent finding.
+    NotOpen,
 }
 
 impl State {
@@ -651,6 +966,12 @@ impl Problem {
             }
             Self::Io => "session directory unreadable or unwritable".to_owned(),
             Self::Tool => "ssh-keygen unavailable".to_owned(),
+            Self::Unsupported => "the cited results do not support this claim".to_owned(),
+            Self::Stale => {
+                "proposal is stale: a newer result exists for the same action; approve with --despite-stale"
+                    .to_owned()
+            }
+            Self::NotOpen => "target is not an open proposal or agent finding".to_owned(),
         }
     }
 }
@@ -766,6 +1087,8 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
             last_directive: None,
             pending: BTreeMap::new(),
             requests: BTreeSet::new(),
+            results: BTreeMap::new(),
+            open: BTreeMap::new(),
         });
     };
     if entry.session_id != state.session_id {
@@ -848,6 +1171,7 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
             action_seq,
             exit_status,
             outcome,
+            reason,
             document_signature,
         } if collector => {
             // A document exists exactly when the outcome has one, and the entry
@@ -868,6 +1192,119 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
                 .family;
             let status = exit_status.and_then(|status| i32::try_from(status).ok());
             if Outcome::of(family, status) != *outcome {
+                return Err(Problem::Malformed(seq));
+            }
+            // Only an investigation report has an assessment reason, and an
+            // unavailable-evidence reason is always indeterminate.
+            let reason_fits = match reason {
+                Reason::Unrecorded => true,
+                Reason::NotApplicable => family == Family::Capture || !outcome.has_document(),
+                Reason::Assessed(text) => {
+                    family == Family::Investigation
+                        && outcome.has_document()
+                        && reason_ok(text)
+                        && (text != "evidence_unavailable" || *outcome == Outcome::Indeterminate)
+                }
+            };
+            if !reason_fits {
+                return Err(Problem::Malformed(seq));
+            }
+            state.results.insert(
+                seq,
+                Fact {
+                    capability,
+                    arguments,
+                    family,
+                    outcome: *outcome,
+                    reason: reason.clone(),
+                },
+            );
+        }
+        Body::Finding {
+            request_id,
+            claim,
+            confidence,
+            cites,
+        } => {
+            if !supports(&state, *claim, *confidence, cites) {
+                return Err(Problem::Malformed(seq));
+            }
+            match request_id {
+                None if operator => {}
+                Some(id) if collector => {
+                    if !fresh(&state, id)
+                        || state.level == Level::Manual
+                        || !chargeable(&state, seq)
+                    {
+                        return Err(Problem::Malformed(seq));
+                    }
+                    state.budget -= 1;
+                    state.requests.insert(id.clone());
+                    state.open.insert(seq, Open::Finding);
+                }
+                _ => return Err(Problem::Role(seq)),
+            }
+        }
+        Body::Proposal {
+            request_id,
+            capability,
+            arguments,
+        } if collector => {
+            // A proposal costs no budget, so the agent can still propose at
+            // zero; the open-proposal bound and the reserve contain it.
+            let open_proposals = state
+                .open
+                .values()
+                .filter(|open| matches!(open, Open::Proposal { .. }))
+                .count();
+            if session_capability::plan(capability, arguments).is_none()
+                || !fresh(&state, request_id)
+                || state.level == Level::Manual
+                || seq >= MAX_ENTRIES - OPERATOR_RESERVE
+                || open_proposals >= MAX_OPEN_PROPOSALS
+            {
+                return Err(Problem::Malformed(seq));
+            }
+            let based_on = entry.based_on.ok_or(Problem::Malformed(seq))?;
+            state.requests.insert(request_id.clone());
+            state.open.insert(
+                seq,
+                Open::Proposal {
+                    capability: capability.clone(),
+                    arguments: arguments.clone(),
+                    based_on,
+                },
+            );
+        }
+        Body::Decision {
+            target_seq,
+            verdict,
+        } if operator => {
+            let open = state
+                .open
+                .remove(target_seq)
+                .ok_or(Problem::Malformed(seq))?;
+            let fits = match open {
+                Open::Proposal {
+                    capability,
+                    arguments,
+                    based_on,
+                } => match verdict {
+                    Verdict::Approve => !stale(&state, &capability, &arguments, based_on),
+                    Verdict::ApproveDespiteStale => {
+                        stale(&state, &capability, &arguments, based_on)
+                    }
+                    Verdict::Reject => true,
+                    Verdict::Accept | Verdict::Uncertain => false,
+                },
+                Open::Finding => {
+                    matches!(
+                        verdict,
+                        Verdict::Accept | Verdict::Reject | Verdict::Uncertain
+                    )
+                }
+            };
+            if !fits {
                 return Err(Problem::Malformed(seq));
             }
         }
@@ -1299,8 +1736,66 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
             Body::Result {
                 action_seq,
                 outcome,
+                reason,
                 ..
-            } => format!("result of {action_seq:06}: {}", outcome.as_str()),
+            } => match reason {
+                Reason::Assessed(reason) => {
+                    format!("result of {action_seq:06}: {} ({reason})", outcome.as_str())
+                }
+                _ => format!("result of {action_seq:06}: {}", outcome.as_str()),
+            },
+            Body::Finding {
+                request_id,
+                claim,
+                confidence,
+                cites,
+            } => format!(
+                "finding {} {} confidence {} cites {}{}{}",
+                claim.as_str(),
+                match claim {
+                    Claim::Hypothesis => "inference",
+                    Claim::NoFinding => "unchecked",
+                    _ => "checked",
+                },
+                confidence.map_or("none", Confidence::as_str),
+                if cites.is_empty() {
+                    "none".to_owned()
+                } else {
+                    cites
+                        .iter()
+                        .map(|seq| format!("{seq:06}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                },
+                if superseded(state, cites) {
+                    " stale"
+                } else {
+                    ""
+                },
+                if request_id.is_some() {
+                    " (agent request)"
+                } else {
+                    ""
+                }
+            ),
+            Body::Proposal {
+                capability,
+                arguments,
+                ..
+            } => format!(
+                "proposal {capability} {arguments}{} (agent request)",
+                match state.open.get(&entry.seq) {
+                    Some(Open::Proposal { based_on, .. })
+                        if stale(state, capability, arguments, *based_on) =>
+                        " stale",
+                    Some(_) => " open",
+                    None => "",
+                }
+            ),
+            Body::Decision {
+                target_seq,
+                verdict,
+            } => format!("decision {} on {target_seq:06}", verdict.as_str()),
             Body::Refusal { reason, .. } => format!("refusal {}", reason.as_str()),
             Body::Directive(Directive::Stop) => "directive stop".to_owned(),
             Body::Directive(Directive::SetLevel(level)) => {
@@ -1312,11 +1807,14 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
             }
             Body::Close { .. } => "close".to_owned(),
         };
-        // Text was validated free of controls when written, and re-checked here.
-        let note = if validate_text(&entry.note).is_ok() {
-            entry.note.clone()
-        } else {
+        // Text was validated free of controls when written, and re-checked
+        // here. The agent's notes are never checked against anything.
+        let note = if validate_text(&entry.note).is_err() {
             "(unprintable note)".to_owned()
+        } else if entry.principal == state.header.collector && !entry.note.is_empty() {
+            format!("[unchecked agent note] {}", entry.note)
+        } else {
+            entry.note.clone()
         };
         out.push_str(&format!(
             "{:06} {} {detail}: {note}\n",
@@ -1326,14 +1824,36 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
     out
 }
 
+/// Whether a newer result exists for the action behind any cited result.
+pub fn superseded(state: &State, cites: &[u64]) -> bool {
+    cites.iter().any(|cited| {
+        state.results.get(cited).is_some_and(|fact| {
+            state.results.range(cited + 1..).any(|(_, newer)| {
+                newer.capability == fact.capability && newer.arguments == fact.arguments
+            })
+        })
+    })
+}
+
 pub fn state_json(state: &State) -> String {
+    let open = |proposals: bool| {
+        state
+            .open
+            .iter()
+            .filter(|(_, open)| matches!(open, Open::Proposal { .. }) == proposals)
+            .map(|(seq, _)| seq.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    };
     format!(
-        "{{\"session_version\":{SESSION_VERSION},\"entries\":{},\"closed\":{},\"autonomy\":{},\"budget\":{},\"delegated_until\":{}}}",
+        "{{\"session_version\":{SESSION_VERSION},\"entries\":{},\"closed\":{},\"autonomy\":{},\"budget\":{},\"delegated_until\":{},\"open_proposals\":[{}],\"open_findings\":[{}]}}",
         state.entries,
         state.closed,
         quoted(state.level.as_str()),
         state.budget,
-        number(state.delegated_until)
+        number(state.delegated_until),
+        open(true),
+        open(false)
     )
 }
 
@@ -1674,12 +2194,14 @@ mod tests {
                 action_seq: 3,
                 exit_status: Some(1),
                 outcome: Outcome::NotSatisfied,
+                reason: Reason::Assessed("below_minimum".to_owned()),
                 document_signature: Some(SIGNATURE.to_owned()),
             },
             Body::Result {
                 action_seq: 3,
                 exit_status: None,
                 outcome: Outcome::RunnerError,
+                reason: Reason::NotApplicable,
                 document_signature: None,
             },
             Body::Abandon { action_seq: 3 },
@@ -1829,6 +2351,7 @@ mod tests {
                     action_seq,
                     exit_status,
                     outcome,
+                    reason: Reason::Unrecorded,
                     document_signature: outcome.has_document().then(|| SIGNATURE.to_owned()),
                 },
             )
@@ -1957,6 +2480,7 @@ mod tests {
                     action_seq: 1,
                     exit_status: Some(0),
                     outcome,
+                    reason: Reason::Unrecorded,
                     document_signature: document_signature.map(str::to_owned),
                 },
             )
@@ -2029,6 +2553,7 @@ mod tests {
                 action_seq: 1,
                 exit_status: Some(0),
                 outcome: Outcome::Satisfied,
+                reason: Reason::Unrecorded,
                 document_signature: Some(SIGNATURE.to_owned()),
             },
         );
@@ -2172,5 +2697,371 @@ mod tests {
         assert!(!ancestor_ok(0o41777, other, owner, owner));
         // A next component owned by another user can be renamed by them.
         assert!(!ancestor_ok(0o41777, 0, other, owner));
+    }
+
+    /// A session with one result per (capability, arguments, exit, reason).
+    fn with_results(results: &[(&str, &str, i32, Reason)]) -> State {
+        let mut state = fold(None, &header()).unwrap();
+        let mut seq = 1;
+        for (capability, arguments, status, reason) in results {
+            state = fold(
+                Some(state),
+                &action(seq, "operator", None, capability, arguments),
+            )
+            .unwrap();
+            let family = session_capability::plan(capability, arguments)
+                .unwrap()
+                .family;
+            let outcome = Outcome::of(family, Some(*status));
+            state = fold(
+                Some(state),
+                &next(
+                    seq + 1,
+                    "collector",
+                    Body::Result {
+                        action_seq: seq,
+                        exit_status: Some(*status as u64),
+                        outcome,
+                        reason: reason.clone(),
+                        document_signature: outcome.has_document().then(|| SIGNATURE.to_owned()),
+                    },
+                ),
+            )
+            .unwrap();
+            seq += 2;
+        }
+        state
+    }
+
+    fn assessed(reason: &str) -> Reason {
+        Reason::Assessed(reason.to_owned())
+    }
+
+    #[test]
+    fn every_claim_is_checked_against_collector_results_only() {
+        // Results at 2, 4, 6, 8, 10, 12 and 14.
+        let state = with_results(&[
+            ("memory-headroom", "1", 0, assessed("minimum_met")),
+            ("memory-headroom", "2", 1, assessed("below_minimum")),
+            (
+                "service-active",
+                "a.service",
+                3,
+                assessed("transition_in_progress"),
+            ),
+            (
+                "package-installed",
+                "p",
+                3,
+                assessed("incomplete_installation_state"),
+            ),
+            ("uptime-minimum", "1", 3, assessed("evidence_unavailable")),
+            ("capture", "host", 1, Reason::NotApplicable),
+            ("kernel-release", "6", 3, Reason::Unrecorded),
+        ]);
+        let ok = |claim, confidence, cites: &[u64]| supports(&state, claim, confidence, cites);
+        use Claim::*;
+        assert!(ok(ExpectationSatisfied, None, &[2]));
+        assert!(!ok(ExpectationSatisfied, None, &[]));
+        assert!(!ok(ExpectationSatisfied, None, &[2, 4]));
+        assert!(ok(ExpectationNotSatisfied, None, &[2, 4]));
+        assert!(!ok(ExpectationNotSatisfied, None, &[2]));
+        // A transition or an incomplete installation is indeterminate over
+        // collected evidence: never unavailable evidence.
+        for cited in [6, 8] {
+            assert!(ok(ExpectationIndeterminate, None, &[cited]));
+            assert!(!ok(EvidenceUnavailable, None, &[cited]));
+        }
+        assert!(ok(ExpectationIndeterminate, None, &[10]));
+        assert!(ok(EvidenceUnavailable, None, &[10]));
+        assert!(ok(EvidenceUnavailable, None, &[12]));
+        assert!(!ok(ExpectationIndeterminate, None, &[12]));
+        // A stage 1b result without a reason cannot show unavailable evidence.
+        assert!(ok(ExpectationIndeterminate, None, &[14]));
+        assert!(!ok(EvidenceUnavailable, None, &[14]));
+        // Citations must be results: an action, the header or a future entry
+        // never count.
+        assert!(!ok(ExpectationSatisfied, None, &[1]));
+        assert!(!ok(ExpectationSatisfied, None, &[0, 2]));
+        assert!(!ok(ExpectationSatisfied, None, &[2, 99]));
+        // A hypothesis needs a confidence label; no_finding takes nothing.
+        assert!(ok(Hypothesis, Some(Confidence::Low), &[]));
+        assert!(ok(Hypothesis, Some(Confidence::High), &[4]));
+        assert!(!ok(Hypothesis, None, &[]));
+        assert!(!ok(Hypothesis, Some(Confidence::Low), &[1]));
+        assert!(ok(NoFinding, None, &[]));
+        assert!(!ok(NoFinding, Some(Confidence::Low), &[]));
+        assert!(!ok(NoFinding, None, &[2]));
+        // fold applies the same check to every finding, whoever writes it.
+        let finding = |principal: &str, request_id, claim, cites: Vec<u64>| {
+            next(
+                15,
+                principal,
+                Body::Finding {
+                    request_id,
+                    claim,
+                    confidence: None,
+                    cites,
+                },
+            )
+        };
+        assert!(
+            fold(
+                Some(state.clone()),
+                &finding("operator", None, ExpectationSatisfied, vec![2])
+            )
+            .is_ok()
+        );
+        assert!(
+            fold(
+                Some(state.clone()),
+                &finding("operator", None, ExpectationSatisfied, vec![4])
+            )
+            .is_err()
+        );
+        let relayed = fold(
+            Some(state.clone()),
+            &finding("collector", request(1), ExpectationNotSatisfied, vec![4]),
+        )
+        .unwrap();
+        assert_eq!(relayed.budget, state.budget - 1);
+        assert_eq!(relayed.open.get(&15), Some(&Open::Finding));
+        assert!(
+            fold(
+                Some(state.clone()),
+                &finding("agent", request(1), ExpectationSatisfied, vec![2])
+            )
+            .is_err()
+        );
+        assert!(
+            fold(
+                Some(state),
+                &finding("collector", None, ExpectationSatisfied, vec![2])
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn a_result_reason_must_fit_its_family_and_outcome() {
+        let state = fold(None, &header()).unwrap();
+        let after = |capability: &str, arguments: &str, status: i32, reason: Reason| {
+            let state = fold(
+                Some(state.clone()),
+                &action(1, "operator", None, capability, arguments),
+            )
+            .unwrap();
+            let family = session_capability::plan(capability, arguments)
+                .unwrap()
+                .family;
+            let outcome = Outcome::of(family, Some(status));
+            fold(
+                Some(state),
+                &next(
+                    2,
+                    "collector",
+                    Body::Result {
+                        action_seq: 1,
+                        exit_status: Some(status as u64),
+                        outcome,
+                        reason,
+                        document_signature: outcome.has_document().then(|| SIGNATURE.to_owned()),
+                    },
+                ),
+            )
+            .is_ok()
+        };
+        assert!(after("memory-headroom", "1", 0, assessed("minimum_met")));
+        assert!(after(
+            "memory-headroom",
+            "1",
+            3,
+            assessed("evidence_unavailable")
+        ));
+        assert!(!after(
+            "memory-headroom",
+            "1",
+            0,
+            assessed("evidence_unavailable")
+        ));
+        assert!(!after("memory-headroom", "1", 0, assessed("Minimum")));
+        assert!(!after("memory-headroom", "1", 0, Reason::NotApplicable));
+        assert!(after("memory-headroom", "1", 2, Reason::NotApplicable));
+        assert!(!after("memory-headroom", "1", 2, assessed("minimum_met")));
+        assert!(after("capture", "host", 0, Reason::NotApplicable));
+        assert!(!after(
+            "capture",
+            "host",
+            1,
+            assessed("evidence_unavailable")
+        ));
+        assert!(after("capture", "host", 0, Reason::Unrecorded));
+    }
+
+    fn proposal(seq: u64, based_on: u64, n: u8, arguments: &str) -> Entry {
+        Entry {
+            based_on: Some(based_on),
+            ..next(
+                seq,
+                "collector",
+                Body::Proposal {
+                    request_id: request(n).unwrap(),
+                    capability: "memory-headroom".to_owned(),
+                    arguments: arguments.to_owned(),
+                },
+            )
+        }
+    }
+
+    fn decision(seq: u64, target_seq: u64, verdict: Verdict) -> Entry {
+        next(
+            seq,
+            "operator",
+            Body::Decision {
+                target_seq,
+                verdict,
+            },
+        )
+    }
+
+    #[test]
+    fn proposals_cost_nothing_but_are_bounded_and_decided_once() {
+        let mut state = fold(None, &header()).unwrap();
+        state = fold(
+            Some(state),
+            &next(1, "operator", Body::Directive(Directive::SetBudget(0))),
+        )
+        .unwrap();
+        // At zero budget the agent can still propose, up to the open bound.
+        for index in 0..MAX_OPEN_PROPOSALS as u64 {
+            state = fold(Some(state), &proposal(2 + index, 1, 10 + index as u8, "1")).unwrap();
+        }
+        let full = 2 + MAX_OPEN_PROPOSALS as u64;
+        assert!(fold(Some(state.clone()), &proposal(full, 1, 99, "1")).is_err());
+        assert_eq!(state.budget, 0);
+        // Proposals come only from the collector, and never at manual.
+        let mut own = proposal(full, 1, 99, "1");
+        own.principal = "operator".to_owned();
+        assert_eq!(fold(Some(state.clone()), &own), Err(Problem::Role(full)));
+        let stopped = fold(
+            Some(fold(None, &header()).unwrap()),
+            &next(1, "operator", Body::Directive(Directive::Stop)),
+        )
+        .unwrap();
+        assert!(fold(Some(stopped), &proposal(2, 1, 1, "1")).is_err());
+        // A proposal takes a proposal verdict, once.
+        assert!(fold(Some(state.clone()), &decision(full, 2, Verdict::Accept)).is_err());
+        let decided = fold(Some(state.clone()), &decision(full, 2, Verdict::Reject)).unwrap();
+        assert!(!decided.open.contains_key(&2));
+        assert!(
+            fold(
+                Some(decided.clone()),
+                &decision(full + 1, 2, Verdict::Approve)
+            )
+            .is_err()
+        );
+        // One decision frees room for one more proposal.
+        assert!(fold(Some(decided), &proposal(full + 1, 1, 99, "1")).is_ok());
+        // Only the operator decides, and only on an open item.
+        let mut forged = decision(full, 3, Verdict::Approve);
+        forged.principal = "collector".to_owned();
+        assert_eq!(fold(Some(state.clone()), &forged), Err(Problem::Role(full)));
+        assert!(fold(Some(state), &decision(full, 1, Verdict::Reject)).is_err());
+    }
+
+    #[test]
+    fn approving_a_stale_proposal_needs_the_explicit_verdict() {
+        // Result for memory-headroom 1 at 2; proposals written after it (based
+        // on 2) and before it (based on 0).
+        let state = with_results(&[("memory-headroom", "1", 0, assessed("minimum_met"))]);
+        let state = fold(Some(state), &proposal(3, 2, 1, "1")).unwrap();
+        let state = fold(Some(state), &proposal(4, 0, 2, "1")).unwrap();
+        let state = fold(Some(state), &proposal(5, 0, 3, "2")).unwrap();
+        assert!(!stale(&state, "memory-headroom", "1", 2));
+        assert!(stale(&state, "memory-headroom", "1", 0));
+        assert!(fold(Some(state.clone()), &decision(6, 3, Verdict::Approve)).is_ok());
+        assert!(
+            fold(
+                Some(state.clone()),
+                &decision(6, 3, Verdict::ApproveDespiteStale)
+            )
+            .is_err()
+        );
+        assert!(fold(Some(state.clone()), &decision(6, 4, Verdict::Approve)).is_err());
+        assert!(
+            fold(
+                Some(state.clone()),
+                &decision(6, 4, Verdict::ApproveDespiteStale)
+            )
+            .is_ok()
+        );
+        assert!(fold(Some(state.clone()), &decision(6, 4, Verdict::Reject)).is_ok());
+        // Other arguments are another action: never stale by this result.
+        assert!(fold(Some(state), &decision(6, 5, Verdict::Approve)).is_ok());
+    }
+
+    #[test]
+    fn findings_proposals_and_decisions_round_trip_canonically() {
+        for body in [
+            Body::Finding {
+                request_id: None,
+                claim: Claim::ExpectationSatisfied,
+                confidence: None,
+                cites: vec![2, 14, 300],
+            },
+            Body::Finding {
+                request_id: request(1),
+                claim: Claim::Hypothesis,
+                confidence: Some(Confidence::Medium),
+                cites: Vec::new(),
+            },
+            Body::Proposal {
+                request_id: request(2).unwrap(),
+                capability: "capture".to_owned(),
+                arguments: "host bind-boot".to_owned(),
+            },
+            Body::Decision {
+                target_seq: 3,
+                verdict: Verdict::ApproveDespiteStale,
+            },
+        ] {
+            let entry = next(5, "collector", body);
+            let text = entry.render();
+            assert_eq!(
+                Entry::parse(text.as_bytes()).as_ref(),
+                Some(&entry),
+                "{text}"
+            );
+        }
+        for cites in [
+            "2,2",
+            "3,2",
+            "02",
+            "2,",
+            ",2",
+            " 2",
+            "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17",
+        ] {
+            assert_eq!(parse_cites(cites), None, "{cites}");
+        }
+        assert_eq!(parse_cites(""), Some(Vec::new()));
+        let text = next(
+            5,
+            "operator",
+            Body::Finding {
+                request_id: None,
+                claim: Claim::NoFinding,
+                confidence: None,
+                cites: Vec::new(),
+            },
+        )
+        .render();
+        for bad in [
+            text.replacen("\"no_finding\"", "\"certain\"", 1),
+            text.replacen("\"confidence\":null", "\"confidence\":\"total\"", 1),
+            text.replacen("\"cites\":\"\"", "\"cites\":null", 1),
+        ] {
+            assert_eq!(Entry::parse(bad.as_bytes()), None, "{bad}");
+        }
     }
 }

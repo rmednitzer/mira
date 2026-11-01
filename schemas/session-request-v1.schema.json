@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/rmednitzer/mira/blob/main/schemas/session-request-v1.schema.json",
-  "title": "MIRA shared-workspace agent request v1 (ADR 0015 stage 1b)",
+  "title": "MIRA shared-workspace agent request v1 (ADR 0015 stage 1)",
   "$comment": "Written by the agent into inbox/, signed under the session namespace; stored by the broker under requests/. kind is always request, which is never a log entry kind.",
   "type": "object",
   "additionalProperties": false,
@@ -13,8 +13,6 @@
     "principal",
     "based_on",
     "request",
-    "capability",
-    "arguments",
     "note"
   ],
   "properties": {
@@ -44,7 +42,9 @@
     "request": {
       "enum": [
         "action",
-        "question"
+        "question",
+        "finding",
+        "proposal"
       ]
     },
     "capability": {
@@ -80,6 +80,34 @@
         }
       ]
     },
+    "claim": {
+      "enum": [
+        "expectation_satisfied",
+        "expectation_not_satisfied",
+        "expectation_indeterminate",
+        "evidence_unavailable",
+        "hypothesis",
+        "no_finding"
+      ]
+    },
+    "confidence": {
+      "anyOf": [
+        {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        {
+          "const": null
+        }
+      ]
+    },
+    "cites": {
+      "type": "string",
+      "pattern": "^(|(0|[1-9][0-9]{0,3})(,(0|[1-9][0-9]{0,3})){0,15})$"
+    },
     "note": {
       "type": "string",
       "maxLength": 1024,
@@ -88,6 +116,10 @@
   },
   "oneOf": [
     {
+      "required": [
+        "capability",
+        "arguments"
+      ],
       "properties": {
         "request": {
           "const": "action"
@@ -110,10 +142,17 @@
           "type": "string",
           "maxLength": 2048,
           "pattern": "^(?!.*\\n)(|[A-Za-z0-9._:+@,/=\\\\][A-Za-z0-9._:+@,/=\\\\-]*( [A-Za-z0-9._:+@,/=\\\\][A-Za-z0-9._:+@,/=\\\\-]*)*)$"
-        }
+        },
+        "claim": false,
+        "confidence": false,
+        "cites": false
       }
     },
     {
+      "required": [
+        "capability",
+        "arguments"
+      ],
       "properties": {
         "request": {
           "const": "question"
@@ -123,7 +162,57 @@
         },
         "arguments": {
           "const": null
-        }
+        },
+        "claim": false,
+        "confidence": false,
+        "cites": false
+      }
+    },
+    {
+      "required": [
+        "claim",
+        "confidence",
+        "cites"
+      ],
+      "properties": {
+        "request": {
+          "const": "finding"
+        },
+        "capability": false,
+        "arguments": false
+      }
+    },
+    {
+      "required": [
+        "capability",
+        "arguments"
+      ],
+      "properties": {
+        "request": {
+          "const": "proposal"
+        },
+        "capability": {
+          "enum": [
+            "capture",
+            "service-active",
+            "service-active/v1",
+            "service-active/v2",
+            "memory-headroom",
+            "pressure-ceiling",
+            "package-installed",
+            "uptime-minimum",
+            "kernel-release",
+            "journal-events"
+          ]
+        },
+        "arguments": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(?!.*\\n)(|[A-Za-z0-9._:+@,/=\\\\][A-Za-z0-9._:+@,/=\\\\-]*( [A-Za-z0-9._:+@,/=\\\\][A-Za-z0-9._:+@,/=\\\\-]*)*)$"
+        },
+        "claim": false,
+        "confidence": false,
+        "cites": false
       }
     }
   ]
