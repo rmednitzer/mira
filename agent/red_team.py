@@ -66,8 +66,8 @@ import mira_agent_mcp  # noqa: E402
 import validate_session  # noqa: E402
 
 TOOLS = {tool['name'] for tool in mira_agent_mcp.tools()}
-# The operator seals the transcripts' digests under this namespace, with the
-# key the signers file lists for the session operator.
+# The operator seals the transcripts' digests under this namespace; the
+# reviewer's signers file must allow it for the session operator.
 SEAL_NAMESPACE = 'mira-red-team-v1@rmednitzer.github.io'
 KEYGEN = '/usr/bin/ssh-keygen'
 MACHINE = '2647eb65b1ed4abe8c03300b925dd8fe'
@@ -245,6 +245,12 @@ def run(args):
         return 2
     keys.mkdir(mode=0o700, parents=True)
     validate_session.keys(keys)
+    # The throwaway operator key may also sign the transcript seal.
+    signers = keys / 'signers'
+    signers.write_text(''.join(
+        line.replace('namespaces="', f'namespaces="{SEAL_NAMESPACE},', 1) + '\n'
+        if line.startswith('operator ') else line + '\n'
+        for line in signers.read_text().splitlines()))
     bundle.mkdir(parents=True)
     # A copy for reference only: check trusts the reviewer's signers file.
     shutil.copy2(keys / 'signers', bundle / 'signers')
@@ -347,25 +353,6 @@ def seal(bundle, key, custody='post_round'):
             file.write(data)
 
 
-KEY_TYPE = re.compile(r'(ssh-[a-z0-9-]+|ecdsa-sha2-[a-z0-9-]+|sk-[a-z0-9@.-]+)')
-
-
-def operator_keys(signers):
-    """The public keys an allowed_signers file lists for the `operator`
-    principal, by its field structure: principals, options if present, the
-    key type and its data, then an optional comment."""
-    keys = []
-    for line in signers.splitlines():
-        fields = line.split()
-        if not fields or fields[0].startswith('#') or 'operator' not in fields[0].split(','):
-            continue
-        for index in range(1, len(fields) - 1):
-            if KEY_TYPE.fullmatch(fields[index]):
-                keys.append(f'{fields[index]} {fields[index + 1]}')
-                break
-    return keys
-
-
 def read_seal(bundle, allowed):
     """The verified transcript bytes, or why they cannot be trusted.
 
@@ -379,21 +366,19 @@ def read_seal(bundle, allowed):
         return 'unsealed', found, ('the transcripts are not sealed by the operator; in a separate_user '
                                    'round they are the agent\'s own record (seal them with: red_team.py seal)')
     manifest, signature = manifest_path.read_bytes(), signature_path.read_bytes()
-    # Trust only the session operator's key, as the reviewer's signers file
-    # lists it; never anything the bundle itself carries.
-    operator = operator_keys(Path(allowed).read_text())
-    if not operator:
-        return 'broken', found, 'the signers file lists no session operator key'
+    # Verify against the reviewer's signers file exactly as written, for the
+    # session operator under the seal namespace, so every restriction it
+    # sets (namespaces, valid-after, valid-before) applies as OpenSSH defines
+    # it. Nothing the bundle carries is trusted.
     with tempfile.TemporaryDirectory(prefix='mira-red-team-') as scratch:
-        (Path(scratch) / 'signers').write_text(''.join(
-            f'operator namespaces="{SEAL_NAMESPACE}" {key}\n' for key in operator))
         (Path(scratch) / 'manifest.sig').write_bytes(signature)
         verified = subprocess.run(
-            [KEYGEN, '-Y', 'verify', '-f', str(Path(scratch) / 'signers'), '-I', 'operator',
+            [KEYGEN, '-Y', 'verify', '-f', str(allowed), '-I', 'operator',
              '-n', SEAL_NAMESPACE, '-s', str(Path(scratch) / 'manifest.sig')],
             input=manifest, capture_output=True, timeout=60, check=False)
     if verified.returncode != 0:
-        return 'broken', found, 'the seal does not verify'
+        return 'broken', found, ('the seal does not verify for the session operator under '
+                                 f'{SEAL_NAMESPACE} in your signers file')
     sealed = json.loads(manifest)
     try:
         bound = binding(bundle)

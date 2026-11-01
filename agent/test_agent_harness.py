@@ -729,6 +729,14 @@ class RedTeamKitTests(unittest.TestCase):
             plain = self.root / f'signers-{len(line)}'
             plain.write_text('\n'.join([line, *other_lines]) + '\n')
             self.assertEqual(self.check(bundle, plain)[0], 0, line)
+        # Restrictions in the reviewer's file apply: an operator entry that
+        # expired, or one not allowed the seal namespace, fails the channel.
+        for options in ('valid-before="20000101"', 'namespaces="mira-session-v1@rmednitzer.github.io"'):
+            other_lines = [entry for entry in signers.read_text().splitlines() if not entry.startswith('operator ')]
+            restricted = self.root / f'signers-{options[:5]}'
+            restricted.write_text('\n'.join([f'operator {options} {public[0]} {public[1]}', *other_lines]) + '\n')
+            code_restricted, restricted_verdict = self.check(bundle, restricted)
+            self.assertEqual(restricted_verdict['conditions']['channel']['result'], 'failed', options)
         # A changed transcript breaks the seal; resealed by the operator, the
         # endpoint itself decides: loopback TCP is unverified, anything else fails.
         first = bundle / 'turns/1/transcript.jsonl'
