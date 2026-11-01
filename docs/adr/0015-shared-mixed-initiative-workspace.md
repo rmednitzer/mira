@@ -1,6 +1,6 @@
 # ADR 0015: shared mixed-initiative investigation workspace
 
-Status: **Accepted**, 2026-11-01 (proposed and reviewed the same day). **Amended** the same day with the validated [interfaces](#interfaces-amended-2026-11-01): a stdio MCP adapter for the agent; tmux only as an optional operator layout. **Stage 1a (session core) is implemented**; guide: [sessions](../sessions.md). It covers the signed log, operator entries, directives, close with receipt, `show` and `verify`; delegation expiry is by entry count only, without the operator-clock deadline. Stages 1b (broker, collector, inbox, actions) and 1c (findings, decisions, scripted agent) are outstanding.
+Status: **Accepted**, 2026-11-01 (proposed and reviewed the same day). **Amended** the same day with the validated [interfaces](#interfaces-amended-2026-11-01): a stdio MCP adapter for the agent; tmux only as an optional operator layout. **Stages 1a and 1b are implemented**; guide: [sessions](../sessions.md). 1a covers the signed log, operator entries, directives, close with receipt, `show` and `verify`; delegation expiry is by entry count only, without the operator-clock deadline. 1b covers agent requests in `inbox/`, the broker, the collector key, operator `act`, results with documents, refusals and the `separate_user` layout. Requests that the broker refuses carry no relayed entry, only a refusal. Stage 1c (findings, decisions, proposals, scripted agent) is outstanding.
 
 ## Context
 

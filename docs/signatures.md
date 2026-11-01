@@ -17,7 +17,7 @@ mira investigate pressure-ceiling --resource io --max-some-avg10-basis-points 10
   1. Build the document in memory.
   2. Sign it through `ssh-keygen` on stdin.
   3. Self-check it with `ssh-keygen -Y check-novalidate` over the same bytes, using a copy in a fresh private directory (mode 0700) that is removed afterwards.
-  4. Create PATH exclusively (an existing file or symlink is never overwritten or followed) and write the signature.
+  4. Create PATH exclusively (an existing file or symlink is never overwritten or followed), with a mode of at most 0644 whatever the umask, and write the signature.
   5. Only then print the document.
 - If any step fails, MIRA prints nothing and exits **4**. A failed check never leaves a signature at PATH, because PATH is created only after the check passes. MIRA never deletes PATH by name; if writing it fails after creation, MIRA empties it through its own open file. Exit codes 0, 1 and 3 keep their usual meaning when signing succeeds.
 

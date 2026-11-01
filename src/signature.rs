@@ -130,9 +130,14 @@ pub fn sign(document: &[u8], key: &Path, signature_path: &Path) -> Result<(), Fa
         return Err(Failure::Tool);
     }
     check_staged(document, kind, &signature)?;
+    // Created at most 0644 before the umask, so no umask can make it group-
+    // or world-writable: a group-shared directory never gives another user
+    // a window to open the public signature for writing.
+    use std::os::unix::fs::OpenOptionsExt;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
+        .mode(0o644)
         .open(signature_path)
         .map_err(|_| Failure::Output)?;
     if file

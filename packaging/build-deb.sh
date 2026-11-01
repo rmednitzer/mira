@@ -74,7 +74,7 @@ mira \- read-only Linux evidence CLI
 .br
 .B mira challenge
 .br
-.B mira session start|ask|direct|close|show|verify DIR ...
+.B mira session start|ask|direct|close|request|run|act|show|verify DIR ...
 .br
 .B mira demo
 .SH DESCRIPTION
@@ -150,6 +150,7 @@ install -Dm644 docs/signatures.md "$stage/usr/share/doc/mira/signatures.md"
 install -Dm644 schemas/journal-events-v1.schema.json "$stage/usr/share/mira/schemas/journal-events-v1.schema.json"
 install -Dm644 docs/journal-investigation.md "$stage/usr/share/doc/mira/journal-investigation.md"
 install -Dm644 schemas/session-v1.schema.json "$stage/usr/share/mira/schemas/session-v1.schema.json"
+install -Dm644 schemas/session-request-v1.schema.json "$stage/usr/share/mira/schemas/session-request-v1.schema.json"
 install -Dm644 docs/sessions.md "$stage/usr/share/doc/mira/sessions.md"
 # Derive versioned ABI dependencies from the native binary and distro metadata.
 printf 'Source: mira\nSection: admin\nPriority: optional\nMaintainer: MIRA Project <noreply@github.com>\n\nPackage: mira\nArchitecture: any\nDescription: Read-only Linux evidence CLI\n' > "$build_root/debian/control"

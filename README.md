@@ -75,7 +75,7 @@ Each template answers one narrow, explicit question and reports satisfied (exit 
 
 ### Shared sessions
 
-`mira session` records an investigation as a signed, append-only log of entries, each naming its principal ([sessions](docs/sessions.md)). Stage 1a provides the operator's side: `start`, `ask`, `direct`, `close` with an external receipt, `show` and `verify`. The broker that runs agent requests, and the agent itself, come next.
+`mira session` records an investigation as a signed, append-only log of entries, each naming its principal ([sessions](docs/sessions.md)). The operator starts, directs and closes a session. An agent submits signed requests, and `mira session run`, a broker the operator starts, admits or refuses each one under the operator's autonomy level and budget, runs admitted actions and records collector-signed results. Findings with claim checks and a scripted agent come next.
 
 ### Qualification
 

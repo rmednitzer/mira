@@ -461,7 +461,7 @@ fn tampering_gaps_foreign_entries_and_wrong_roles_are_not_verified() {
             "\"kind\":\"directive\",\"principal\":\"agent\"",
         )
         .replace(
-            "\"note\":",
+            "\"request_id\":null,\"note\":",
             "\"directive\":\"stop\",\"level\":null,\"budget\":null,\"until_seq\":null,\"note\":",
         );
     dir.write_record(2, &directive, &dir.raw_sign(directive.as_bytes(), "agent"));

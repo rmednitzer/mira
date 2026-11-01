@@ -102,6 +102,7 @@ jobs:
           test -f package-extract/usr/share/mira/schemas/journal-events-v1.schema.json
           test -f package-extract/usr/share/doc/mira/journal-investigation.md
           test -f package-extract/usr/share/mira/schemas/session-v1.schema.json
+          test -f package-extract/usr/share/mira/schemas/session-request-v1.schema.json
           test -f package-extract/usr/share/doc/mira/sessions.md
           test -f package-extract/usr/share/doc/mira/captures.md
           test -f package-extract/usr/share/doc/mira/investigations.md
