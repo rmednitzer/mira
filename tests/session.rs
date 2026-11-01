@@ -237,7 +237,7 @@ fn a_session_records_operator_entries_and_verifies() {
     }
     assert_eq!(
         dir.state(),
-        "{\"session_version\":1,\"entries\":4,\"closed\":false,\"autonomy\":\"advisory\",\"budget\":2,\"delegated_until\":null}\n"
+        "{\"session_version\":1,\"entries\":4,\"closed\":false,\"autonomy\":\"advisory\",\"budget\":2,\"delegated_until\":null,\"open_proposals\":[],\"open_findings\":[]}\n"
     );
     let verified = dir.verify(None);
     assert_eq!(
@@ -310,7 +310,7 @@ fn delegation_expires_and_stop_takes_precedence() {
     );
     assert!(
         dir.state()
-            .contains("\"autonomy\":\"delegated\",\"budget\":5,\"delegated_until\":2}")
+            .contains("\"autonomy\":\"delegated\",\"budget\":5,\"delegated_until\":2,")
     );
     assert_eq!(
         dir.write("ask", "operator", &["--text", "covered"])
@@ -327,7 +327,7 @@ fn delegation_expires_and_stop_takes_precedence() {
     );
     assert!(
         dir.state()
-            .contains("\"autonomy\":\"assisted\",\"budget\":5,\"delegated_until\":null}")
+            .contains("\"autonomy\":\"assisted\",\"budget\":5,\"delegated_until\":null,")
     );
     assert_eq!(
         dir.write("direct", "operator", &["--delegate-until", "9"])
@@ -341,7 +341,7 @@ fn delegation_expires_and_stop_takes_precedence() {
     );
     assert!(
         dir.state()
-            .contains("\"autonomy\":\"manual\",\"budget\":5,\"delegated_until\":null}")
+            .contains("\"autonomy\":\"manual\",\"budget\":5,\"delegated_until\":null,")
     );
     // A delegation that would end at or before its own entry is refused.
     let refused = dir.write("direct", "operator", &["--delegate-until", "6"]);

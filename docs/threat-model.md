@@ -112,6 +112,13 @@ Stage 1b adds the broker:
 - the agent-writable `inbox/` is read with hard caps per pass (4,096 directory entries, 64 requests), and non-request objects, stale pending files and empty directories are purged. Disk exhaustion by the agent's user is outside MIRA's control: a quota on that user is a deployment requirement
 - `separate_user` gives the agent's group read access to the log and write access to `inbox/` only, and the broker refuses inbox files owned by its own user
 
+Stage 1c adds findings, proposals and decisions:
+- a checkable claim counts only if the cited collector-signed results support it, checked by the broker before recording, by the state rules on every read and by `verify`; the agent's note is never part of a check and is shown as unchecked
+- each result records the assessment reason the broker read from the report it had just produced, from MIRA's own fixed layout, where host strings are JSON-escaped and cannot imitate it; `verify` re-reads the reason from the collector-signed document
+- proposals cost no budget but at most 8 are open at once and they stay outside the operator's reserve, so an agent that spent its budget can still propose but cannot flood the log
+- only the operator decides, once per open proposal or agent finding; approving a proposal written before a newer result for the same action needs an explicit `approve_despite_stale`, and a wrong collector key fails before the decision is written
+- the worst an agent's finding can do is be wrong as a labelled hypothesis or a correctly checked but irrelevant claim; over-reliance on such findings is measured in stage 3, not prevented
+
 Agent containment holds only under `separate_user` with a collector key the agent cannot read. A two-user deployment is not exercised in CI. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.
 
 | Plausible threat | Planned control and verification |

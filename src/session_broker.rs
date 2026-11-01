@@ -1,4 +1,4 @@
-//! The session broker (ADR 0015 stage 1b). The agent never writes the log:
+//! The session broker (ADR 0015 stages 1b and 1c). The agent never writes the log:
 //! it drops signed request records into `inbox/`. `mira session run`, which
 //! the operator starts and the agent does not control, verifies each request,
 //! enforces autonomy, budget and the closed capability set, and records the
@@ -6,8 +6,8 @@
 //! with the collector key, which the agent cannot use.
 use crate::process::{Stderr, run_drained};
 use crate::session::{
-    self, Body, DOCUMENTS, Entry, INBOX, Level, Problem, REQUESTS, Refusal, Separation, State,
-    Writer,
+    self, Body, Claim, Confidence, DOCUMENTS, Entry, INBOX, Level, Open, Problem, REQUESTS, Reason,
+    Refusal, Separation, State, Writer,
 };
 use crate::session_capability::{self, Family, Outcome};
 use crate::signature::{self, Kind, Trust};
@@ -36,6 +36,16 @@ pub enum Ask {
         arguments: String,
     },
     Question,
+    Finding {
+        claim: Claim,
+        confidence: Option<Confidence>,
+        cites: Vec<u64>,
+    },
+    /// An action for the operator to decide on, whatever the agent's level.
+    Proposal {
+        capability: String,
+        arguments: String,
+    },
 }
 
 /// An agent request: one canonical line, signed by the agent under the session
@@ -56,16 +66,58 @@ fn quoted(text: &str) -> String {
 }
 
 impl Request {
+    /// Actions and questions keep the stage 1b layout; findings and proposals
+    /// carry their own fields in the same place.
     pub fn render(&self) -> String {
-        let (ask, capability, arguments) = match &self.ask {
+        let (ask, fields) = match &self.ask {
             Ask::Action {
                 capability,
                 arguments,
-            } => ("action", quoted(capability), quoted(arguments)),
-            Ask::Question => ("question", "null".to_owned(), "null".to_owned()),
+            } => (
+                "action",
+                format!(
+                    "\"capability\":{},\"arguments\":{}",
+                    quoted(capability),
+                    quoted(arguments)
+                ),
+            ),
+            Ask::Question => (
+                "question",
+                "\"capability\":null,\"arguments\":null".to_owned(),
+            ),
+            Ask::Finding {
+                claim,
+                confidence,
+                cites,
+            } => (
+                "finding",
+                format!(
+                    "\"claim\":{},\"confidence\":{},\"cites\":{}",
+                    quoted(claim.as_str()),
+                    confidence.map_or_else(|| "null".to_owned(), |c| quoted(c.as_str())),
+                    quoted(
+                        &cites
+                            .iter()
+                            .map(u64::to_string)
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                ),
+            ),
+            Ask::Proposal {
+                capability,
+                arguments,
+            } => (
+                "proposal",
+                format!(
+                    "\"capability\":{},\"arguments\":{}",
+                    quoted(capability),
+                    quoted(arguments)
+                ),
+            ),
         };
         format!(
-            "{{\"session_version\":{},\"session_id\":{},\"kind\":\"request\",\"request_id\":{},\"principal\":{},\"based_on\":{},\"request\":\"{ask}\",\"capability\":{capability},\"arguments\":{arguments},\"note\":{}}}\n",
+            "{{\"session_version\":{},\"session_id\":{},\"kind\":\"request\",\"request_id\":{},\"principal\":{},\"based_on\":{},\"request\":\"{ask}\",{fields},\"note\":{}}}\n",
             session::SESSION_VERSION,
             quoted(&self.session_id),
             quoted(&self.request_id),
@@ -90,6 +142,19 @@ impl Request {
                 arguments: string("arguments")?,
             },
             "question" => Ask::Question,
+            "finding" => Ask::Finding {
+                claim: Claim::parse(&string("claim")?)?,
+                confidence: match fields.get("confidence")? {
+                    Value::Str(confidence) => Some(Confidence::parse(confidence)?),
+                    Value::Null => None,
+                    Value::Uint(_) => return None,
+                },
+                cites: session::parse_cites(&string("cites")?)?,
+            },
+            "proposal" => Ask::Proposal {
+                capability: string("capability")?,
+                arguments: string("arguments")?,
+            },
             _ => return None,
         };
         let based_on = match fields.get("based_on")? {
@@ -237,6 +302,47 @@ fn decide(state: &State, request: &Request) -> Result<Body, Refusal> {
                 arguments: arguments.clone(),
             })
         }
+        Ask::Finding {
+            claim,
+            confidence,
+            cites,
+        } => {
+            if state.effective_level() == Level::Manual {
+                return Err(refused_by_level());
+            }
+            // Checked against collector results only, never the agent's note.
+            if !session::supports(state, *claim, *confidence, cites) {
+                return Err(Refusal::Claim);
+            }
+            Ok(Body::Finding {
+                request_id: Some(request.request_id.clone()),
+                claim: *claim,
+                confidence: *confidence,
+                cites: cites.clone(),
+            })
+        }
+        Ask::Proposal {
+            capability,
+            arguments,
+        } => {
+            session_capability::plan(capability, arguments).ok_or(Refusal::Capability)?;
+            if state.effective_level() == Level::Manual {
+                return Err(refused_by_level());
+            }
+            let open = state
+                .open
+                .values()
+                .filter(|open| matches!(open, Open::Proposal { .. }))
+                .count();
+            if open >= session::MAX_OPEN_PROPOSALS {
+                return Err(Refusal::Proposals);
+            }
+            Ok(Body::Proposal {
+                request_id: request.request_id.clone(),
+                capability: capability.clone(),
+                arguments: arguments.clone(),
+            })
+        }
     }
 }
 
@@ -248,7 +354,7 @@ fn execute(
     action_seq: u64,
     capability: &str,
     arguments: &str,
-) -> Result<(Option<u64>, Outcome, Option<String>), Problem> {
+) -> Result<(Option<u64>, Outcome, Reason, Option<String>), Problem> {
     let plan = session_capability::plan(capability, arguments).ok_or(Problem::Io)?;
     let document = document_path(dir, action_seq);
     let mut signature_path = document.clone().into_os_string();
@@ -273,8 +379,17 @@ fn execute(
     let outcome = Outcome::of(plan.family, code);
     let exit_status = code.and_then(|code| u64::try_from(code).ok());
     if !outcome.has_document() {
-        return Ok((exit_status, outcome, None));
+        return Ok((exit_status, outcome, Reason::NotApplicable, None));
     }
+    // The broker reads the assessment from the report it just produced; a
+    // report that disagrees with its own exit status is not recorded.
+    let reason = match plan.family {
+        Family::Capture => Reason::NotApplicable,
+        Family::Investigation => match session_capability::assessment(&stdout) {
+            Some((stated, reason)) if stated == outcome => Reason::Assessed(reason),
+            _ => return Err(Problem::Io),
+        },
+    };
     session::write_new(&document, &stdout).map_err(|_| Problem::Io)?;
     // The result commits to this document through the collector's signature.
     // The signature file is made group-readable whatever the umask.
@@ -285,7 +400,7 @@ fn execute(
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .filter(|text| session::is_armored_signature(text))
         .ok_or(Problem::Io)?;
-    Ok((exit_status, outcome, Some(signature)))
+    Ok((exit_status, outcome, reason, Some(signature)))
 }
 
 /// Why a request was dropped without any entry.
@@ -478,9 +593,10 @@ fn handle(
         remove();
         return Ok(Handled::Discarded(Discard::Replayed));
     }
-    // Every agent-attributable entry costs budget and stays outside the
-    // operator's reserve; past that, requests are dropped unrecorded.
-    if !session::chargeable(start, start.entries) {
+    // Every agent-attributable entry stays outside the operator's reserve,
+    // and all but proposals cost budget; past that, requests are dropped
+    // unrecorded. A proposal is the one thing an agent at zero can still do.
+    if start.entries >= session::MAX_ENTRIES - session::OPERATOR_RESERVE {
         remove();
         return Ok(Handled::Discarded(Discard::Unchargeable));
     }
@@ -528,6 +644,12 @@ fn handle(
     if request.request_id != request_id || request.principal != start.header.agent {
         return refuse(Refusal::Malformed);
     }
+    // Without budget only a proposal can be recorded: drop anything else
+    // before verifying or storing it.
+    if start.budget == 0 && !matches!(request.ask, Ask::Proposal { .. }) {
+        remove();
+        return Ok(Handled::Discarded(Discard::Unchargeable));
+    }
     match session::verify_signature(
         bytes,
         signature,
@@ -568,13 +690,15 @@ fn handle(
         if state.requests.contains(&request_id) {
             return Err(Problem::Replayed);
         }
-        if !session::chargeable(state, state.entries) {
-            return Err(Problem::Unchargeable);
-        }
         let body = decide(state, &request).unwrap_or_else(|reason| Body::Refusal {
             request_id: request_id.clone(),
             reason,
         });
+        let free = matches!(body, Body::Proposal { .. })
+            && state.entries < session::MAX_ENTRIES - session::OPERATOR_RESERVE;
+        if !free && !session::chargeable(state, state.entries) {
+            return Err(Problem::Unchargeable);
+        }
         let note = match body {
             Body::Refusal { .. } => String::new(),
             _ => request.note.clone(),
@@ -592,6 +716,8 @@ fn handle(
             return Ok(Handled::Discarded(Discard::Replayed));
         }
         Err(Problem::Unchargeable) => {
+            // Never recorded, so its stored copy is dropped too.
+            let _ = fs::remove_file(stored_request(dir, &request_id));
             remove();
             return Ok(Handled::Discarded(Discard::Unchargeable));
         }
@@ -632,7 +758,7 @@ fn record_result(
     arguments: &str,
     check: &mut dyn FnMut(&session::Log) -> Result<(), Problem>,
 ) -> Result<Option<Entry>, Problem> {
-    let (exit_status, outcome, document_signature) =
+    let (exit_status, outcome, reason, document_signature) =
         execute(dir, collector.key, action_seq, capability, arguments)?;
     let appended = session::append_checked(dir, collector, check, |state| {
         // Abandoned by the operator while it ran: there is nothing to record.
@@ -644,6 +770,7 @@ fn record_result(
                 action_seq,
                 exit_status,
                 outcome,
+                reason: reason.clone(),
                 document_signature: document_signature.clone(),
             },
             Some(state.entries - 1),
@@ -726,6 +853,30 @@ pub fn verify_relays(
             Body::Question {
                 request_id: Some(id),
             } => Some((id, Ask::Question)),
+            Body::Finding {
+                request_id: Some(id),
+                claim,
+                confidence,
+                cites,
+            } => Some((
+                id,
+                Ask::Finding {
+                    claim: *claim,
+                    confidence: *confidence,
+                    cites: cites.clone(),
+                },
+            )),
+            Body::Proposal {
+                request_id,
+                capability,
+                arguments,
+            } => Some((
+                request_id,
+                Ask::Proposal {
+                    capability: capability.clone(),
+                    arguments: arguments.clone(),
+                },
+            )),
             Body::Action {
                 request_id,
                 capability,
@@ -768,6 +919,8 @@ pub fn verify_relays(
         }
         if let Body::Result {
             action_seq,
+            outcome,
+            reason,
             document_signature: Some(committed),
             ..
         } = &entry.body
@@ -803,6 +956,13 @@ pub fn verify_relays(
                 Ok(kind) if kind == expected => {}
                 Err(signature::Failure::Tool) => return Err(Problem::Tool),
                 _ => return Err(Problem::Document(entry.seq)),
+            }
+            // The recorded assessment reason is the one the signed report states.
+            if let Reason::Assessed(recorded) = reason {
+                match session_capability::assessment(&document) {
+                    Some((stated, text)) if stated == *outcome && text == *recorded => {}
+                    _ => return Err(Problem::Document(entry.seq)),
+                }
             }
         }
     }
@@ -881,6 +1041,8 @@ mod tests {
             last_directive: None,
             pending: Default::default(),
             requests: Default::default(),
+            results: Default::default(),
+            open: Default::default(),
         }
     }
 
@@ -971,5 +1133,119 @@ mod tests {
         assert!(decide(&lapsing, &request()).is_ok());
         lapsing.delegated_until = Some(5);
         assert!(decide(&lapsing, &bind).is_ok());
+    }
+
+    #[test]
+    fn findings_and_proposals_round_trip_as_requests() {
+        for ask in [
+            Ask::Finding {
+                claim: Claim::ExpectationNotSatisfied,
+                confidence: Some(Confidence::High),
+                cites: vec![2, 4],
+            },
+            Ask::Finding {
+                claim: Claim::NoFinding,
+                confidence: None,
+                cites: Vec::new(),
+            },
+            Ask::Proposal {
+                capability: "capture".to_owned(),
+                arguments: "host bind-boot".to_owned(),
+            },
+        ] {
+            let item = Request { ask, ..request() };
+            let text = item.render();
+            assert_eq!(
+                Request::parse(text.as_bytes()).as_ref(),
+                Some(&item),
+                "{text}"
+            );
+        }
+        let finding = Request {
+            ask: Ask::Finding {
+                claim: Claim::Hypothesis,
+                confidence: Some(Confidence::Low),
+                cites: vec![2],
+            },
+            ..request()
+        }
+        .render();
+        for bad in [
+            finding.replacen("\"claim\":", "\"capability\":\"x\",\"claim\":", 1),
+            finding.replacen("\"cites\":\"2\"", "\"cites\":\"2,2\"", 1),
+            finding.replacen("\"confidence\":\"low\"", "\"confidence\":\"sure\"", 1),
+            finding.replacen("\"request\":\"finding\"", "\"request\":\"action\"", 1),
+        ] {
+            assert_eq!(Request::parse(bad.as_bytes()), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn findings_and_proposals_are_admitted_by_level_claim_and_bound() {
+        let finding = |claim, cites: Vec<u64>| Request {
+            ask: Ask::Finding {
+                claim,
+                confidence: None,
+                cites,
+            },
+            ..request()
+        };
+        let mut checked = state(Level::Advisory, 1);
+        checked.results.insert(
+            2,
+            session::Fact {
+                capability: "memory-headroom".to_owned(),
+                arguments: "1".to_owned(),
+                family: Family::Investigation,
+                outcome: Outcome::Satisfied,
+                reason: Reason::Assessed("minimum_met".to_owned()),
+            },
+        );
+        assert!(decide(&checked, &finding(Claim::ExpectationSatisfied, vec![2])).is_ok());
+        assert_eq!(
+            decide(&checked, &finding(Claim::ExpectationNotSatisfied, vec![2])),
+            Err(Refusal::Claim)
+        );
+        assert_eq!(
+            decide(&checked, &finding(Claim::ExpectationSatisfied, vec![1])),
+            Err(Refusal::Claim)
+        );
+        checked.level = Level::Manual;
+        assert_eq!(
+            decide(&checked, &finding(Claim::ExpectationSatisfied, vec![2])),
+            Err(Refusal::Autonomy)
+        );
+        let propose = |capability: &str| Request {
+            ask: Ask::Proposal {
+                capability: capability.to_owned(),
+                arguments: "host bind-boot".to_owned(),
+            },
+            ..request()
+        };
+        // An advisory agent may propose what it may not run, at zero budget.
+        assert!(decide(&state(Level::Advisory, 0), &propose("capture")).is_ok());
+        assert_eq!(
+            decide(&state(Level::Advisory, 0), &propose("shell")),
+            Err(Refusal::Capability)
+        );
+        assert_eq!(
+            decide(&state(Level::Manual, 0), &propose("capture")),
+            Err(Refusal::Autonomy)
+        );
+        let mut crowded = state(Level::Assisted, 0);
+        for seq in 0..session::MAX_OPEN_PROPOSALS as u64 {
+            crowded.open.insert(
+                seq,
+                Open::Proposal {
+                    capability: "capture".to_owned(),
+                    arguments: "host".to_owned(),
+                    based_on: 0,
+                },
+            );
+        }
+        assert_eq!(
+            decide(&crowded, &propose("capture")),
+            Err(Refusal::Proposals)
+        );
     }
 }

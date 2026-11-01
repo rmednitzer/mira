@@ -201,9 +201,59 @@ impl Outcome {
     }
 }
 
+/// The `assessment` an investigation report states, read from MIRA's own
+/// fixed report layout: every template renders it before the evidence, so
+/// its first occurrence is the report's. Host strings inside the evidence
+/// are JSON-escaped and cannot form this unescaped sequence.
+pub fn assessment(document: &[u8]) -> Option<(Outcome, String)> {
+    const PREFIX: &[u8] = b"\"assessment\":{\"outcome\":\"";
+    const MIDDLE: &[u8] = b"\",\"reason\":\"";
+    let token = |bytes: &[u8]| -> Option<(String, usize)> {
+        let end = bytes.iter().position(|byte| *byte == b'"')?;
+        let text = &bytes[..end];
+        ((1..=64).contains(&text.len())
+            && text
+                .iter()
+                .all(|byte| byte.is_ascii_lowercase() || *byte == b'_'))
+        .then(|| (String::from_utf8_lossy(text).into_owned(), end))
+    };
+    let start = document
+        .windows(PREFIX.len())
+        .position(|window| window == PREFIX)?
+        + PREFIX.len();
+    let (outcome, end) = token(&document[start..])?;
+    let rest = document[start + end..].strip_prefix(MIDDLE)?;
+    let (reason, _) = token(rest)?;
+    let outcome = match Outcome::parse(&outcome)? {
+        outcome @ (Outcome::Satisfied | Outcome::NotSatisfied | Outcome::Indeterminate) => outcome,
+        _ => return None,
+    };
+    Some((outcome, reason))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_assessment_is_read_from_the_report_layout_only() {
+        let report = br##"{"investigation_version":1,"template":"memory-headroom/v1","assessment":{"outcome":"indeterminate","reason":"evidence_unavailable","evidence_ref":"#/evidence"},"evidence":{"value":"\"assessment\":{\"outcome\":\"satisfied\""}}"##;
+        assert_eq!(
+            assessment(report),
+            Some((Outcome::Indeterminate, "evidence_unavailable".to_owned()))
+        );
+        // Only the escaped form can appear inside a host string.
+        let hostile = br#"{"evidence":{"value":"\"assessment\":{\"outcome\":\"satisfied\",\"reason\":\"x\""}}"#;
+        assert_eq!(assessment(hostile), None);
+        for bad in [
+            &br#"{"assessment":{"outcome":"complete_available","reason":"x"}}"#[..],
+            br#"{"assessment":{"outcome":"satisfied","reason":"Bad"}}"#,
+            br#"{"assessment":{"outcome":"satisfied","evidence_ref":"x"}}"#,
+            br#"{"assessment":{"outcome":"satisfied","reason":""}}"#,
+        ] {
+            assert_eq!(assessment(bad), None);
+        }
+    }
 
     #[test]
     fn every_capability_maps_to_its_fixed_argv() {
