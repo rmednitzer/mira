@@ -80,6 +80,10 @@ class Run:
                 made = self.run(user, '/usr/bin/ssh-keygen', '-q', '-t', 'ed25519', '-N', '',
                                 '-C', name, '-f', str(key))
                 assert made.returncode == 0, made
+                key.chmod(0o600)
+                self.check(f"the {name} key is private and belongs to {user}",
+                           stat.S_IMODE(key.stat().st_mode) == 0o600
+                           and key.stat().st_uid == pwd.getpwnam(user).pw_uid)
                 public = ' '.join(key.with_suffix('.pub').read_text().split()[:2])
                 namespaces = f'{NAMESPACE},{DOCUMENTS}' if name == 'collector' else NAMESPACE
                 lines.append(f'{name} namespaces="{namespaces}" {public}\n')
