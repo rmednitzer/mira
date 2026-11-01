@@ -27,6 +27,7 @@ Each document kind has its own namespace, so a signature for one kind is never a
 |---|---|
 | capture-v1, capture-v2 and capture-v3 | `mira-capture-v1@rmednitzer.github.io` |
 | every investigation report | `mira-investigation-v1@rmednitzer.github.io` |
+| every [session](sessions.md) entry | `mira-session-v1@rmednitzer.github.io` |
 
 ## Verify
 

@@ -26,6 +26,8 @@ const ARMOR: &[u8] = b"-----BEGIN SSH SIGNATURE-----\n";
 pub enum Kind {
     Capture,
     Investigation,
+    /// A shared-workspace session entry (ADR 0015).
+    Session,
 }
 
 impl Kind {
@@ -33,6 +35,7 @@ impl Kind {
         match self {
             Self::Capture => "mira-capture-v1@rmednitzer.github.io",
             Self::Investigation => "mira-investigation-v1@rmednitzer.github.io",
+            Self::Session => "mira-session-v1@rmednitzer.github.io",
         }
     }
 
@@ -42,6 +45,8 @@ impl Kind {
             Some(Self::Capture)
         } else if document.starts_with(b"{\"investigation_version\":") {
             Some(Self::Investigation)
+        } else if document.starts_with(b"{\"session_version\":") {
+            Some(Self::Session)
         } else {
             None
         }

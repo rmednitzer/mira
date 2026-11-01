@@ -71,6 +71,14 @@ pub fn issue() -> io::Result<String> {
     Ok(render(&bytes, issued))
 }
 
+/// 32 bytes from the kernel CSPRNG as 64 lowercase hex characters, for other
+/// fixed-width random identifiers (ADR 0015 session IDs).
+pub(crate) fn random_hex() -> io::Result<String> {
+    let mut bytes = [0u8; CHALLENGE_BYTES];
+    File::open(random_source())?.read_exact(&mut bytes)?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
 fn render(bytes: &[u8; CHALLENGE_BYTES], issued_unix_ms: u128) -> String {
     let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
     format!(
