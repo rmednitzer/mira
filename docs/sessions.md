@@ -181,7 +181,7 @@ With `start --require-own-assessment`, the session asks for your own view of eac
 - `assess --target 0` records your view of the session question itself. It can be recorded again whenever you want to see what the agent has written since.
 - `assess` records your view as an `assessment` entry, once per open agent finding (any number of times for target 0), with the same labels as a finding (a hypothesis needs a confidence, `no_finding` takes none). It is never checked and is shown as your own view.
 - After it, `show` reveals the finding and marks it `differs from your assessment` when its claim is not yours.
-- `decide` on an agent finding is refused until you have assessed it.
+- `decide` on an agent finding is refused until you have assessed it. Approving a proposal is refused while its arguments are still withheld, because approval copies them into your own action; rejecting needs no assessment.
 
 This is a display and workflow rule, not a secrecy one: the log itself stays readable to you and to the agent's group.
 

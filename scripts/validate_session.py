@@ -174,7 +174,7 @@ def fold(state, entry):
                 'level': entry['autonomy'], 'budget': entry['budget'], 'until': None,
                 'closed': False, 'last_directive': None, 'pending': {}, 'requests': set(),
                 'results': {}, 'open': {}, 'assessed': set(),
-                'forcing': entry.get('own_assessment') == 'required'}
+                'forcing': entry.get('own_assessment') == 'required', 'last_assessment': None}
     if entry['session_id'] != state['id']:
         raise ValueError('entry from another session')
     if state['closed']:
@@ -285,8 +285,15 @@ def fold(state, entry):
                 and (not state['forcing'] or entry['target_seq'] in state['assessed'])
         else:
             is_stale = stale(state, target[1], target[2], target[3])
-            fits = verdict == 'reject' or (verdict == 'approve' and not is_stale) \
-                or (verdict == 'approve_despite_stale' and is_stale)
+            # Approval copies the proposal's arguments into an operator action,
+            # so under the forcing flag it waits until they are released.
+            unassessed = any(item == ('finding',) and seq_ not in state['assessed']
+                             for seq_, item in state['open'].items())
+            last = state['last_assessment']
+            withheld = state['forcing'] and (unassessed or last is None
+                                             or last < entry['target_seq'])
+            fits = verdict == 'reject' or (verdict == 'approve' and not is_stale and not withheld) \
+                or (verdict == 'approve_despite_stale' and is_stale and not withheld)
         if not fits:
             raise ValueError('verdict does not fit its target')
     elif kind == 'assessment' and operator:
@@ -299,6 +306,7 @@ def fold(state, entry):
             raise ValueError('assessment of nothing open, twice, or without its labels')
         if target != 0:
             state['assessed'].add(target)
+        state['last_assessment'] = seq
     elif kind == 'abandon' and operator:
         if state['pending'].pop(entry['action_seq'], None) is None:
             raise ValueError('abandoned action is not pending')
@@ -474,6 +482,13 @@ def check_fixtures():
     fold(assessed, entry('decision', 3, target_seq=1, verdict='reject'))
     fold(fold(assessed, entry('assessment', 3, target_seq=0, claim='no_finding', confidence=None)),
          entry('assessment', 4, target_seq=0, claim='hypothesis', confidence='low'))
+    proposed_blind = fold(fold(None, forcing), dict(entry('proposal', 1, 'collector', request_id=REQ,
+                                                          capability='capture', arguments='host'),
+                                                    based_on=0))
+    refused(lambda e: fold(proposed_blind, e), entry('decision', 2, target_seq=1, verdict='approve'))
+    fold(proposed_blind, entry('decision', 2, target_seq=1, verdict='reject'))
+    released = fold(proposed_blind, entry('assessment', 2, target_seq=0, claim='no_finding', confidence=None))
+    fold(released, entry('decision', 3, target_seq=1, verdict='approve'))
     timed = entry('directive', 1, directive='delegate', level=None, budget=None, until_seq=4096,
                   until_unix_ms=1800000000000)
     timed['note'] = timed.pop('note')

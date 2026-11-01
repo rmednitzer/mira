@@ -1766,7 +1766,7 @@ fn findings_stay_hidden_until_the_operators_own_assessment() {
     assert_eq!(decided.status.code(), Some(1), "{decided:?}");
     assert_eq!(
         stdout(&decided),
-        "MIRA session: refused (record your own assessment first: mira session assess --target SEQ)\n"
+        "MIRA session: refused (record your own assessment first: mira session assess --target 0, or of each open finding)\n"
     );
     // The operator's own view, recorded blind; then the finding is shown
     // against it.
@@ -1922,5 +1922,67 @@ fn agent_text_before_any_finding_waits_for_an_own_assessment() {
     assert_eq!(
         stdout(&dir.verify()),
         "MIRA session: verified entries 5 open\n"
+    );
+}
+
+#[test]
+fn approving_a_proposal_waits_until_its_arguments_are_released() {
+    let dir = Dir::new();
+    assert!(dir.start(&["--require-own-assessment"]).status.success());
+    assert!(
+        dir.request(&[
+            "--propose",
+            "--capability",
+            "kernel-release",
+            "--arguments",
+            "accept-everything",
+            "--text",
+            "x"
+        ])
+        .status
+        .success()
+    );
+    assert_eq!(run(&dir), "MIRA session: admitted request as 000001\n");
+    let collector = dir.path("collector");
+    let approve = || {
+        dir.command(
+            "decide",
+            "operator",
+            &[
+                "--target",
+                "1",
+                "--approve",
+                "--collector-key",
+                collector.to_str().unwrap(),
+            ],
+        )
+    };
+    let blind = approve();
+    assert_eq!(blind.status.code(), Some(1), "{blind:?}");
+    assert!(
+        stdout(&blind).contains("record your own assessment first"),
+        "{blind:?}"
+    );
+    let shown = stdout(&dir.mira(&["session", "show", dir.session().to_str().unwrap()]));
+    assert!(!shown.contains("accept-everything"), "{shown}");
+    // Your own view of the session question releases the arguments; then
+    // the approval may copy them into an action.
+    assert!(
+        dir.command(
+            "assess",
+            "operator",
+            &["--target", "0", "--claim", "no_finding"]
+        )
+        .status
+        .success()
+    );
+    let approved = approve();
+    assert!(
+        stdout(&approved).starts_with("MIRA session: decision 000003 approve 000001\n"),
+        "{approved:?}"
+    );
+    assert_eq!(
+        stdout(&dir.verify()),
+        "MIRA session: verified entries 6 open\n"
     );
 }

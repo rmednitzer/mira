@@ -183,6 +183,11 @@ fn decide(dir: &Path, rest: &[String]) {
                 arguments,
                 based_on,
             }) => match verdict {
+                Verdict::Approve | Verdict::ApproveDespiteStale
+                    if state.agent_text_withheld(target) =>
+                {
+                    return Err(Problem::Unassessed);
+                }
                 Verdict::Approve if session::stale(state, capability, arguments, *based_on) => {
                     return Err(Problem::Stale);
                 }

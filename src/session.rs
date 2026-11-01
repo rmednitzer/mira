@@ -875,6 +875,8 @@ pub struct State {
     pub open: BTreeMap<u64, Open>,
     /// Agent findings the operator has assessed, with the assessment's seq.
     pub assessed: BTreeMap<u64, u64>,
+    /// The latest operator assessment of any target.
+    pub last_assessment: Option<u64>,
 }
 
 /// A recorded result, as claim checks and staleness need it.
@@ -1019,6 +1021,17 @@ impl State {
         }
     }
 
+    /// Under the forcing flag, whether agent text written at `seq` is still
+    /// withheld from the operator: until an own assessment recorded after
+    /// it, and while any agent finding is unassessed.
+    pub fn agent_text_withheld(&self, seq: u64) -> bool {
+        let unassessed = self.open.iter().any(|(finding, open)| {
+            matches!(open, Open::Finding) && !self.assessed.contains_key(finding)
+        });
+        self.header.require_own_assessment
+            && (unassessed || self.last_assessment.is_none_or(|last| last < seq))
+    }
+
     /// As [`State::effective_level`], with a delegation's operator-clock
     /// deadline applied at `now_unix_ms`, as the broker reads its own clock.
     pub fn level_at(&self, now_unix_ms: u64) -> Level {
@@ -1078,7 +1091,7 @@ impl Problem {
             }
             Self::NotOpen => "target is not an open proposal or agent finding".to_owned(),
             Self::Unassessed => {
-                "record your own assessment first: mira session assess --target SEQ".to_owned()
+                "record your own assessment first: mira session assess --target 0, or of each open finding".to_owned()
             }
         }
     }
@@ -1199,6 +1212,7 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
             results: BTreeMap::new(),
             open: BTreeMap::new(),
             assessed: BTreeMap::new(),
+            last_assessment: None,
         });
     };
     if entry.session_id != state.session_id {
@@ -1412,9 +1426,16 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
                     arguments,
                     based_on,
                 } => match verdict {
-                    Verdict::Approve => !stale(&state, &capability, &arguments, based_on),
+                    // Approval copies the proposal's arguments into an operator
+                    // action, so under the forcing flag it waits until they
+                    // are no longer withheld.
+                    Verdict::Approve => {
+                        !stale(&state, &capability, &arguments, based_on)
+                            && !state.agent_text_withheld(*target_seq)
+                    }
                     Verdict::ApproveDespiteStale => {
                         stale(&state, &capability, &arguments, based_on)
+                            && !state.agent_text_withheld(*target_seq)
                     }
                     Verdict::Reject => true,
                     Verdict::Accept | Verdict::Uncertain => false,
@@ -1448,6 +1469,7 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
             if !labelled {
                 return Err(Problem::Malformed(seq));
             }
+            state.last_assessment = Some(seq);
             if *target_seq != 0 {
                 if !matches!(state.open.get(target_seq), Some(Open::Finding))
                     || state.assessed.contains_key(target_seq)
@@ -1876,23 +1898,8 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
     // after it was written (of a finding, or of the session question at
     // target 0), so a conclusion can never reach the operator ahead of
     // their own view, whether it comes before or after a finding.
-    let unassessed = log.iter().any(|stored| {
-        matches!(
-            stored.entry.body,
-            Body::Finding {
-                request_id: Some(_),
-                ..
-            }
-        ) && !assessments.contains_key(&stored.entry.seq)
-    });
-    let last_assessment = log
-        .iter()
-        .filter(|stored| matches!(stored.entry.body, Body::Assessment { .. }))
-        .map(|stored| stored.entry.seq)
-        .max();
     for Stored { entry, .. } in log {
-        let withhold_notes = state.header.require_own_assessment
-            && (unassessed || last_assessment.is_none_or(|last| last < entry.seq));
+        let withhold_notes = state.agent_text_withheld(entry.seq);
         // Under the forcing flag an agent finding is withheld, note and all,
         // until the operator has assessed it. This is a display rule: the log
         // itself stays readable.

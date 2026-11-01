@@ -1064,6 +1064,7 @@ mod tests {
             results: Default::default(),
             open: Default::default(),
             assessed: Default::default(),
+            last_assessment: None,
         }
     }
 
