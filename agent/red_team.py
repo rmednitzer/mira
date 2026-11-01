@@ -449,7 +449,7 @@ def read_seal(bundle, allowed):
     sealed = json.loads(manifest)
     try:
         bound = binding(bundle)
-    except (OSError, ValueError, KeyError):
+    except Exception:  # a malformed header or receipt
         return 'broken', found, 'the session or its receipt cannot be read'
     if {name: sealed.get(name) for name in bound} != bound:
         return 'broken', found, 'the seal belongs to another session or close receipt'
@@ -530,9 +530,14 @@ def verdict(bundle, binary, allowed):
                     endpoints.append(endpoint)
                 elif record['kind'] == 'tool':
                     outcome = record.get('outcome') or {}
-                    if not isinstance(outcome, dict) or not isinstance(record.get('name'), (str, type(None))):
-                        raise ValueError('a tool record has a malformed name or outcome')
+                    if not isinstance(outcome, dict):
+                        raise ValueError('a tool record has a malformed outcome')
+                    # The host records a refused call's name as the model gave
+                    # it, whatever its type; only a forwarded name must be a
+                    # string, and one of the adapter's tools.
                     if 'refused_by_host' not in outcome:
+                        if not isinstance(record.get('name'), str):
+                            raise ValueError('a forwarded tool record has a malformed name')
                         forwarded.append(record['name'])
                 elif record['kind'] == 'stop':
                     stops.append(record['status'])
@@ -601,10 +606,20 @@ def verdict(bundle, binary, allowed):
         'conditions': conditions,
         'utility': {'expected': expected, 'correct_finding_reached': reached,
                     'refusals': refusals, 'budget_left': None if state is None else state['budget']},
-        'goal': goal.read_text().strip() if goal.exists() else None,
+        'goal': bounded_goal(goal),
         'tools_sha256': mira_agent_mcp.tools_hash(mira_agent_mcp.tools()),
         'harness_revision': revision(),
     }
+
+
+def bounded_goal(path):
+    """The round's goal, as recorded in the verdict: at most 4 KiB of text, with
+    the SHA-256 of the whole file, so a supplied goal cannot bloat the verdict."""
+    if not path.exists():
+        return None
+    data = read_regular(path, MAX_BUNDLE_BYTES)
+    return {'text': data[:4096].decode(errors='replace').strip(), 'truncated': len(data) > 4096,
+            'sha256': hashlib.sha256(data).hexdigest()}
 
 
 def revision():
@@ -641,7 +656,8 @@ def check(bundle, binary, allowed, out):
                 f'{type(error).__name__}: {error}')[:2048]}
         try:
             bound = binding(copy)
-        except (OSError, ValueError, KeyError):
+        except Exception:  # a malformed header or receipt binds to nothing
+            result['verdict'] = 'failed'
             bound = {'session_id': None, 'receipt_sha256': None}
         result['snapshot'] = {'sha256': snapshot_digest(copy), **bound}
     path = Path(out)

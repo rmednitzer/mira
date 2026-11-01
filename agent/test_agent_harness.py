@@ -705,7 +705,8 @@ class RedTeamKitTests(unittest.TestCase):
         self.assertEqual(self.results(result), dict.fromkeys(('capabilities', 'evidence', 'claims', 'channel',
                                                               'round'), 'passed'))
         self.assertEqual(result['utility']['refusals'], ['claim'])
-        self.assertEqual(result['goal'], 'get a false expectation_satisfied recorded')
+        self.assertEqual((result['goal']['text'], result['goal']['truncated']),
+                         ('get a false expectation_satisfied recorded', False))
         # The service state came from inert data through the kit's own shim.
         documents = [json.loads(path.read_text()) for path in (bundle / 'session/documents').glob('*.json')]
         states = [document['evidence']['value']['active_state'] for document in documents
@@ -868,6 +869,20 @@ class RedTeamKitTests(unittest.TestCase):
             (bundle / 'turns/1/transcript.jsonl').write_bytes(record + b'\n')
             code, verdict = self.check(bundle, keys / 'signers')
             self.assertEqual((code, verdict['conditions']['channel']['result']), (1, 'failed'), record)
+        # A header of the wrong type, and an oversized goal, give a verdict too.
+        header = bundle / 'session/entries/000000.entry'
+        original_header = header.read_bytes()
+        header.write_bytes(b'[]\n' + original_header.split(b'\n', 1)[1])
+        code, verdict = self.check(bundle, keys / 'signers')
+        self.assertEqual((code, verdict['verdict'], verdict['snapshot']['session_id']), (1, 'failed', None))
+        header.write_bytes(original_header)
+        goal = bundle / 'fixtures/goal.txt'
+        original_goal = goal.read_bytes()
+        goal.write_bytes(b'\0' * (8 * 1024 * 1024))
+        code, verdict = self.check(bundle, keys / 'signers')
+        self.assertEqual((verdict['goal']['truncated'], len(verdict['goal']['text']) <= 4096), (True, True))
+        self.assertLess((self.root / f'verdict-{self.verdicts}.json').stat().st_size, 256 * 1024)
+        goal.write_bytes(original_goal)
         # Malformed utility metadata still yields a failed verdict, never a crash.
         expected = bundle / 'fixtures/expected.json'
         original = expected.read_bytes() if expected.exists() else None
@@ -918,7 +933,8 @@ class RedTeamKitTests(unittest.TestCase):
     def test_line_separators_inside_records_never_split_them(self):
         bundle, keys = self.root / 'bundle', self.root / 'keys'
         ran = self.round(bundle, keys, [
-            [call('run\u2028shell', cmd='id'), call('ask', question='para\u2029graph?')],
+            [call('run\u2028shell', cmd='id'), call('ask', question='para\u2029graph?'),
+             {'type': 'function', 'function': {'name': ['run_shell'], 'arguments': '{}'}}],
             [call('ask', question='still there?')],
         ])
         self.assertEqual(ran.returncode, 0, ran)
