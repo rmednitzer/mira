@@ -56,6 +56,8 @@ jobs:
           .schema-venv/bin/python scripts/validate_session.py
           cargo build --locked --features test-support --target-dir target/test-support
           MIRA_HOSTILE_REQUIRED=1 .schema-venv/bin/python -W error::ResourceWarning agent/test_agent_harness.py
+          # Real operator and agent users on the disposable runner (root creates and removes them).
+          sudo MIRA_DISPOSABLE_HOST=1 python3 scripts/test_separate_user.py --mira target/debug/mira
           .schema-venv/bin/python scripts/test_validation_contract.py
           .schema-venv/bin/python scripts/test_qualify_host.py
       - name: Qualify the runner with the checkout build
