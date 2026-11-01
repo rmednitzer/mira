@@ -75,8 +75,8 @@ def check(schema, value, path='arguments'):
                 raise ValueError(f'{path}: {name} is not allowed')
             check(properties[name], item, f'{path}.{name}')
     elif kind == 'string':
-        if not isinstance(value, str):
-            raise ValueError(f'{path}: must be a string')
+        if not isinstance(value, str) or '\x00' in value:
+            raise ValueError(f'{path}: must be a string without NUL')
         if len(value) < schema.get('minLength', 0) or len(value) > schema.get('maxLength', 1 << 30):
             raise ValueError(f'{path}: length out of range')
         if 'pattern' in schema and re.search(schema['pattern'], value) is None:
@@ -127,8 +127,11 @@ class Adapter:
         self.calls = []
 
     def mira_run(self, *arguments, timeout=60):
-        return subprocess.run([self.mira, 'session', *arguments], capture_output=True,
-                              timeout=timeout, check=False, stdin=subprocess.DEVNULL)
+        try:
+            return subprocess.run([self.mira, 'session', *arguments], capture_output=True,
+                                  timeout=timeout, check=False, stdin=subprocess.DEVNULL)
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            return subprocess.CompletedProcess([], 4, b'', b'mira could not be run')
 
     def check_version(self, method, params):
         if method == 'initialize':
@@ -266,6 +269,10 @@ def serve(adapter, reader, writer):
                 try:
                     result = adapter.handle(message['method'], message.get('params') or {})
                     reply = {'jsonrpc': '2.0', 'id': message['id'], 'result': result}
+                except (TypeError, AttributeError, KeyError, ValueError):
+                    # Never die on hostile input: every message gets an answer.
+                    reply = {'jsonrpc': '2.0', 'id': message['id'],
+                             'error': {'code': -32602, 'message': 'Invalid params'}}
                 except RpcError as error:
                     body = {'code': error.code, 'message': error.message}
                     if error.data is not None:

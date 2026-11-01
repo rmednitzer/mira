@@ -27,7 +27,7 @@ There is no tool that runs a command or reads a file, and none will be added. An
 
 **Resources.** The views are read-only: `session://state` and `session://timeline` (from `mira session show`), plus `session://entries/NNNNNN` and `session://documents/NNNNNN`. A URI is a name in one of these fixed forms, never a path.
 
-**Authority.** It comes only from the environment, as MCP's stdio binding prescribes: `MIRA_SESSION`, `MIRA_ALLOWED_SIGNERS`, `MIRA_AGENT_KEY`, and optionally `MIRA_BINARY`. Run the adapter as the agent's OS user, with the agent's key.
+**Authority.** It comes only from the environment, as MCP's stdio binding prescribes: `MIRA_SESSION`, `MIRA_ALLOWED_SIGNERS`, `MIRA_AGENT_KEY`, and optionally `MIRA_BINARY` and `SSH_AUTH_SOCK` (for an agent key held in `ssh-agent`). The host passes exactly these and nothing else from its own environment. Run the adapter as the agent's OS user, with the agent's key.
 
 **Pinning.** The adapter refuses to start unless the session header pins exactly its tool definitions. The pin is the SHA-256 of the canonical JSON (sorted keys, no whitespace) of the `tools` array that `tools/list` returns:
 
@@ -49,7 +49,7 @@ The host enforces what a third-party client could only be asked to do:
 - **One server.** It launches the shipped adapter as its only MCP server. Given `--mcp-config`, a standard `mcpServers` file, it refuses any file that names another server, or anything but the shipped adapter run by Python without options. The host still launches the adapter itself; the file is only checked. Another server would give the model an external channel or a way to change state, breaking the Rule of Two, and would allow cross-server shadowing.
 - **Pinned tools.** The adapter's tool definitions must hash to the session header's pin. This is checked at start and again before every turn, so a poisoned description, or one changed after approval (a rug pull), stops the run with exit 3.
 - **Local models only.** The model is an OpenAI-compatible chat completions endpoint, such as llama.cpp server, Ollama or vLLM. It is reached without proxy, and no redirect is ever followed, so a response cannot send the session view elsewhere. There are two ways to reach it:
-  - **`--model-socket PATH`** (preferred): a Unix socket, served at `/v1/chat/completions`. The host requires the socket to be owned by the agent's user, in a directory owned by that user that nobody else can write. That authenticates the listener: only the agent user's own server can be there.
+  - **`--model-socket PATH`** (preferred): a Unix socket, served at `/v1/chat/completions`. The host requires the socket to be owned by the agent's user, in a directory owned by that user that nobody else can write. On every connection, before sending anything, it also checks the connected peer's user ID (`SO_PEERCRED`). That authenticates the listener even if the path is swapped through a writable ancestor: only a server running as the agent's user is ever sent the session view.
   - **`--model-url`**: plain `http` on a loopback address, without credentials, query or fragment. A loopback TCP port is not authenticated: if the intended server has not bound it, another local user can, receive the session view and answer as the model. The broker still checks every request, but use the socket wherever the server supports one.
 
   `--replay FILE` instead plays a JSON list of responses, one per turn, for tests and scripted red-team runs. Hosted models see synthetic or public sessions only; this host does not connect to them.
@@ -87,6 +87,7 @@ The tests cover:
 - other or altered MCP servers in the client configuration
 - non-loopback model URLs, a redirect from the model (never followed), and Unix sockets that are absent, not sockets, or in a directory others can write
 - tool-call arguments that are not a JSON string, and the result documents reaching the model
+- a socket listener of another user refused on connection, NUL in tool text refused while the adapter keeps serving, and an agent key held in `ssh-agent`
 - a poisoned adapter, and a rug pull
 - a red-team replay: a shell call, option injection, an operator-only capture, findings citing the header or without confidence, and an injected question. Against the real broker none of them runs, no result or finding is recorded, and the session verifies.
 - a loopback HTTP model, with every exchange in the transcript

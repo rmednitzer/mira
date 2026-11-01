@@ -11,8 +11,10 @@ import socketserver
 import subprocess
 import sys
 import tempfile
+import shutil
 import threading
 import unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -439,6 +441,66 @@ class ReviewRegressionTests(unittest.TestCase):
         self.assertFalse(tools[3]['outcome']['isError'])
         self.assertEqual(self.transcript(record)[-1]['status'], 'idle')
         self.assertEqual(len(self.session.inbox()), 1)
+
+    def test_the_socket_peer_is_authenticated_on_every_connection(self):
+        directory = self.session.root / 'model'
+        directory.mkdir(mode=0o700)
+        address = str(directory / 'socket')
+        seen = []
+        server = serve_model([dict(IDLE), dict(IDLE)], seen, address)
+        try:
+            model = host.LocalModel('m', 0.0, socket_path=address)
+            self.assertIn(b'choices', model.complete([], []))
+            # The path was checked at construction; a listener of another user
+            # behind the same path is refused before anything is sent.
+            own = os.geteuid()
+            with mock.patch.object(host.os, 'geteuid', return_value=own + 1):
+                with self.assertRaises(OSError):
+                    model.complete([{'role': 'user', 'content': 'secret'}], [])
+        finally:
+            stop(server)
+        self.assertEqual(len(seen), 1)
+
+    def test_nul_in_tool_text_is_refused_and_the_adapter_keeps_serving(self):
+        client = self.session.adapter()
+        try:
+            for name, arguments in (
+                ('ask', {'question': 'a\x00b'}),
+                ('request_action', {'capability': 'memory-headroom', 'arguments': '1', 'reason': 'x\x00'}),
+            ):
+                reply = client.result('tools/call', {'name': name, 'arguments': arguments})
+                self.assertTrue(reply['isError'], name)
+            garbage = client.request('tools/call', {'name': 'ask', 'arguments': ['not', 'an', 'object']})
+            self.assertTrue(garbage.get('result', {}).get('isError') or 'error' in garbage)
+            accepted = client.result('tools/call', {'name': 'ask', 'arguments': {'question': 'ok?'}})
+            self.assertFalse(accepted['isError'], accepted)
+        finally:
+            client.close()
+        self.assertEqual(len(self.session.inbox()), 1)
+
+    @unittest.skipUnless(shutil.which('ssh-agent') and shutil.which('ssh-add'), 'needs ssh-agent')
+    def test_an_agent_key_held_in_ssh_agent_still_signs(self):
+        started = subprocess.run(['ssh-agent', '-s'], capture_output=True, text=True, check=True)
+        environ = dict(os.environ)
+        for line in started.stdout.splitlines():
+            if line.startswith(('SSH_AUTH_SOCK=', 'SSH_AGENT_PID=')):
+                name, value = line.split(';', 1)[0].split('=', 1)
+                environ[name] = value
+        try:
+            subprocess.run(['ssh-add', '-q', str(self.session.root / 'agent')], env=environ,
+                           check=True, capture_output=True)
+            public = self.session.root / 'agent-only.pub'
+            public.write_text((self.session.root / 'agent.pub').read_text())
+            ran = subprocess.run(
+                [sys.executable, str(HERE / 'mira_agent_host.py'), '--session', str(self.session.dir),
+                 *self.session.trust, '--key', str(public), '--mira', MIRA, '--turn-delay', '0',
+                 '--replay', self.session.replay([[call('ask', question='Signed through ssh-agent?')]]),
+                 '--record', str(self.session.root / 'ssh-agent')],
+                env=environ, capture_output=True, timeout=300, check=False)
+            self.assertEqual(ran.returncode, 0, ran)
+            self.assertEqual(len(self.session.inbox()), 1)
+        finally:
+            subprocess.run(['ssh-agent', '-k'], env=environ, capture_output=True, check=False)
 
     def test_the_model_sees_the_latest_result_documents(self):
         acted = mira('act', str(self.session.dir), *self.session.trust, '--key',

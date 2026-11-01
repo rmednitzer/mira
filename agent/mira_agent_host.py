@@ -31,6 +31,7 @@ import os
 import queue
 import socket
 import stat
+import struct
 import subprocess
 import sys
 import threading
@@ -136,7 +137,17 @@ def check_socket(path):
                       'this user that nobody else can write')
 
 
+def peer_uid(connected):
+    """The user of the process at the other end of a connected Unix socket (Linux)."""
+    _, uid, _ = struct.unpack('3i', connected.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED,
+                                                         struct.calcsize('3i')))
+    return uid
+
+
 class UnixConnection(http.client.HTTPConnection):
+    """Authenticates the listener on every connection, before anything is sent: a
+    path checked earlier could have been swapped through a writable ancestor."""
+
     def __init__(self, path, timeout):
         super().__init__('localhost', timeout=timeout)
         self.socket_path = path
@@ -145,6 +156,9 @@ class UnixConnection(http.client.HTTPConnection):
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.settimeout(self.timeout)
         self.sock.connect(self.socket_path)
+        if peer_uid(self.sock) != os.geteuid():
+            self.sock.close()
+            raise OSError('the model socket is served by another user')
 
 
 class Adapter:
@@ -303,6 +317,9 @@ def run(args, model, recorder):
     environ = {'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'MIRA_SESSION': str(session),
                'MIRA_ALLOWED_SIGNERS': args.allowed_signers, 'MIRA_AGENT_KEY': args.key,
                'MIRA_BINARY': args.mira}
+    # The agent's key may be a public key whose private half is in ssh-agent.
+    if 'SSH_AUTH_SOCK' in os.environ:
+        environ['SSH_AUTH_SOCK'] = os.environ['SSH_AUTH_SOCK']
     adapter = Adapter(args.adapter, environ)
     try:
         discovered = adapter.result('server/discover')

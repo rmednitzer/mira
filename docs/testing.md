@@ -243,7 +243,7 @@ Stage 2 (agent harness), `agent/test_agent_harness.py` against a real session, b
 - a poisoned adapter is refused at start, and a rug pull stops the run before any tool call
 - a red-team replay (shell call, option injection, operator-only capture, findings citing the header or without confidence, an injected question) runs nothing, records no result or finding, and the session verifies
 - a loopback HTTP model is called with the adapter's tools, and every exchange is in the transcript
-- review regressions: a redirect from the model is never followed; a Unix-socket model must be owned by the agent's user in a directory nobody else can write; tool arguments that are not a JSON string are refused without ending the run; the latest result documents reach the model
+- review regressions: a redirect from the model is never followed; a Unix-socket model must be owned by the agent's user in a directory nobody else can write; tool arguments that are not a JSON string are refused without ending the run; the latest result documents reach the model; a socket peer of another user is refused before anything is sent; NUL in tool text is refused and the adapter keeps serving; an agent key in `ssh-agent` still signs
 
 ## Representative host qualification
 
