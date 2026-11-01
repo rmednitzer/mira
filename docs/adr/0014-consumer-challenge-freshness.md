@@ -1,6 +1,6 @@
 # ADR 0014: consumer-challenge freshness for signed captures
 
-Status: **Proposed**, 2026-11-01.
+Status: **Accepted**, 2026-11-01 (proposed and reviewed the same day). Not yet implemented.
 
 ## Context
 
@@ -139,11 +139,11 @@ Blast radius:
 
 No default output changes, and signatures remain separate files. Removing the feature leaves every capture-v1 and v2 document valid; capture-v3 documents stay verifiable as signed documents under the existing capture namespace. No operational state requires rollback.
 
-## Review questions
+## Review decisions
 
-1. Should the challenge be accepted without signing, for a consumer who controls the transport end to end? This proposal says no, because the document alone could not show it.
-2. Is 32 bytes and lowercase hex the right fixed syntax, or should the length be a range?
-3. Should investigation reports be challengeable in this decision rather than later?
+1. **Signing is required.** A challenge is never accepted without `--signature`/`--sign-with`, because an unsigned document cannot show that the challenge was answered rather than pasted in.
+2. **Fixed syntax:** exactly 32 bytes as 64 lowercase hex characters. A fixed length keeps the capture-v3 prefix check byte-exact.
+3. **Investigation reports are out of scope.** Challenging them is a later decision with the same mechanism.
 
 ## Primary references
 
