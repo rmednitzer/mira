@@ -321,9 +321,97 @@ pub fn check_key(dir: &Path, collector: &Writer) -> Result<(), Problem> {
     sign_record(&probe, collector, &dir.join(DOCUMENTS)).map(|_| ())
 }
 
+/// What the broker trusts across passes: the session directory it started on,
+/// and the entries whose signatures it has verified. It acts only on a log
+/// that extends that verified prefix byte for byte, so neither a replaced
+/// directory nor an unsigned or rolled-back entry can change its decisions.
+pub struct Guard {
+    identity: (u64, u64),
+    allowed: PathBuf,
+    verified: Vec<(Vec<u8>, Vec<u8>)>,
+}
+
+impl Guard {
+    /// Pin the session directory and verify every entry it holds now. Under
+    /// `separate_user`, refuse a path another user could replace.
+    pub fn new(dir: &Path, allowed: &Path) -> Result<Self, Problem> {
+        let (_, state) = session::load(dir)?;
+        if state.header.separation == Separation::SeparateUser {
+            check_path(dir)?;
+        }
+        let mut guard = Self {
+            identity: identity(dir)?,
+            allowed: allowed.to_path_buf(),
+            verified: Vec::new(),
+        };
+        let (log, _) = session::load(dir)?;
+        guard.check(dir, &log)?;
+        Ok(guard)
+    }
+
+    /// Accept `log` only if it is the same directory and extends the verified
+    /// prefix unchanged; verify any new entries' signatures and remember them.
+    pub fn check(&mut self, dir: &Path, log: &session::Log) -> Result<(), Problem> {
+        if identity(dir)? != self.identity || log.len() < self.verified.len() {
+            return Err(Problem::Moved);
+        }
+        for (stored, (bytes, signature)) in log.iter().zip(&self.verified) {
+            if stored.bytes != *bytes || stored.signature != *signature {
+                return Err(Problem::Moved);
+            }
+        }
+        for stored in &log[self.verified.len()..] {
+            session::verify_signature(
+                &stored.bytes,
+                &stored.signature,
+                &self.allowed,
+                &stored.entry.principal,
+                stored.entry.seq,
+            )?;
+            self.verified
+                .push((stored.bytes.clone(), stored.signature.clone()));
+        }
+        Ok(())
+    }
+}
+
+fn identity(dir: &Path) -> Result<(u64, u64), Problem> {
+    let metadata = fs::symlink_metadata(dir).map_err(|_| Problem::Moved)?;
+    if !metadata.is_dir() {
+        return Err(Problem::Moved);
+    }
+    Ok((metadata.dev(), metadata.ino()))
+}
+
+/// Every ancestor of the session directory must be unwritable by other
+/// users, or sticky with the next component owned by the session's owner, so
+/// nobody else can rename the session away and put another in its place.
+fn check_path(dir: &Path) -> Result<(), Problem> {
+    let canonical = fs::canonicalize(dir).map_err(|_| Problem::Io)?;
+    let owner = fs::metadata(&canonical).map_err(|_| Problem::Io)?.uid();
+    let mut child = canonical.clone();
+    for ancestor in canonical.ancestors().skip(1) {
+        let metadata = fs::metadata(ancestor).map_err(|_| Problem::Io)?;
+        let mode = metadata.mode();
+        let writable_by_others = mode & 0o022 != 0;
+        let sticky = mode & 0o1000 != 0;
+        let child_owner = fs::symlink_metadata(&child).map_err(|_| Problem::Io)?.uid();
+        if writable_by_others && !(sticky && (child_owner == owner || child_owner == 0)) {
+            return Err(Problem::UnsafePath);
+        }
+        child = ancestor.to_path_buf();
+    }
+    Ok(())
+}
+
 /// Process every request currently in the inbox once, in name order.
-pub fn run_once(dir: &Path, collector: &Writer) -> Result<Vec<Handled>, Problem> {
-    let (_, state) = session::load(dir)?;
+pub fn run_once(
+    dir: &Path,
+    collector: &Writer,
+    guard: &mut Guard,
+) -> Result<Vec<Handled>, Problem> {
+    let (log, state) = session::load(dir)?;
+    guard.check(dir, &log)?;
     if state.closed {
         return Err(Problem::Closed);
     }
@@ -361,9 +449,10 @@ pub fn run_once(dir: &Path, collector: &Writer) -> Result<Vec<Handled>, Problem>
         }
     }
     names.sort();
+    let guard = std::cell::RefCell::new(guard);
     let mut handled = Vec::new();
     for name in names {
-        handled.push(handle(dir, collector, &state, &name)?);
+        handled.push(handle(dir, collector, &state, &name, &guard)?);
     }
     Ok(handled)
 }
@@ -383,7 +472,14 @@ fn purge(path: &Path) {
     }
 }
 
-fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<Handled, Problem> {
+fn handle(
+    dir: &Path,
+    collector: &Writer,
+    start: &State,
+    name: &str,
+    guard: &std::cell::RefCell<&mut Guard>,
+) -> Result<Handled, Problem> {
+    let checked = |log: &session::Log| guard.borrow_mut().check(dir, log);
     let path = inbox(dir).join(name);
     let request_id = name.trim_end_matches(".request").to_owned();
     let remove = || purge(&path);
@@ -398,7 +494,7 @@ fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<H
         return Ok(Handled::Discarded(Discard::Unchargeable));
     }
     let refuse = |reason: Refusal| -> Result<Handled, Problem> {
-        let appended = session::append(dir, collector, |state| {
+        let appended = session::append_checked(dir, collector, &mut |log| checked(log), |state| {
             if !session::chargeable(state, state.entries) {
                 return Err(Problem::Unchargeable);
             }
@@ -476,7 +572,7 @@ fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<H
     }
     // Decide against the state current at append time, so a directive that
     // lands meanwhile takes precedence.
-    let appended = session::append(dir, collector, |state| {
+    let appended = session::append_checked(dir, collector, &mut |log| checked(log), |state| {
         // Recorded meanwhile by another broker pass: never record it twice.
         if state.requests.contains(&request_id) {
             return Err(Problem::Replayed);
@@ -523,7 +619,14 @@ fn handle(dir: &Path, collector: &Writer, start: &State, name: &str) -> Result<H
             arguments,
             ..
         } => {
-            record_result(dir, collector, entry.seq, capability, arguments)?;
+            record_result(
+                dir,
+                collector,
+                entry.seq,
+                capability,
+                arguments,
+                &mut |log| checked(log),
+            )?;
             Ok(Handled::Admitted(entry))
         }
         _ => Ok(Handled::Admitted(entry)),
@@ -536,10 +639,11 @@ fn record_result(
     action_seq: u64,
     capability: &str,
     arguments: &str,
+    check: &mut dyn FnMut(&session::Log) -> Result<(), Problem>,
 ) -> Result<Option<Entry>, Problem> {
     let (exit_status, outcome, document_signature) =
         execute(dir, collector.key, action_seq, capability, arguments)?;
-    let appended = session::append(dir, collector, |state| {
+    let appended = session::append_checked(dir, collector, check, |state| {
         // Abandoned by the operator while it ran: there is nothing to record.
         if !state.pending.contains_key(&action_seq) {
             return Err(Problem::Abandoned);
@@ -587,7 +691,14 @@ pub fn act(
             note.clone(),
         ))
     })?;
-    let result = record_result(dir, collector, action.seq, capability, arguments)?;
+    let result = record_result(
+        dir,
+        collector,
+        action.seq,
+        capability,
+        arguments,
+        &mut |_| Ok(()),
+    )?;
     Ok((action, result))
 }
 

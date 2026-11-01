@@ -589,6 +589,11 @@ pub enum Problem {
     /// No budget is left, or only the operator's reserve: nothing the agent
     /// asks for can be recorded.
     Unchargeable,
+    /// The session directory was replaced, or an entry the broker already
+    /// verified changed or disappeared.
+    Moved,
+    /// An ancestor of the session directory lets another user replace it.
+    UnsafePath,
     /// The session directory or a file in it could not be read or written.
     Io,
     /// `ssh-keygen` is missing or failed to run.
@@ -633,6 +638,13 @@ impl Problem {
             Self::Replayed => "request already recorded".to_owned(),
             Self::Abandoned => "action abandoned before its result".to_owned(),
             Self::Unchargeable => "no budget left, or only the operator's reserve".to_owned(),
+            Self::Moved => {
+                "session directory or a verified entry changed underneath the broker".to_owned()
+            }
+            Self::UnsafePath => {
+                "another user could replace the session directory through a writable parent"
+                    .to_owned()
+            }
             Self::Pending => {
                 "actions are still pending; wait for their results or close with --abandon-pending"
                     .to_owned()
@@ -957,8 +969,21 @@ pub fn append(
     writer: &Writer,
     build: impl Fn(&State) -> Result<(Body, Option<u64>, String), Problem>,
 ) -> Result<Entry, Problem> {
+    append_checked(dir, writer, &mut |_| Ok(()), build)
+}
+
+/// As [`append`], with `check` run on exactly the log each attempt decides
+/// on, before `build` sees its state: a caller that trusts only entries it
+/// has verified can refuse anything else without a gap between check and use.
+pub fn append_checked(
+    dir: &Path,
+    writer: &Writer,
+    check: &mut dyn FnMut(&Log) -> Result<(), Problem>,
+    build: impl Fn(&State) -> Result<(Body, Option<u64>, String), Problem>,
+) -> Result<Entry, Problem> {
     for _ in 0..APPEND_ATTEMPTS {
-        let (_, state) = load(dir)?;
+        let (log, state) = load(dir)?;
+        check(&log)?;
         if state.closed {
             return Err(Problem::Closed);
         }

@@ -425,8 +425,10 @@ fn run_broker(dir: &Path, rest: &[String]) {
     if let Err(problem) = session_broker::check_key(dir, &writer) {
         write_failure(problem);
     }
+    let mut guard = session_broker::Guard::new(dir, writer.allowed_signers)
+        .unwrap_or_else(|problem| write_failure(problem));
     loop {
-        match session_broker::run_once(dir, &writer) {
+        match session_broker::run_once(dir, &writer, &mut guard) {
             Ok(handled) => {
                 for item in handled {
                     match item {

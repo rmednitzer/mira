@@ -1152,3 +1152,81 @@ fn close_receipts_are_owner_only_whatever_the_umask() {
         assert_eq!(mode, 0o600, "umask {umask}");
     }
 }
+
+#[test]
+fn the_broker_acts_only_on_its_own_directory_and_verified_entries() {
+    use mira::session::Problem;
+    use mira::session_broker::Guard;
+    let dir = Dir::new();
+    assert!(dir.start(&[]).status.success());
+    assert!(
+        dir.command("ask", "operator", &["--text", "q"])
+            .status
+            .success()
+    );
+    let session = dir.session();
+    let signers = dir.path("signers");
+    let load = || mira::session::load(&session).unwrap().0;
+    // A replacement at the same path: an exact copy, but another directory.
+    let mut guard = Guard::new(&session, &signers).unwrap();
+    assert!(guard.check(&session, &load()).is_ok());
+    fs::rename(&session, dir.path("real")).unwrap();
+    assert!(
+        Command::new("cp")
+            .args(["-a"])
+            .arg(dir.path("real"))
+            .arg(&session)
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert_eq!(guard.check(&session, &load()), Err(Problem::Moved));
+    fs::remove_dir_all(&session).unwrap();
+    fs::rename(dir.path("real"), &session).unwrap();
+    // A rolled-back prefix (the last verified entry removed).
+    let mut guard = Guard::new(&session, &signers).unwrap();
+    let last = session.join("entries/000001.entry");
+    let saved = fs::read(&last).unwrap();
+    fs::remove_file(&last).unwrap();
+    assert_eq!(guard.check(&session, &load()), Err(Problem::Moved));
+    fs::write(&last, &saved).unwrap();
+    // A new entry that is not validly signed is never trusted.
+    let mut guard = Guard::new(&session, &signers).unwrap();
+    let forged = format!(
+        "{{\"session_version\":1,\"session_id\":\"{}\",\"seq\":2,\"kind\":\"directive\",\"principal\":\"operator\",\"based_on\":1,\"directive\":\"set_budget\",\"level\":null,\"budget\":999,\"until_seq\":null,\"note\":\"\"}}\n",
+        dir.session_id()
+    );
+    let mut record = forged.as_bytes().to_vec();
+    record.extend(dir.sign(forged.as_bytes(), "stranger", SESSION));
+    fs::write(session.join("entries/000002.entry"), record).unwrap();
+    assert_eq!(guard.check(&session, &load()), Err(Problem::Signature(2)));
+}
+
+#[test]
+fn a_separate_user_session_under_a_replaceable_parent_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = Dir::new();
+    let group = String::from_utf8(Command::new("id").arg("-gn").output().unwrap().stdout).unwrap();
+    assert!(
+        dir.start(&[
+            "--separation",
+            "separate_user",
+            "--agent-group",
+            group.trim()
+        ])
+        .status
+        .success()
+    );
+    // The parent becomes writable by others without the sticky bit.
+    fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o777)).unwrap();
+    let refused = dir.broker();
+    assert_eq!(refused.status.code(), Some(1), "{refused:?}");
+    assert_eq!(
+        stdout(&refused),
+        "MIRA session: refused (session invalid: another user could replace the session directory through a writable parent)\n"
+    );
+    // Sticky, with the session owned by the operator: renames by others are blocked.
+    fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o1777)).unwrap();
+    assert!(dir.broker().status.success());
+    fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o755)).unwrap();
+}
