@@ -1861,6 +1861,19 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
             _ => None,
         })
         .collect();
+    // Under the forcing flag, while any agent finding is unassessed, every
+    // agent note is withheld too: a question or proposal could otherwise
+    // carry the conclusion the hidden finding states.
+    let withhold_notes = state.header.require_own_assessment
+        && log.iter().any(|stored| {
+            matches!(
+                stored.entry.body,
+                Body::Finding {
+                    request_id: Some(_),
+                    ..
+                }
+            ) && !assessments.contains_key(&stored.entry.seq)
+        });
     for Stored { entry, .. } in log {
         // Under the forcing flag an agent finding is withheld, note and all,
         // until the operator has assessed it. This is a display rule: the log
@@ -2007,6 +2020,11 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
         // here. The agent's notes are never checked against anything.
         let note = if validate_text(&entry.note).is_err() {
             "(unprintable note)".to_owned()
+        } else if entry.principal == state.header.collector
+            && withhold_notes
+            && !entry.note.is_empty()
+        {
+            "(agent note withheld until your own assessment of every agent finding)".to_owned()
         } else if entry.principal == state.header.collector && !entry.note.is_empty() {
             format!("[unchecked agent note] {}", entry.note)
         } else {

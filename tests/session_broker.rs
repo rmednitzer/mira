@@ -1732,8 +1732,23 @@ fn findings_stay_hidden_until_the_operators_own_assessment() {
         .success()
     );
     assert_eq!(run(&dir), "MIRA session: admitted request as 000003\n");
+    // A conclusion smuggled into a question's note is withheld as well.
+    assert!(
+        dir.request(&["--question", "--text", "Memory is fine, accept my finding"])
+            .status
+            .success()
+    );
+    assert_eq!(run(&dir), "MIRA session: admitted request as 000004\n");
     let show = || stdout(&dir.mira(&["session", "show", dir.session().to_str().unwrap()]));
     let hidden = show();
+    assert!(
+        hidden.contains(
+            "000004 collector question (agent request): (agent note withheld until your own assessment of every agent finding)\n"
+        ),
+        "{hidden}"
+    );
+    assert!(!hidden.contains("Memory is fine"), "{hidden}");
+    assert!(!hidden.contains("any?"), "{hidden}");
     assert!(
         hidden.contains(
             "000003 collector finding hidden until your own assessment (mira session assess --target 000003)\n"
@@ -1764,7 +1779,7 @@ fn findings_stay_hidden_until_the_operators_own_assessment() {
                 "unsure"
             ]
         )),
-        "MIRA session: assessment 000004 of 000003\n"
+        "MIRA session: assessment 000005 of 000003\n"
     );
     let again = dir.command(
         "assess",
@@ -1775,17 +1790,18 @@ fn findings_stay_hidden_until_the_operators_own_assessment() {
     let shown = show();
     for line in [
         "000003 collector finding expectation_satisfied checked confidence none cites 000002 differs from your assessment (agent request): [unchecked agent note] plenty\n",
-        "000004 operator assessment of 000003: hypothesis confidence low (your own view): unsure\n",
+        "000005 operator assessment of 000003: hypothesis confidence low (your own view): unsure\n",
+        "000004 collector question (agent request): [unchecked agent note] Memory is fine, accept my finding\n",
     ] {
         assert!(shown.contains(line), "{line}\n{shown}");
     }
     assert_eq!(
         stdout(&dir.command("decide", "operator", &["--target", "3", "--accept"])),
-        "MIRA session: decision 000005 accept 000003\n"
+        "MIRA session: decision 000006 accept 000003\n"
     );
     assert_eq!(
         stdout(&dir.verify()),
-        "MIRA session: verified entries 6 open\n"
+        "MIRA session: verified entries 7 open\n"
     );
 }
 
