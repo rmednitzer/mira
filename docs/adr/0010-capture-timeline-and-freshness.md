@@ -1,6 +1,6 @@
 # ADR 0010: capture timeline, boot binding and freshness vocabulary
 
-Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day). **Implemented in three reviewed stages:** stage 1 timeline (capture-v2), stage 2 opt-in boot binding, stage 3 comparison-v3. The boot samples are taken inside the monotonic window, at its edges, and are not timeline entries. Windows that touch or overlap at centisecond resolution are reported as `overlapping`, never ordered. `--max-window-ms` requires two capture-v2 inputs.
+Status: **Accepted**, 2026-10-31 (proposed and reviewed the same day). **Implemented in three reviewed stages:** stage 1 timeline (capture-v2), stage 2 opt-in boot binding, stage 3 comparison-v3. The boot samples are taken inside the monotonic window, at its edges, and are not timeline entries. Windows that touch or overlap at centisecond resolution are reported as `overlapping`, never ordered. `--max-window-ms` requires two timeline inputs (capture-v2, or capture-v3 since [ADR 0014](0014-consumer-challenge-freshness.md)). Q3, age at consumption, is answered by ADR 0014's consumer challenge rather than by trusted host time.
 
 ## Context
 

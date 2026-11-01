@@ -4,7 +4,7 @@
 
 The Rust CLI has no external Rust crate dependencies. Normal builds and the CLI-only Debian package require no Python. The non-default `test-support` Cargo feature admits only a native subprocess fixture binary; it adds no runtime capability to MIRA. The package installs only `mira`, never the fixture.
 
-Python and `jsonschema` are separate developer tooling for independent JSON Schema validation and the optional offline history-comparison script. They are not CLI runtime dependencies. The complete dependency closure is pinned by version and wheel SHA-256 in `requirements-schema.txt`. Installations require hashes and binary wheels; source builds are refused. Capture and investigation validation reuse its existing referencing dependency to register the local evidence schema without network retrieval.
+Python and `jsonschema` are separate developer tooling for independent JSON Schema validation, the optional offline comparison script and the host qualification runner. They are not CLI runtime dependencies. The complete dependency closure is pinned by version and wheel SHA-256 in `requirements-schema.txt`. Installations require hashes and binary wheels; source builds are refused. Capture and investigation validation reuse its existing referencing dependency to register the local evidence schema without network retrieval.
 
 ## Rust checks
 
@@ -45,6 +45,9 @@ cargo build --locked
 .schema-venv/bin/python scripts/validate_pressure_investigation.py
 .schema-venv/bin/python scripts/validate_package_investigation.py
 .schema-venv/bin/python scripts/validate_host_investigations.py
+.schema-venv/bin/python scripts/validate_journal_investigation.py
+.schema-venv/bin/python scripts/test_validation_contract.py
+.schema-venv/bin/python scripts/test_qualify_host.py
 ```
 
 On an unprivileged Ubuntu 26.04 host with a system bus and `systemd-journald.service`, add `--live-systemd` to both evidence and investigation validators. CI requires this live comparison on both native architectures; local synthetic checks do not require systemd. Direct state is sampled before and after MIRA; changing fixture state makes the comparison inconclusive and fails the check. This validates one host service, not application health or fleet-wide compatibility.
@@ -55,11 +58,11 @@ The direct uptime parser uses integer whole seconds, including values above 2^53
 
 ## Packaging checks
 
-Native Ubuntu 26.04 amd64/arm64 CI builds and inspects the package, checks checksums, executes the extracted CLI, exercises isolated dpkg install/reinstall/remove/purge, and runs lintian. It checks evidence-v1/v2, investigation-v1/v2, memory-headroom-v1, pressure-ceiling-v1, package-installed-v1, uptime-minimum-v1, kernel-release-v1 and capture-v1 schemas and their packaged guides, rejects systemd units, maintainer scripts and the native test helper in the package, and asserts package-root/document permissions. Archive metadata must advertise exactly `Suggests: systemd, default-dbus-system-bus | dbus-system-bus, openssh-client` and no `Recommends`; native ELF requirements remain generated in `Depends`. See the [runtime relationship rationale](debian-packaging.md#runtime-package-relationships).
+Native Ubuntu 26.04 amd64/arm64 CI builds and inspects the package, checks checksums, executes the extracted CLI, exercises isolated dpkg install/reinstall/remove/purge, and runs lintian. It checks evidence-v1/v2, investigation-v1/v2, memory-headroom-v1, pressure-ceiling-v1, package-installed-v1, uptime-minimum-v1, kernel-release-v1, journal-events-v1, capture-v1/v2/v3 and challenge-v1 schemas and their packaged guides, rejects systemd units, maintainer scripts and the native test helper in the package, and asserts package-root/document permissions. Archive metadata must advertise exactly `Suggests: systemd, default-dbus-system-bus | dbus-system-bus, openssh-client` and no `Recommends`; native ELF requirements remain generated in `Depends`. See the [runtime relationship rationale](debian-packaging.md#runtime-package-relationships).
 
 Repeated assembly compares the same binary under ordinary and restrictive (`077`) invoking umasks. The builder normalizes its own umask to `022`; source timestamps use exported `SOURCE_DATE_EPOCH`. This verifies archive assembly under those conditions. A separate fresh-build test compiles twice from independent git archives and target directories, varies source/target paths, timezone and umask, and compares raw binaries and full packages against the selected artifacts. Its scope is one native runner/compiler/system dependency environment, not independent-host or hermetic compilation. The isolated dpkg root bypasses dependency enforcement. A separate native disposable Ubuntu 26.04 container installs the exact package through apt without bypassing dependencies, checks installed binary bytes and runs the installed demo/capture contract. Its receipt binds source commit/tree, package/binary digests and container image identity. This is container loader/dependency evidence; clean physical-host behavior, genuine upgrades/downgrades and signed release provenance remain release gates.
 
-The release binary must not contain the test-only `MIRA_TEST_SSH_KEYGEN` override string, which shows the override is compiled out without `test-support`.
+The release binary must not contain any test-only override string (`MIRA_TEST_SSH_KEYGEN`, `MIRA_TEST_JOURNALCTL`, `MIRA_TEST_JOURNAL_DIRS`, `MIRA_TEST_PROC_ROOT`, `MIRA_TEST_RANDOM_SOURCE`), which shows the overrides are compiled out without `test-support`.
 
 Generated /target, /.schema-venv, /dist and /package-extract trees and Python bytecode are ignored by Git. These rules do not protect arbitrary captures or secret-bearing files; keep evidence custody in an operator-controlled private directory.
 
@@ -179,9 +182,9 @@ Without `--only` each validator runs as before.
 - a container without a boot ID, where `live-boot` is not applicable and `signed-compare` reports the boot-ID gap, qualifies without findings
 - refusal as root, of an existing receipt, of a non-executable binary, of an untracked or modified file, and of a binary replaced during the run
 - the denial path: with `journalctl` present and no visible sentinel, `live-visibility` runs and `live-counts` alone is `no_journal_access`; a `restricted-user` receipt without the confirmed `journal/system` gap is a finding
-- a missing `ssh-keygen` gating only `signed-compare`
+- a missing `ssh-keygen` gating only the signing groups, `signed-compare` and `challenge`
 - a real pressure validator run against a wrapper binary with one unreadable PSI file, which passes and reports the gap; the runner flags it as unexpected for `physical-amd64`
 - the receipt schema, thirteen refused mutations, every committed receipt, and a run on the real host scanned for the host name, machine ID, boot ID, user name and full kernel release
 - every validator's `--list-groups` equal to the runner's table, and `--only` running exactly the selected groups
 
-CI runs the runner as `ci-runner` against the checkout build and against the extracted package binary, and keeps both receipts. These runner receipts are not representative-host qualification. The Phase 1 exit needs reviewed receipts from the required classes in the guide; none is committed yet.
+CI runs the runner as `ci-runner` against the checkout build and against the extracted package binary, and keeps both receipts. These runner receipts are not representative-host qualification. The Phase 1 exit needs reviewed receipts from the required classes in the guide; only an optional `wsl` receipt is committed so far.

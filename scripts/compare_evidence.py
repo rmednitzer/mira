@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline, bounded comparison of two MIRA evidence JSONL captures."""
+"""Offline, bounded comparison of two MIRA evidence JSONL files or complete captures."""
 import argparse
 import json
 import re

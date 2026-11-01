@@ -50,7 +50,7 @@ cat <<'EOF'
 .SH NAME
 mira \- read-only Linux evidence CLI
 .SH SYNOPSIS
-.B mira capture LABEL [--pressure] [--timeline] [--bind-boot]
+.B mira capture LABEL [--pressure] [--timeline] [--bind-boot] [--challenge HEX] [--signature PATH --sign-with KEY]
 .br
 .B mira inspect [--json]
 .br
@@ -70,21 +70,28 @@ mira \- read-only Linux evidence CLI
 .br
 .B mira investigate journal-events --absent CLASS[,CLASS...] [--boot current|previous-retained] [--json]
 .br
-.B mira verify FILE --signature SIG --allowed-signers SIGNERS --principal NAME [--revocations KRL]
+.B mira verify FILE --signature SIG --allowed-signers SIGNERS --principal NAME [--revocations KRL] [--challenge-file FILE --max-age-ms N]
+.br
+.B mira challenge
 .br
 .B mira demo
 .SH DESCRIPTION
-Experimental read-only host evidence inspection and explicit activation expectations.
-No remediation or background service.
+Experimental read-only host evidence inspection, complete captures and explicit
+expectation investigations, with optional signatures. No remediation or
+background service.
 .SH EXIT STATUS
 Inspect/service: 0 for available evidence, 1 for unavailable evidence, 2 for usage.
 Capture: 0 all sources available, 1 complete with unavailable sources, 2 usage.
 --timeline emits capture-v2 with a monotonic collection window and per-source offsets.
 --bind-boot (implies --timeline) also records the boot ID and boot-relative
 window; the boot ID links captures from one boot and is never read otherwise.
+--challenge HEX (64 lowercase hex, requires signing) emits capture-v3 answering
+a consumer challenge.
 Investigations (service-active, memory-headroom, pressure-ceiling, package-installed, uptime-minimum, kernel-release and journal-events): 0 satisfied, 1 not satisfied, 3 indeterminate, 2 rejected invocation.
 Signing (--signature PATH --sign-with KEY, last, on capture or investigate --json): 4 when signing fails; nothing is printed and no signature remains.
-Verify: 0 verified, 1 not verified, 2 usage, 4 ssh-keygen unavailable.
+Verify: 0 verified, 1 not verified, 2 usage, 4 ssh-keygen or the challenge file
+unavailable.
+Challenge: 0 issued, 4 random source or clock unavailable.
 .PP
 service-active and service-active/v1 emit the unchanged v1 report.
 service-active/v2 additionally reports reason unit_not_found (exit 1) when systemd
@@ -105,6 +112,9 @@ exactly. Neither assesses reboot cause, build identity or patch compliance.
 Signatures are detached OpenSSH SSHSIG files made by /usr/bin/ssh-keygen
 (openssh-client). A verified signature shows that a listed key signed the
 exact bytes; it does not show the evidence is true or fresh.
+mira challenge prints a random challenge with the issuing machine's time.
+verify --challenge-file then bounds a challenged capture's age on the
+verifier's own clock; the host clock is never trusted.
 .PP
 journal-events reports whether catalog OOM-kill, unit-failure or core-dump
 events were recorded in the running or previous retained boot, via

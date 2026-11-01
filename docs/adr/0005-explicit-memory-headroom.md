@@ -1,6 +1,6 @@
 # ADR 0005: explicit memory-headroom expectation
 
-Status: accepted for implementation, 2026-10-30. Native integration qualification remains required.
+Status: accepted, 2026-10-30. **Implemented**; guide: [memory-headroom](../memory-investigation.md). Representative host qualification follows [ADR 0013](0013-host-qualification-protocol.md).
 
 ## Context and criteria
 

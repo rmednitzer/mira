@@ -1,6 +1,6 @@
 # ADR 0009: explicit uptime-minimum and kernel-release expectations
 
-Status: accepted for implementation, 2026-10-31. Native integration qualification remains required.
+Status: accepted, 2026-10-31. **Implemented**; guide: [uptime-minimum and kernel-release](../host-investigations.md). Representative host qualification follows [ADR 0013](0013-host-qualification-protocol.md).
 
 ## Context and criteria
 

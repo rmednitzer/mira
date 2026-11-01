@@ -1,6 +1,6 @@
 # ADR 0002: Complete captures and strict admission
 
-Status: Accepted, 2026-10-30. Required validation is specified below; observed run/review evidence belongs to the implementing PR.
+Status: Accepted, 2026-10-30. **Implemented**; guide: [captures](../captures.md). Required validation is specified below; observed run/review evidence belongs to the implementing PR. Capture-v2 ([ADR 0010](0010-capture-timeline-and-freshness.md)) and capture-v3 ([ADR 0014](0014-consumer-challenge-freshness.md)) extend this contract without changing capture-v1.
 
 ## Context and criteria
 
