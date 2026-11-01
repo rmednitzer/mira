@@ -8,4 +8,4 @@ Current implementation and validation boundaries are summarized in the [requirem
 
 Complete scoped collection and strict admission are specified in [captures](captures.md) and [ADR 0002](adr/0002-complete-captures-and-admission.md).
 
-The first closed investigation template is specified in [investigations](investigations.md) and its [decision record](adr/0001-read-only-service-investigation.md).
+The closed investigation templates are specified in [investigations](investigations.md) and the per-template guides linked from it. Every material decision has a record in the [decision index](adr/README.md).

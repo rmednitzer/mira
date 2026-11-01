@@ -1,6 +1,6 @@
 # ADR 0001: Evidence-bound read-only service investigation
 
-Status: accepted for implementation; runtime and release qualification remain bounded by the checks below. Date: 2026-10-30.
+Status: accepted, 2026-10-30. **Implemented**; guide: [investigations](../investigations.md). Runtime and release qualification remain bounded by the checks below. Representative host qualification follows [ADR 0013](0013-host-qualification-protocol.md).
 
 ## Context and acceptance criteria
 

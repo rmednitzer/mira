@@ -47,4 +47,4 @@ The opt-in [capture command](captures.md) retains monotonic per-source elapsed t
 
 ## Next criteria
 
-Versioned JSON Lines, a formal JSON Schema and independent contract checks are implemented. Trusted source timestamps/freshness, authenticated host identity, cross-source consistency and authenticated stored-trace integrity remain separate design and validation work. See [development and validation](testing.md).
+Versioned JSON Lines, a formal JSON Schema and independent contract checks are implemented. Signed captures ([ADR 0011](adr/0011-host-identity-and-capture-integrity.md)) give stored-capture integrity and a signer identity, and consumer challenges ([ADR 0014](adr/0014-consumer-challenge-freshness.md)) bound capture age. Trusted source timestamps, hardware-bound host identity and cross-source consistency remain separate design and validation work. See [development and validation](testing.md).

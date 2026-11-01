@@ -1,8 +1,8 @@
 # Synthetic procfs fixture
 
-All values are invented. Files are safe for public CI. They cover exactly the four allowlisted procfs sources. Do not place operational host data in this directory.
+All values are invented. Files are safe for public CI. `proc/` covers exactly the four allowlisted `inspect` procfs sources and `dpkg/status` is a synthetic status database. Do not place operational host data in this directory.
 
-Native subprocess fixtures live in `tests/support/process_fixture.rs`, separate from captured evidence data. They are built only with the non-default `test-support` feature and exercised by `tests/systemd_process.rs`; they are not installed. See [validation](../../docs/testing.md).
+Native subprocess fixtures live in `tests/support/process_fixture.rs`, separate from captured evidence data. They are built only with the non-default `test-support` feature and exercised by `tests/systemd_process.rs`, `tests/journal_process.rs` and `tests/signature_process.rs`; they are not installed. See [validation](../../docs/testing.md).
 
 `investigation-v1.json` is authored report-contract evidence: positive state/alias/unavailable cases and negative shape, scope, assessment and unsupported-version cases. It does not establish actual service health, source authentication or vulnerability applicability.
 
@@ -10,7 +10,9 @@ Native subprocess fixtures live in `tests/support/process_fixture.rs`, separate 
 
 `evidence-v1.json` holds independent evidence-v1 records: valid kernel, uptime and systemd observations (including a `+` kernel suffix, an escaped unit instance and a literal escape sequence in a state), and invalid ones for version, freshness, value/status contradictions and the observed-string lexical contract.
 
-`capture-v2.json` freezes ten valid and thirty-one invalid timeline captures: both profiles, zero-width windows, missing wall-clock edges, steps forwards and backwards, the 1% tolerance boundary, and the future boot-binding shapes. Twelve invalid documents are schema-valid but contradict the timeline rules. They are synthetic contract cases, not timing measurements.
+`capture-v2.json` freezes ten valid and thirty-one invalid timeline captures: both profiles, zero-width windows, missing wall-clock edges, steps forwards and backwards, the 1% tolerance boundary, and the boot-binding shapes. Twelve invalid documents are schema-valid but contradict the timeline rules. They are synthetic contract cases, not timing measurements.
+
+Capture-v3 cases are derived from every `capture-v2.json` case by `scripts/validate_capture_schema.py` rather than stored separately.
 
 `capture-v1.json` freezes independent authored complete and deliberately invalid capture documents, including unavailable reasons and source-coverage contradictions. Native source/availability cases live in `tests/capture.rs`; optional memory/IO PSI files are generated in isolated temporary roots. No real host data or model judge supplies expected verdicts.
 

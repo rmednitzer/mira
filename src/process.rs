@@ -1,5 +1,5 @@
 //! One bounded, shell-free subprocess runner for the fixed-argv tools MIRA
-//! executes (systemctl, ssh-keygen). Callers own argv and interpret status.
+//! executes (systemctl, journalctl, ssh-keygen). Callers own argv and interpret status.
 use std::{
     io::{self, Read, Write},
     os::{fd::OwnedFd, unix::net::UnixStream},

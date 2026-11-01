@@ -1,6 +1,6 @@
 # ADR 0003: Hash-locked tooling and fresh build comparisons
 
-Status: Accepted, 2026-10-30. Observed verification belongs to the implementing PR.
+Status: Accepted, 2026-10-30. **Implemented**; see [testing](../testing.md#tooling-lock-and-fresh-compilation). Observed verification belongs to the implementing PR.
 
 ## Context and criteria
 

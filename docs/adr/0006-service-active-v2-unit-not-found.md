@@ -1,6 +1,6 @@
 # ADR 0006: service-active/v2 distinguishes a not-found unit
 
-Status: accepted for implementation, 2026-10-31. Resolves [issue #44](https://github.com/rmednitzer/mira/issues/44). Native integration qualification remains required.
+Status: accepted, 2026-10-31. Resolves [issue #44](https://github.com/rmednitzer/mira/issues/44). **Implemented**; guide: [service-active/v2](../investigations.md#service-activev2-unit-not-found). Representative host qualification follows [ADR 0013](0013-host-qualification-protocol.md).
 
 ## Context and criteria
 
