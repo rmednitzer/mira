@@ -10,12 +10,15 @@ ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = json.loads((ROOT / 'schemas/evidence-v2.schema.json').read_text())
 SCHEMA = json.loads((ROOT / 'schemas/capture-v1.schema.json').read_text())
 SCHEMA_V2 = json.loads((ROOT / 'schemas/capture-v2.schema.json').read_text())
+SCHEMA_V3 = json.loads((ROOT / 'schemas/capture-v3.schema.json').read_text())
 Draft202012Validator.check_schema(EVIDENCE)
 Draft202012Validator.check_schema(SCHEMA)
 Draft202012Validator.check_schema(SCHEMA_V2)
+Draft202012Validator.check_schema(SCHEMA_V3)
 REGISTRY = Registry().with_resource(EVIDENCE['$id'], Resource.from_contents(EVIDENCE))
 VALIDATOR = Draft202012Validator(SCHEMA, registry=REGISTRY)
 VALIDATOR_V2 = Draft202012Validator(SCHEMA_V2, registry=REGISTRY)
+VALIDATOR_V3 = Draft202012Validator(SCHEMA_V3, registry=REGISTRY)
 REASON_KINDS = {'timeout': {'TimedOut'}, 'limit_exceeded': {'InvalidData'},
                 'malformed_data': {'InvalidData', 'InvalidInput'},
                 'permission_denied': {'PermissionDenied'}, 'not_found': {'NotFound'},
@@ -79,9 +82,11 @@ def _check_timeline(capture):
 
 
 def check_capture(capture):
-    """Dispatch on capture_version; v2 adds timeline checks to the v1 rules."""
-    if isinstance(capture, dict) and capture.get('capture_version') == 2:
-        VALIDATOR_V2.validate(capture)
+    """Dispatch on capture_version; v2 adds timeline checks to the v1 rules, and
+    v3 is v2 plus the consumer's challenge (ADR 0014)."""
+    version = capture.get('capture_version') if isinstance(capture, dict) else None
+    if version in (2, 3):
+        (VALIDATOR_V2 if version == 2 else VALIDATOR_V3).validate(capture)
         _check_records(capture)
         _check_timeline(capture)
     else:

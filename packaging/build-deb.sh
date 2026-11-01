@@ -120,6 +120,8 @@ install -Dm644 docs/investigations.md "$stage/usr/share/doc/mira/investigations.
 install -Dm644 schemas/evidence-v2.schema.json "$stage/usr/share/mira/schemas/evidence-v2.schema.json"
 install -Dm644 schemas/capture-v1.schema.json "$stage/usr/share/mira/schemas/capture-v1.schema.json"
 install -Dm644 schemas/capture-v2.schema.json "$stage/usr/share/mira/schemas/capture-v2.schema.json"
+install -Dm644 schemas/capture-v3.schema.json "$stage/usr/share/mira/schemas/capture-v3.schema.json"
+install -Dm644 schemas/challenge-v1.schema.json "$stage/usr/share/mira/schemas/challenge-v1.schema.json"
 install -Dm644 docs/captures.md "$stage/usr/share/doc/mira/captures.md"
 install -Dm644 schemas/memory-headroom-v1.schema.json "$stage/usr/share/mira/schemas/memory-headroom-v1.schema.json"
 install -Dm644 docs/memory-investigation.md "$stage/usr/share/doc/mira/memory-investigation.md"

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import stat
 import os
+import time
 
 from capture_contract import check_capture
 from pathlib import Path
@@ -22,18 +23,31 @@ MAX_DEPTH = 32
 SSH_KEYGEN = "/usr/bin/ssh-keygen"
 CAPTURE_NAMESPACE = "mira-capture-v1@rmednitzer.github.io"
 PRINCIPAL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}")
+# ADR 0014: the exact challenge-v1 layout `mira challenge` prints, newline included.
+CHALLENGE_DOCUMENT = re.compile(
+    rb'\{"challenge_version":1,"challenge":"([0-9a-f]{64})","issued_unix_ms":(0|[1-9][0-9]{0,15})\}\n')
+MAX_CHALLENGE_BYTES = 4096
+MAX_AGE_MS = 9999999999999999
 
 
 class Capture(dict):
     """Legacy records have no completion or scope binding."""
     def __init__(self, records=(), *, scope=None, profile=None, version=None, collection=None,
-                 principal=None):
+                 principal=None, issued=None):
         super().__init__(records)
         self.scope = scope
         self.profile = profile
         self.version = version
         self.collection = collection
         self.principal = principal
+        self.issued = issued
+
+
+class Issued:
+    """A consumer's challenge-v1 document: the value and its issue time."""
+    def __init__(self, challenge, issued_unix_ms):
+        self.challenge = challenge
+        self.issued_unix_ms = issued_unix_ms
 
 
 class Trust:
@@ -120,42 +134,71 @@ def strict_json(data):
     return result
 
 
-def read_capture(path):
+def read_regular(path, limit):
     # Open nonblocking first: path metadata cannot authorize the opened object.
     # Symlinks retain legacy compatibility; directory custody is caller-trusted.
     descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            raise ValueError("capture must be a regular file")
+            raise ValueError("input must be a regular file")
         with os.fdopen(descriptor, "rb", closefd=False) as handle:
-            data = handle.read(MAX_BYTES + 1)
+            data = handle.read(limit + 1)
     finally:
         os.close(descriptor)
-    if len(data) > MAX_BYTES:
-        raise ValueError("evidence file exceeds 1 MiB")
+    if len(data) > limit:
+        raise ValueError("input exceeds its size limit")
+    return data
+
+
+def read_capture(path):
+    data = read_regular(path, MAX_BYTES)
     if not data.strip():
         raise ValueError("empty capture")
     return data
 
 
-def load(path, validator, trust=None):
+def read_challenge(path):
+    """Admit only the exact challenge-v1 bytes, then check its closed schema too."""
+    data = read_regular(path, MAX_CHALLENGE_BYTES)
+    match = CHALLENGE_DOCUMENT.fullmatch(data)
+    if match is None:
+        raise ValueError("not a challenge-v1 document")
+    root = Path(__file__).resolve().parents[1]
+    schema = json.loads((root / "schemas/challenge-v1.schema.json").read_text())
+    Draft202012Validator(schema).validate(strict_json(data))
+    return Issued(match[1].decode("ascii"), int(match[2]))
+
+
+def load(path, validator, trust=None, issued=None):
     data = read_capture(path)
+    if issued is not None and trust is None:
+        raise ValueError("a challenge counts only for a verified capture")
     if trust is not None:
         # Signed comparison admits only complete captures, verified as read.
         if not data.startswith(b'{"capture_version":'):
             raise ValueError("only captures can be verified for comparison")
         verify_signature(data, path, trust)
+    if issued is not None:
+        # ADR 0014: the answer sits at a fixed prefix of the verified bytes.
+        prefix = b'{"capture_version":3,"challenge":"' + issued.challenge.encode("ascii") + b'",'
+        if not data.startswith(prefix):
+            raise ValueError("capture does not answer the challenge")
     try:
         document = strict_json(data)
     except json.JSONDecodeError:
         document = None  # Multiple JSONL records are decoded separately below.
     if isinstance(document, dict) and "capture_version" in document:
         check_capture(document)
+        if issued is not None and document.get("challenge") != issued.challenge:
+            raise ValueError("capture does not answer the challenge")
         return Capture((((r["source"], r["scope"]), r) for r in document["records"]),
                        scope=document["capture_scope"], profile=document["profile"],
                        version=document["capture_version"],
                        collection=document.get("collection"),
-                       principal=None if trust is None else trust.principal)
+                       principal=None if trust is None else trust.principal,
+                       issued=issued)
+    if issued is not None:
+        raise ValueError("capture does not answer the challenge")
     result = Capture()
     for line in data.split(b"\n"):
         if not line.strip():
@@ -207,7 +250,26 @@ def timing(before, after, max_window_ms=None):
             "before": _window(before, max_window_ms), "after": _window(after, max_window_ms)}
 
 
-def compare(before, after, max_window_ms=None):
+def freshness(before, after, max_age_ms, now_ms=None):
+    """ADR 0014: bound each side's age on this machine's clock, read once."""
+    if before is None or after is None:
+        raise ValueError("freshness requires a challenge for both captures")
+    if before.challenge == after.challenge:
+        raise ValueError("one challenge cannot answer two captures")
+    now_ms = time.time_ns() // 1_000_000 if now_ms is None else now_ms
+    ages = []
+    for issued in (before, after):
+        age = now_ms - issued.issued_unix_ms
+        if age < 0:
+            raise ValueError("challenge issued in the future")
+        if age > max_age_ms:
+            raise ValueError("capture older than policy")
+        ages.append(age)
+    return {"status": "within_policy", "max_age_ms": max_age_ms,
+            "before_age_bound_ms": ages[0], "after_age_bound_ms": ages[1]}
+
+
+def compare(before, after, max_window_ms=None, max_age_ms=None, now_ms=None):
     before_scope = getattr(before, "scope", None)
     after_scope = getattr(after, "scope", None)
     if before_scope != after_scope or getattr(before, "profile", None) != getattr(after, "profile", None):
@@ -237,7 +299,9 @@ def compare(before, after, max_window_ms=None):
     if before_scope is not None:
         result.update(comparison_version=2, capture_scope=before_scope,
                       scope_trust="operator_asserted", collection_complete=True)
-    timelines = (getattr(before, "version", None) == 2 and getattr(after, "version", None) == 2)
+    # capture-v3 is capture-v2 plus a challenge, so it has the same timing.
+    timelines = (getattr(before, "version", None) in (2, 3)
+                 and getattr(after, "version", None) in (2, 3))
     if timelines:
         # Value outcomes and per-row labels are unchanged; ordering is capture-level.
         result.update(comparison_version=3,
@@ -250,6 +314,11 @@ def compare(before, after, max_window_ms=None):
             raise ValueError("captures not verified under one principal")
         result["integrity"] = {"status": "verified", "principal": principals[0],
                                "namespace": CAPTURE_NAMESPACE}
+    if max_age_ms is not None:
+        if "integrity" not in result:
+            raise ValueError("freshness requires verified captures")
+        result["freshness"] = freshness(getattr(before, "issued", None),
+                                        getattr(after, "issued", None), max_age_ms, now_ms)
     return result
 
 
@@ -263,7 +332,20 @@ def main(argv=None):
                         help="verify both captures against INPUT.sig before comparing")
     parser.add_argument("--principal", default=None)
     parser.add_argument("--revocations", type=Path, default=None)
+    parser.add_argument("--before-challenge", type=Path, default=None,
+                        help="challenge-v1 file the before capture must answer")
+    parser.add_argument("--after-challenge", type=Path, default=None)
+    parser.add_argument("--max-age-ms", type=int, default=None,
+                        help="require both challenges to be at most N ms old on this clock")
     args = parser.parse_args(argv)
+    freshness_options = (args.before_challenge, args.after_challenge, args.max_age_ms)
+    if any(option is not None for option in freshness_options):
+        if any(option is None for option in freshness_options):
+            raise ValueError("--before-challenge, --after-challenge and --max-age-ms go together")
+        if args.allowed_signers is None:
+            raise ValueError("challenges require --allowed-signers and --principal")
+        if not 0 <= args.max_age_ms <= MAX_AGE_MS:
+            raise ValueError("age policy must be 0 to 16 digits")
     if args.max_window_ms is not None and args.max_window_ms < 0:
         raise ValueError("window policy must be nonnegative")
     if (args.allowed_signers is None) != (args.principal is None):
@@ -276,8 +358,12 @@ def main(argv=None):
     schema = json.loads((root / "schemas/evidence-v1.schema.json").read_text())
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema)
-    print(json.dumps(compare(load(args.before, validator, trust),
-                             load(args.after, validator, trust), args.max_window_ms),
+    issued = [None, None]
+    if args.max_age_ms is not None:
+        issued = [read_challenge(args.before_challenge), read_challenge(args.after_challenge)]
+    print(json.dumps(compare(load(args.before, validator, trust, issued[0]),
+                             load(args.after, validator, trust, issued[1]), args.max_window_ms,
+                             args.max_age_ms),
                      sort_keys=True, separators=(",", ":")))
 
 

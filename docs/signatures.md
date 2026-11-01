@@ -77,6 +77,16 @@ mira verify incident-a.json --signature incident-a.json.sig --allowed-signers al
 - Exit **0** prints the usual line plus `age_bound_ms=N`. Exit **1** prints `not verified (REASON)` with one reason: `signature` for any signature-stage refusal, `challenge_mismatch`, `not_challenged` (capture-v1 or v2), `issued_in_future` (the verifier clock is earlier than the issue time) or `older_than_policy`. A malformed, oversized or non-regular challenge file, or a bad `--max-age-ms`, exits 2; an unreadable challenge file exits 4.
 - Without these options capture-v3 verifies like any other capture.
 
+The comparator checks both sides of a comparison the same way, on the bytes it compares:
+
+```sh
+.schema-venv/bin/python scripts/compare_evidence.py before.json after.json \
+  --allowed-signers allowed_signers --principal host-a \
+  --before-challenge before.challenge --after-challenge after.challenge --max-age-ms 600000
+```
+
+The three freshness options go together and require the trust options. Each challenge file must have the exact challenge-v1 layout and pass its [closed schema](../schemas/challenge-v1.schema.json), each capture must answer its own challenge at the fixed prefix, and the parsed `challenge` member must agree. The two challenges must differ, so one answer cannot stand in for two captures. The comparator reads its clock once and requires `0 ≤ now − issued ≤ N` for both sides. Output gains `freshness: {"status": "within_policy", "max_age_ms": N, "before_age_bound_ms": ..., "after_age_bound_ms": ...}`; any failure exits 2 with no output.
+
 A pass means a key listed for the principal signed a capture answering your challenge, at most `age_bound_ms` after you issued it. It assumes the key holder ran an unmodified `mira`, and it does not make the measurements true. Use one machine to issue and verify: across two machines, their clock offset enters the bound.
 
 ## Verify while comparing

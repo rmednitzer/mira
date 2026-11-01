@@ -44,7 +44,7 @@ VALIDATORS = (
      {'fixtures': (), 'cli': (), 'live-systemd': ('systemd',)}),
     ('capture', 'validate_capture_schema.py',
      {'schema': (), 'cli': (), 'compare': (), 'live-boot': ('boot_id',),
-      'signed-compare': ('ssh_keygen',)}),
+      'signed-compare': ('ssh_keygen',), 'challenge': ('ssh_keygen',)}),
     ('memory', 'validate_memory_investigation.py', {'fixtures': (), 'cli': ()}),
     ('pressure', 'validate_pressure_investigation.py', {'fixtures': (), 'cli': ()}),
     ('package', 'validate_package_investigation.py',

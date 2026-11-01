@@ -278,13 +278,14 @@ class RunnerTests(unittest.TestCase):
             'unexpected gap: evidence live-visibility journal/system journal_not_visible',
             'unexpected not_applicable: evidence live-counts no_journal_access'])
 
-    def test_missing_ssh_keygen_gates_only_signed_compare(self):
+    def test_missing_ssh_keygen_gates_only_the_signing_groups(self):
         capture = next(groups for name, _, groups in VALIDATORS if name == 'capture')
         receipt = self.run_plan({group: {'codes': [0]} for group in capture}, groups=capture,
                                 capabilities={**ALL, 'ssh_keygen': False})
         results = {check['group']: check['result'] for check in receipt['checks']}
         self.assertEqual(results, {'schema': 'passed', 'cli': 'passed', 'compare': 'passed',
-                                   'live-boot': 'passed', 'signed-compare': 'not_applicable'})
+                                   'live-boot': 'passed', 'signed-compare': 'not_applicable',
+                                   'challenge': 'not_applicable'})
 
     def test_forbidden_host_data_never_enters_the_receipt(self):
         plan = {'one': {'codes': [0], 'gaps': [{'source': '/proc/pressure/io',

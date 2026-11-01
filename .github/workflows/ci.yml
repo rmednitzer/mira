@@ -86,6 +86,8 @@ jobs:
           test -f package-extract/usr/share/mira/schemas/evidence-v2.schema.json
           test -f package-extract/usr/share/mira/schemas/capture-v1.schema.json
           test -f package-extract/usr/share/mira/schemas/capture-v2.schema.json
+          test -f package-extract/usr/share/mira/schemas/capture-v3.schema.json
+          test -f package-extract/usr/share/mira/schemas/challenge-v1.schema.json
           test -f package-extract/usr/share/mira/schemas/memory-headroom-v1.schema.json
           test -f package-extract/usr/share/doc/mira/memory-investigation.md
           test -f package-extract/usr/share/mira/schemas/pressure-ceiling-v1.schema.json
