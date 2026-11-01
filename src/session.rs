@@ -107,6 +107,9 @@ pub struct Header {
     /// The SHA-256 (lowercase hex) of the agent adapter's tool definitions,
     /// when the operator pins them; absent in sessions started without it.
     pub agent_tools: Option<String>,
+    /// Agent findings stay hidden in `show` until the operator has recorded
+    /// an own assessment of each, and cannot be decided before it.
+    pub require_own_assessment: bool,
 }
 
 /// A SHA-256 digest as 64 lowercase hex digits.
@@ -122,6 +125,12 @@ pub enum Directive {
     SetBudget(u64),
     /// `delegated` until (and including) this sequence number, then `assisted`.
     DelegateUntil(u64),
+    /// As `DelegateUntil`, and also ending at this time on the operator's
+    /// clock. Only the broker can apply the clock; the log cannot prove it did.
+    DelegateUntilTime {
+        until_seq: u64,
+        until_unix_ms: u64,
+    },
 }
 
 /// Why the broker refused an agent request. Each is a fixed reason.
@@ -361,6 +370,13 @@ pub enum Body {
         capability: String,
         arguments: String,
     },
+    /// The operator's own view of an open agent finding, recorded before
+    /// deciding on it; never checked, and shown as the operator's own.
+    Assessment {
+        target_seq: u64,
+        claim: Claim,
+        confidence: Option<Confidence>,
+    },
     /// The operator's decision on an open proposal or agent finding.
     Decision {
         target_seq: u64,
@@ -394,6 +410,7 @@ impl Body {
             Self::Finding { .. } => "finding",
             Self::Proposal { .. } => "proposal",
             Self::Decision { .. } => "decision",
+            Self::Assessment { .. } => "assessment",
             Self::Refusal { .. } => "refusal",
             Self::Close { .. } => "close",
         }
@@ -442,6 +459,11 @@ impl Entry {
                         "\"agent_tools\":{},",
                         quoted(hash)
                     ))
+                    + if header.require_own_assessment {
+                        "\"own_assessment\":\"required\","
+                    } else {
+                        ""
+                    }
             ),
             Body::Question { request_id } => {
                 format!("\"request_id\":{},", optional_quoted(request_id.as_deref()))
@@ -506,24 +528,44 @@ impl Entry {
                 "\"target_seq\":{target_seq},\"verdict\":{},",
                 quoted(verdict.as_str())
             ),
+            Body::Assessment {
+                target_seq,
+                claim,
+                confidence,
+            } => format!(
+                "\"target_seq\":{target_seq},\"claim\":{},\"confidence\":{},",
+                quoted(claim.as_str()),
+                optional_quoted(confidence.map(Confidence::as_str))
+            ),
             Body::Refusal { request_id, reason } => format!(
                 "\"request_id\":{},\"reason\":{},",
                 quoted(request_id),
                 quoted(reason.as_str())
             ),
             Body::Directive(directive) => {
-                let (name, level, budget, until) = match directive {
-                    Directive::Stop => ("stop", None, None, None),
-                    Directive::SetLevel(level) => ("set_level", Some(*level), None, None),
-                    Directive::SetBudget(budget) => ("set_budget", None, Some(*budget), None),
-                    Directive::DelegateUntil(until) => ("delegate", None, None, Some(*until)),
+                let (name, level, budget, until, deadline) = match directive {
+                    Directive::Stop => ("stop", None, None, None, None),
+                    Directive::SetLevel(level) => ("set_level", Some(*level), None, None, None),
+                    Directive::SetBudget(budget) => ("set_budget", None, Some(*budget), None, None),
+                    Directive::DelegateUntil(until) => ("delegate", None, None, Some(*until), None),
+                    Directive::DelegateUntilTime {
+                        until_seq,
+                        until_unix_ms,
+                    } => (
+                        "delegate",
+                        None,
+                        None,
+                        Some(*until_seq),
+                        Some(*until_unix_ms),
+                    ),
                 };
                 format!(
-                    "\"directive\":{},\"level\":{},\"budget\":{},\"until_seq\":{},",
+                    "\"directive\":{},\"level\":{},\"budget\":{},\"until_seq\":{},{}",
                     quoted(name),
                     level.map_or_else(|| "null".to_owned(), |level| quoted(level.as_str())),
                     number(budget),
-                    number(until)
+                    number(until),
+                    deadline.map_or_else(String::new, |ms| format!("\"until_unix_ms\":{ms},"))
                 )
             }
             Body::Close { entry_count } => format!("\"entry_count\":{entry_count},"),
@@ -574,6 +616,11 @@ impl Entry {
                     Some(Value::Str(hash)) if is_sha256(hash) => Some(hash.clone()),
                     Some(_) => return None,
                 },
+                require_own_assessment: match fields.get("own_assessment") {
+                    None => false,
+                    Some(Value::Str(value)) if value == "required" => true,
+                    Some(_) => return None,
+                },
             }),
             "question" if !fields.contains_key("request_id") => Body::LegacyQuestion,
             "question" => Body::Question {
@@ -617,6 +664,14 @@ impl Entry {
                 target_seq: uint("target_seq")?,
                 verdict: Verdict::parse(&string("verdict")?)?,
             },
+            "assessment" => Body::Assessment {
+                target_seq: uint("target_seq")?,
+                claim: Claim::parse(&string("claim")?)?,
+                confidence: match optional_string("confidence")? {
+                    Some(confidence) => Some(Confidence::parse(&confidence)?),
+                    None => None,
+                },
+            },
             "refusal" => Body::Refusal {
                 request_id: string("request_id")?,
                 reason: Refusal::parse(&string("reason")?)?,
@@ -627,16 +682,28 @@ impl Entry {
                     Value::Null => None,
                     Value::Uint(_) => return None,
                 };
+                let deadline = match fields.get("until_unix_ms") {
+                    None => None,
+                    Some(Value::Uint(ms)) => Some(*ms),
+                    Some(_) => return None,
+                };
                 let directive = match (
                     string("directive")?.as_str(),
                     level,
                     optional("budget")?,
                     optional("until_seq")?,
+                    deadline,
                 ) {
-                    ("stop", None, None, None) => Directive::Stop,
-                    ("set_level", Some(level), None, None) => Directive::SetLevel(level),
-                    ("set_budget", None, Some(budget), None) => Directive::SetBudget(budget),
-                    ("delegate", None, None, Some(until)) => Directive::DelegateUntil(until),
+                    ("stop", None, None, None, None) => Directive::Stop,
+                    ("set_level", Some(level), None, None, None) => Directive::SetLevel(level),
+                    ("set_budget", None, Some(budget), None, None) => Directive::SetBudget(budget),
+                    ("delegate", None, None, Some(until), None) => Directive::DelegateUntil(until),
+                    ("delegate", None, None, Some(until_seq), Some(until_unix_ms)) => {
+                        Directive::DelegateUntilTime {
+                            until_seq,
+                            until_unix_ms,
+                        }
+                    }
                     _ => return None,
                 };
                 Body::Directive(directive)
@@ -793,6 +860,8 @@ pub struct State {
     /// Agent actions remaining; each admitted agent action consumes one.
     pub budget: u64,
     pub delegated_until: Option<u64>,
+    /// The operator-clock end of the current delegation, if it has one.
+    pub delegated_until_unix_ms: Option<u64>,
     pub closed: bool,
     /// The last directive that changed the level or budget.
     pub last_directive: Option<u64>,
@@ -804,6 +873,8 @@ pub struct State {
     pub results: BTreeMap<u64, Fact>,
     /// Agent proposals and findings awaiting the operator's decision.
     pub open: BTreeMap<u64, Open>,
+    /// Agent findings the operator has assessed, with the assessment's seq.
+    pub assessed: BTreeMap<u64, u64>,
 }
 
 /// A recorded result, as claim checks and staleness need it.
@@ -933,6 +1004,9 @@ pub enum Problem {
     Stale,
     /// The decision's target is not an open proposal or agent finding.
     NotOpen,
+    /// The session requires the operator's own assessment of this finding
+    /// before it is decided.
+    Unassessed,
 }
 
 impl State {
@@ -942,6 +1016,17 @@ impl State {
         match self.delegated_until {
             Some(until) if self.entries > until => Level::Assisted,
             _ => self.level,
+        }
+    }
+
+    /// As [`State::effective_level`], with a delegation's operator-clock
+    /// deadline applied at `now_unix_ms`, as the broker reads its own clock.
+    pub fn level_at(&self, now_unix_ms: u64) -> Level {
+        match self.delegated_until_unix_ms {
+            Some(deadline) if self.level == Level::Delegated && now_unix_ms >= deadline => {
+                Level::Assisted
+            }
+            _ => self.effective_level(),
         }
     }
 }
@@ -992,6 +1077,9 @@ impl Problem {
                     .to_owned()
             }
             Self::NotOpen => "target is not an open proposal or agent finding".to_owned(),
+            Self::Unassessed => {
+                "record your own assessment first: mira session assess --target SEQ".to_owned()
+            }
         }
     }
 }
@@ -1103,12 +1191,14 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
             level: header.autonomy,
             budget: header.budget,
             delegated_until: None,
+            delegated_until_unix_ms: None,
             closed: false,
             last_directive: None,
             pending: BTreeMap::new(),
             requests: BTreeSet::new(),
             results: BTreeMap::new(),
             open: BTreeMap::new(),
+            assessed: BTreeMap::new(),
         });
     };
     if entry.session_id != state.session_id {
@@ -1124,6 +1214,7 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
     if state.delegated_until.is_some_and(|until| seq > until) {
         state.level = Level::Assisted;
         state.delegated_until = None;
+        state.delegated_until_unix_ms = None;
     }
     let operator = entry.principal == state.header.operator;
     let collector = entry.principal == state.header.collector;
@@ -1146,15 +1237,26 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
                 Directive::Stop => {
                     state.level = Level::Manual;
                     state.delegated_until = None;
+                    state.delegated_until_unix_ms = None;
                 }
                 Directive::SetLevel(level) if *level != Level::Delegated => {
                     state.level = *level;
                     state.delegated_until = None;
+                    state.delegated_until_unix_ms = None;
                 }
                 Directive::SetBudget(budget) => state.budget = *budget,
                 Directive::DelegateUntil(until) if *until > seq => {
                     state.level = Level::Delegated;
                     state.delegated_until = Some(*until);
+                    state.delegated_until_unix_ms = None;
+                }
+                Directive::DelegateUntilTime {
+                    until_seq,
+                    until_unix_ms,
+                } if *until_seq > seq => {
+                    state.level = Level::Delegated;
+                    state.delegated_until = Some(*until_seq);
+                    state.delegated_until_unix_ms = Some(*until_unix_ms);
                 }
                 _ => return Err(Problem::Malformed(seq)),
             }
@@ -1317,16 +1419,38 @@ pub fn fold(state: Option<State>, entry: &Entry) -> Result<State, Problem> {
                     Verdict::Reject => true,
                     Verdict::Accept | Verdict::Uncertain => false,
                 },
+                // Under the forcing flag, a finding is decided only after
+                // the operator's own assessment of it.
                 Open::Finding => {
                     matches!(
                         verdict,
                         Verdict::Accept | Verdict::Reject | Verdict::Uncertain
-                    )
+                    ) && (!state.header.require_own_assessment
+                        || state.assessed.contains_key(target_seq))
                 }
             };
             if !fits {
                 return Err(Problem::Malformed(seq));
             }
+        }
+        Body::Assessment {
+            target_seq,
+            claim,
+            confidence,
+        } if operator => {
+            // Once per open agent finding, with the same labels as a finding.
+            let labelled = match claim {
+                Claim::Hypothesis => confidence.is_some(),
+                Claim::NoFinding => confidence.is_none(),
+                _ => true,
+            };
+            if !matches!(state.open.get(target_seq), Some(Open::Finding))
+                || state.assessed.contains_key(target_seq)
+                || !labelled
+            {
+                return Err(Problem::Malformed(seq));
+            }
+            state.assessed.insert(*target_seq, seq);
         }
         Body::Refusal { request_id, .. } if collector => {
             // A refusal is still agent activity in the log: it costs budget.
@@ -1727,7 +1851,36 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
         state.entries,
         if state.closed { "closed" } else { "open" }
     );
+    // The operator's own assessments, so each finding can be shown against one.
+    let assessments: BTreeMap<u64, Claim> = log
+        .iter()
+        .filter_map(|stored| match &stored.entry.body {
+            Body::Assessment {
+                target_seq, claim, ..
+            } => Some((*target_seq, *claim)),
+            _ => None,
+        })
+        .collect();
     for Stored { entry, .. } in log {
+        // Under the forcing flag an agent finding is withheld, note and all,
+        // until the operator has assessed it. This is a display rule: the log
+        // itself stays readable.
+        let hidden = state.header.require_own_assessment
+            && matches!(
+                entry.body,
+                Body::Finding {
+                    request_id: Some(_),
+                    ..
+                }
+            )
+            && !assessments.contains_key(&entry.seq);
+        if hidden {
+            out.push_str(&format!(
+                "{:06} {} finding hidden until your own assessment (mira session assess --target {:06})\n",
+                entry.seq, entry.principal, entry.seq
+            ));
+            continue;
+        }
         let detail = match &entry.body {
             Body::Header(header) => format!(
                 "header operator={} agent={} collector={} separation={}{}",
@@ -1774,7 +1927,7 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
                 confidence,
                 cites,
             } => format!(
-                "finding {} {} confidence {} cites {}{}{}",
+                "finding {} {} confidence {} cites {}{}{}{}",
                 claim.as_str(),
                 match claim {
                     Claim::Hypothesis => "inference",
@@ -1796,11 +1949,24 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
                 } else {
                     ""
                 },
+                match assessments.get(&entry.seq) {
+                    Some(own) if own != claim => " differs from your assessment",
+                    _ => "",
+                },
                 if request_id.is_some() {
                     " (agent request)"
                 } else {
                     ""
                 }
+            ),
+            Body::Assessment {
+                target_seq,
+                claim,
+                confidence,
+            } => format!(
+                "assessment of {target_seq:06}: {} confidence {} (your own view)",
+                claim.as_str(),
+                confidence.map_or("none", Confidence::as_str)
             ),
             Body::Proposal {
                 capability,
@@ -1829,6 +1995,12 @@ pub fn render_timeline(log: &[Stored], state: &State) -> String {
             Body::Directive(Directive::DelegateUntil(until)) => {
                 format!("directive delegate until {until}")
             }
+            Body::Directive(Directive::DelegateUntilTime {
+                until_seq,
+                until_unix_ms,
+            }) => format!(
+                "directive delegate until {until_seq} or unix_ms {until_unix_ms} (operator clock, unverified)"
+            ),
             Body::Close { .. } => "close".to_owned(),
         };
         // Text was validated free of controls when written, and re-checked
@@ -1870,12 +2042,13 @@ pub fn state_json(state: &State) -> String {
             .join(",")
     };
     format!(
-        "{{\"session_version\":{SESSION_VERSION},\"entries\":{},\"closed\":{},\"autonomy\":{},\"budget\":{},\"delegated_until\":{},\"open_proposals\":[{}],\"open_findings\":[{}]}}",
+        "{{\"session_version\":{SESSION_VERSION},\"entries\":{},\"closed\":{},\"autonomy\":{},\"budget\":{},\"delegated_until\":{},\"delegated_until_unix_ms\":{},\"open_proposals\":[{}],\"open_findings\":[{}]}}",
         state.entries,
         state.closed,
         quoted(state.level.as_str()),
         state.budget,
         number(state.delegated_until),
+        number(state.delegated_until_unix_ms),
         open(true),
         open(false)
     )
@@ -1903,6 +2076,7 @@ mod tests {
                 autonomy: Level::Assisted,
                 budget: 10,
                 agent_tools: None,
+                require_own_assessment: false,
             }),
             note: "Why did \"svc\" restart? \\ check".to_owned(),
         }
@@ -3111,5 +3285,134 @@ mod tests {
         ] {
             assert_eq!(Entry::parse(bad.as_bytes()), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn a_header_may_require_own_assessments_and_a_delegation_may_carry_a_deadline() {
+        let mut forced = header();
+        if let Body::Header(header) = &mut forced.body {
+            header.agent_tools = Some("ab".repeat(32));
+            header.require_own_assessment = true;
+        }
+        let text = forced.render();
+        assert!(text.contains(&format!(
+            "\"agent_tools\":\"{}\",\"own_assessment\":\"required\",",
+            "ab".repeat(32)
+        )));
+        assert_eq!(Entry::parse(text.as_bytes()), Some(forced));
+        for bad in [
+            text.replacen(
+                "\"own_assessment\":\"required\"",
+                "\"own_assessment\":\"optional\"",
+                1,
+            ),
+            text.replacen(
+                "\"own_assessment\":\"required\"",
+                "\"own_assessment\":null",
+                1,
+            ),
+        ] {
+            assert_eq!(Entry::parse(bad.as_bytes()), None, "{bad}");
+        }
+        let timed = next(
+            1,
+            "operator",
+            Body::Directive(Directive::DelegateUntilTime {
+                until_seq: 4096,
+                until_unix_ms: 1_800_000_000_000,
+            }),
+        );
+        let text = timed.render();
+        assert!(text.contains("\"until_seq\":4096,\"until_unix_ms\":1800000000000,"));
+        assert_eq!(Entry::parse(text.as_bytes()), Some(timed.clone()));
+        let bad = text.replacen("\"directive\":\"delegate\"", "\"directive\":\"stop\"", 1);
+        assert_eq!(Entry::parse(bad.as_bytes()), None);
+        // The count still bounds the delegation in the log; the clock bounds
+        // it only where the broker reads it.
+        let state = fold(Some(fold(None, &header()).unwrap()), &timed).unwrap();
+        assert_eq!(
+            (
+                state.level,
+                state.delegated_until,
+                state.delegated_until_unix_ms
+            ),
+            (Level::Delegated, Some(4096), Some(1_800_000_000_000))
+        );
+        assert_eq!(state.level_at(1_799_999_999_999), Level::Delegated);
+        assert_eq!(state.level_at(1_800_000_000_000), Level::Assisted);
+        let stopped = fold(
+            Some(state),
+            &next(2, "operator", Body::Directive(Directive::Stop)),
+        )
+        .unwrap();
+        assert_eq!(stopped.delegated_until_unix_ms, None);
+        assert_eq!(stopped.level_at(0), Level::Manual);
+    }
+
+    #[test]
+    fn under_the_forcing_flag_a_finding_is_decided_only_after_an_own_assessment() {
+        let open_finding = |required: bool| {
+            let mut first = header();
+            if let Body::Header(header) = &mut first.body {
+                header.require_own_assessment = required;
+            }
+            let state = fold(None, &first).unwrap();
+            fold(
+                Some(state),
+                &next(
+                    1,
+                    "collector",
+                    Body::Finding {
+                        request_id: request(1),
+                        claim: Claim::Hypothesis,
+                        confidence: Some(Confidence::Low),
+                        cites: Vec::new(),
+                    },
+                ),
+            )
+            .unwrap()
+        };
+        let assessment = |seq, target_seq, claim, confidence| {
+            next(
+                seq,
+                "operator",
+                Body::Assessment {
+                    target_seq,
+                    claim,
+                    confidence,
+                },
+            )
+        };
+        let forced = open_finding(true);
+        assert!(fold(Some(forced.clone()), &decision(2, 1, Verdict::Accept)).is_err());
+        let assessed = fold(
+            Some(forced.clone()),
+            &assessment(2, 1, Claim::NoFinding, None),
+        )
+        .unwrap();
+        assert_eq!(assessed.assessed.get(&1), Some(&2));
+        assert!(fold(Some(assessed.clone()), &decision(3, 1, Verdict::Accept)).is_ok());
+        // Once per finding, only on an open agent finding, by the operator,
+        // with the finding labels.
+        assert!(fold(Some(assessed), &assessment(3, 1, Claim::NoFinding, None)).is_err());
+        assert!(
+            fold(
+                Some(forced.clone()),
+                &assessment(2, 0, Claim::NoFinding, None)
+            )
+            .is_err()
+        );
+        assert!(
+            fold(
+                Some(forced.clone()),
+                &assessment(2, 1, Claim::Hypothesis, None)
+            )
+            .is_err()
+        );
+        let mut forged = assessment(2, 1, Claim::NoFinding, None);
+        forged.principal = "collector".to_owned();
+        assert_eq!(fold(Some(forced), &forged), Err(Problem::Role(2)));
+        // Without the flag an assessment is optional.
+        assert!(fold(Some(open_finding(false)), &decision(2, 1, Verdict::Reject)).is_ok());
     }
 }

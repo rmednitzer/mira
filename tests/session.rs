@@ -237,7 +237,7 @@ fn a_session_records_operator_entries_and_verifies() {
     }
     assert_eq!(
         dir.state(),
-        "{\"session_version\":1,\"entries\":4,\"closed\":false,\"autonomy\":\"advisory\",\"budget\":2,\"delegated_until\":null,\"open_proposals\":[],\"open_findings\":[]}\n"
+        "{\"session_version\":1,\"entries\":4,\"closed\":false,\"autonomy\":\"advisory\",\"budget\":2,\"delegated_until\":null,\"delegated_until_unix_ms\":null,\"open_proposals\":[],\"open_findings\":[]}\n"
     );
     let verified = dir.verify(None);
     assert_eq!(

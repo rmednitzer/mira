@@ -8,7 +8,7 @@ use mira::session::{
 use mira::session_broker::{self, Ask, Handled};
 use std::{collections::BTreeMap, path::Path};
 
-pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--separation same_user | --separation separate_user --agent-group GROUP] [--autonomy manual|advisory|assisted] [--budget N] [--agent-tools SHA256] --question TEXT | mira session run DIR --allowed-signers FILE --key COLLECTOR-KEY [--once] | mira session act DIR --allowed-signers FILE --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT] | mira session request DIR --allowed-signers FILE --key AGENT-KEY ([--propose] --capability NAME [--arguments TOKENS] | --question | --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...]) --text TEXT | mira session find DIR --allowed-signers FILE --key KEY --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...] --text TEXT | mira session decide DIR --allowed-signers FILE --key KEY --target SEQ (--approve [--despite-stale] --collector-key COLLECTOR-KEY | --reject | --accept | --uncertain) [--text TEXT] | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] [--abandon-pending] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE --operator NAME [--expect-close PATH]";
+pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--separation same_user | --separation separate_user --agent-group GROUP] [--autonomy manual|advisory|assisted] [--budget N] [--agent-tools SHA256] [--require-own-assessment] --question TEXT | mira session run DIR --allowed-signers FILE --key COLLECTOR-KEY [--once] | mira session act DIR --allowed-signers FILE --key KEY --collector-key COLLECTOR-KEY --capability NAME [--arguments TOKENS] [--text TEXT] | mira session request DIR --allowed-signers FILE --key AGENT-KEY ([--propose] --capability NAME [--arguments TOKENS] | --question | --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...]) --text TEXT | mira session find DIR --allowed-signers FILE --key KEY --claim CLAIM [--confidence low|medium|high] [--cites SEQ,...] --text TEXT | mira session decide DIR --allowed-signers FILE --key KEY --target SEQ (--approve [--despite-stale] --collector-key COLLECTOR-KEY | --reject | --accept | --uncertain) [--text TEXT] | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ [--delegate-seconds N] | --delegate-seconds N) [--text TEXT] | mira session assess DIR --allowed-signers FILE --key KEY --target SEQ --claim CLAIM [--confidence low|medium|high] [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] [--abandon-pending] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE --operator NAME [--expect-close PATH]";
 
 fn usage() -> ! {
     eprintln!("Usage: {USAGE}");
@@ -189,6 +189,11 @@ fn decide(dir: &Path, rest: &[String]) {
                 Verdict::Approve | Verdict::ApproveDespiteStale | Verdict::Reject => true,
                 _ => false,
             },
+            Some(Open::Finding)
+                if state.header.require_own_assessment && !state.assessed.contains_key(&target) =>
+            {
+                return Err(Problem::Unassessed);
+            }
             Some(Open::Finding) => {
                 !matches!(verdict, Verdict::Approve | Verdict::ApproveDespiteStale)
             }
@@ -237,6 +242,46 @@ fn decide(dir: &Path, rest: &[String]) {
     }
 }
 
+/// Record your own view of an open agent finding before deciding on it.
+/// Under `--require-own-assessment`, `show` reveals the finding only after.
+fn assess(dir: &Path, rest: &[String]) {
+    let options = Options::parse(
+        rest,
+        &[
+            "--allowed-signers",
+            "--key",
+            "--target",
+            "--claim",
+            "--confidence",
+            "--text",
+        ],
+        &[],
+    );
+    let target = decimal(options.required("--target"));
+    let (claim, confidence, cites) = claim(&options);
+    if !cites.is_empty() {
+        usage();
+    }
+    let note = options.get("--text").map(text).unwrap_or_default();
+    let entry = as_operator(dir, &options, |state| {
+        if !matches!(state.open.get(&target), Some(Open::Finding))
+            || state.assessed.contains_key(&target)
+        {
+            return Err(Problem::NotOpen);
+        }
+        Ok((
+            Body::Assessment {
+                target_seq: target,
+                claim,
+                confidence,
+            },
+            Some(state.entries - 1),
+            note.clone(),
+        ))
+    });
+    println!("MIRA session: assessment {:06} of {target:06}", entry.seq);
+}
+
 fn report_action(action: &session::Entry, result: Option<&session::Entry>) {
     match result {
         Some(result) => {
@@ -265,6 +310,7 @@ fn decimal(value: &str) -> u64 {
 fn write_failure(problem: Problem) -> ! {
     match problem {
         Problem::Closed
+        | Problem::Unassessed
         | Problem::InvalidDirective
         | Problem::Full
         | Problem::Text
@@ -299,6 +345,7 @@ pub fn run(args: &[String]) {
         "ask" => ask(dir, rest),
         "find" => find(dir, rest),
         "decide" => decide(dir, rest),
+        "assess" => assess(dir, rest),
         "direct" => direct(dir, rest),
         "close" => close(dir, rest),
         "request" => request(dir, rest),
@@ -326,7 +373,7 @@ fn start(dir: &Path, rest: &[String]) {
             "--agent-group",
             "--agent-tools",
         ],
-        &[],
+        &["--require-own-assessment"],
     );
     let operator = principal(options.required("--operator"));
     let (separation, group) = match (options.get("--separation"), options.get("--agent-group")) {
@@ -353,6 +400,7 @@ fn start(dir: &Path, rest: &[String]) {
                 .unwrap_or_else(|| fail("autonomy must be manual, advisory or assisted", 2))
         }),
         budget: options.get("--budget").map_or(10, decimal),
+        require_own_assessment: options.has("--require-own-assessment"),
         agent_tools: options.get("--agent-tools").map(|hash| {
             if !session::is_sha256(hash) {
                 fail(
@@ -423,14 +471,31 @@ fn direct(dir: &Path, rest: &[String]) {
             "--level",
             "--budget",
             "--delegate-until",
+            "--delegate-seconds",
             "--text",
         ],
         &["--stop"],
     );
-    let chosen: Vec<_> = ["--stop", "--level", "--budget", "--delegate-until"]
+    let mut chosen: Vec<_> = ["--stop", "--level", "--budget", "--delegate-until"]
         .into_iter()
         .filter(|name| options.has(name))
         .collect();
+    // A deadline goes with a delegation, with or without an entry count.
+    let deadline = options.get("--delegate-seconds").map(|seconds| {
+        let seconds = decimal(seconds);
+        if seconds == 0 {
+            fail("--delegate-seconds must be at least 1", 2);
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |time| {
+                u64::try_from(time.as_millis()).unwrap_or(u64::MAX)
+            });
+        now.saturating_add(seconds.saturating_mul(1000))
+    });
+    if deadline.is_some() && chosen.is_empty() {
+        chosen.push("--delegate-until");
+    }
     let directive = match chosen.as_slice() {
         ["--stop"] => Directive::Stop,
         ["--level"] => Directive::SetLevel(
@@ -443,10 +508,23 @@ fn direct(dir: &Path, rest: &[String]) {
         ),
         ["--budget"] => Directive::SetBudget(decimal(options.required("--budget"))),
         ["--delegate-until"] => {
-            Directive::DelegateUntil(decimal(options.required("--delegate-until")))
+            // Without an entry count, only the deadline ends the delegation.
+            let until_seq = options
+                .get("--delegate-until")
+                .map_or(session::MAX_ENTRIES, decimal);
+            match deadline {
+                Some(until_unix_ms) => Directive::DelegateUntilTime {
+                    until_seq,
+                    until_unix_ms,
+                },
+                None => Directive::DelegateUntil(until_seq),
+            }
         }
         _ => usage(),
     };
+    if deadline.is_some() && !matches!(directive, Directive::DelegateUntilTime { .. }) {
+        usage();
+    }
     let note = options.get("--text").map(text).unwrap_or_default();
     let entry = as_operator(dir, &options, |state| {
         Ok((

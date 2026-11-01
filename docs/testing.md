@@ -254,6 +254,11 @@ Live `separate_user` containment, `scripts/test_separate_user.py`. It runs as ro
 - the client host and adapter run entirely as the agent user, and the broker admits their request
 - the operator closes with a receipt, the session verifies against it, and the agent can no longer submit
 
+Forcing and the delegation deadline:
+- unit tests: header and directive layouts round-trip and refuse other values; a timed delegation sets both bounds, `level_at` lapses it exactly at the deadline, and `stop` clears it; an assessment is recorded once, only for an open agent finding, only by the operator, with the finding labels; under the flag a decision waits for it, without the flag it does not; the broker's decision applies the deadline (`operator_only` after it)
+- `tests/session_broker.rs`: a hidden finding in `show` (note included), a decision refused before the assessment, the assessment recorded once, the finding shown against it with `differs from your assessment`, then decided and verified; a timed delegation shown as "operator clock, unverified" whose operator-only request is refused once the deadline has passed, and deadlines refused on anything but a delegation
+- `scripts/validate_session.py` restates the header flag, the assessment rules, the decision gate and the timed delegation layout
+
 ## Representative host qualification
 
 The live checks above run on two GitHub-hosted runners and the development host. [ADR 0013](adr/0013-host-qualification-protocol.md) and the [qualification guide](qualification.md) define how they run on real hosts. `scripts/qualify_host.py` runs every validator's check groups against the checkout build or an installed binary and records passed, failed or not applicable per group, with fixed reasons such as `no_systemd`. It writes a `qualification-receipt-v1` receipt free of host identifiers.

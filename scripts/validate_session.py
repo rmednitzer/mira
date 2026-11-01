@@ -35,6 +35,7 @@ FIELDS = {
     'finding': ['request_id', 'claim', 'confidence', 'cites'],
     'proposal': ['request_id', 'capability', 'arguments'],
     'decision': ['target_seq', 'verdict'],
+    'assessment': ['target_seq', 'claim', 'confidence'],
     'abandon': ['action_seq'],
     'refusal': ['request_id', 'reason'],
     'close': ['entry_count'],
@@ -94,8 +95,10 @@ def fields(entry):
     # reason; those layouts stay valid.
     if entry['kind'] == 'question' and 'request_id' not in entry:
         return []
-    if entry['kind'] == 'header' and 'agent_tools' in entry:
-        return FIELDS['header'] + ['agent_tools']
+    if entry['kind'] == 'header':
+        return FIELDS['header'] + [name for name in ('agent_tools', 'own_assessment') if name in entry]
+    if entry['kind'] == 'directive' and 'until_unix_ms' in entry:
+        return FIELDS['directive'] + ['until_unix_ms']
     if entry['kind'] == 'result' and 'reason' not in entry:
         return [name for name in FIELDS['result'] if name != 'reason']
     return FIELDS[entry['kind']]
@@ -170,7 +173,8 @@ def fold(state, entry):
         return {'id': entry['session_id'], 'roles': entry, 'entries': 1,
                 'level': entry['autonomy'], 'budget': entry['budget'], 'until': None,
                 'closed': False, 'last_directive': None, 'pending': {}, 'requests': set(),
-                'results': {}, 'open': {}}
+                'results': {}, 'open': {}, 'assessed': set(),
+                'forcing': entry.get('own_assessment') == 'required'}
     if entry['session_id'] != state['id']:
         raise ValueError('entry from another session')
     if state['closed']:
@@ -277,13 +281,21 @@ def fold(state, entry):
         if target is None:
             raise ValueError('decision on nothing open')
         if target[0] == 'finding':
-            fits = verdict in ('accept', 'reject', 'uncertain')
+            fits = verdict in ('accept', 'reject', 'uncertain') \
+                and (not state['forcing'] or entry['target_seq'] in state['assessed'])
         else:
             is_stale = stale(state, target[1], target[2], target[3])
             fits = verdict == 'reject' or (verdict == 'approve' and not is_stale) \
                 or (verdict == 'approve_despite_stale' and is_stale)
         if not fits:
             raise ValueError('verdict does not fit its target')
+    elif kind == 'assessment' and operator:
+        target = entry['target_seq']
+        labelled = {'hypothesis': entry['confidence'] is not None,
+                    'no_finding': entry['confidence'] is None}.get(entry['claim'], True)
+        if state['open'].get(target) != ('finding',) or target in state['assessed'] or not labelled:
+            raise ValueError('assessment of nothing open, twice, or without its labels')
+        state['assessed'].add(target)
     elif kind == 'abandon' and operator:
         if state['pending'].pop(entry['action_seq'], None) is None:
             raise ValueError('abandoned action is not pending')
@@ -445,6 +457,26 @@ def check_fixtures():
     proposed = fold(measured, dict(entry('proposal', 3, 'collector', request_id=REQ,
                                          capability='memory-headroom', arguments='1'), based_on=0))
     refused(lambda e: fold(proposed, e), entry('decision', 4, target_seq=3, verdict='approve'))
+    forcing = dict(HEADER, own_assessment='required')
+    forcing['note'] = forcing.pop('note')
+    admit(canonical(forcing, COMMON + fields(forcing) + ['note']))
+    found = fold(fold(None, forcing), entry('finding', 1, 'collector', request_id=REQ, claim='hypothesis',
+                                             confidence='low', cites=''))
+    refused(lambda e: fold(found, e), entry('decision', 2, target_seq=1, verdict='accept'))
+    refused(lambda e: fold(found, e), entry('assessment', 2, target_seq=1, claim='hypothesis',
+                                            confidence=None))
+    assessed = fold(found, entry('assessment', 2, target_seq=1, claim='no_finding', confidence=None))
+    refused(lambda e: fold(assessed, e), entry('assessment', 3, target_seq=1, claim='no_finding',
+                                               confidence=None))
+    fold(assessed, entry('decision', 3, target_seq=1, verdict='reject'))
+    timed = entry('directive', 1, directive='delegate', level=None, budget=None, until_seq=4096,
+                  until_unix_ms=1800000000000)
+    timed['note'] = timed.pop('note')
+    admit(canonical(timed, COMMON + fields(timed) + ['note']))
+    if fold(fold(None, HEADER), timed)['level'] != 'delegated':
+        raise ValueError('timed delegation not applied')
+    refused(VALIDATOR.validate, dict(entry('directive', 1, directive='stop', level=None, budget=None,
+                                           until_seq=None), until_unix_ms=5))
     refused(lambda e: fold(proposed, e), entry('decision', 4, target_seq=3, verdict='accept'))
     fold(proposed, entry('decision', 4, target_seq=3, verdict='approve_despite_stale'))
     unavailable = fold(fold(started, entry('action', 1, request_id=None, capability='service-active',
@@ -603,7 +635,8 @@ def check_cli():
             raise ValueError('independent state disagrees with the steps')
         shown = json.loads(mira('show', str(session), '--json').stdout)
         if shown != {'session_version': 1, 'entries': 9, 'closed': True, 'autonomy': 'assisted',
-                     'budget': 0, 'delegated_until': None, 'open_proposals': [],
+                     'budget': 0, 'delegated_until': None, 'delegated_until_unix_ms': None,
+                     'open_proposals': [],
                      'open_findings': []}:
             raise ValueError('mira session show disagrees with the independent state')
         verified = mira('verify', str(session), *trust, '--operator', 'operator',

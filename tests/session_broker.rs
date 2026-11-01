@@ -1636,7 +1636,7 @@ fn proposals_wait_for_the_operators_decision() {
     );
     assert!(
         dir.state()
-            .contains("\"budget\":0,\"delegated_until\":null,\"open_proposals\":[],")
+            .contains("\"budget\":0,\"delegated_until\":null,\"delegated_until_unix_ms\":null,\"open_proposals\":[],")
     );
     assert_eq!(
         stdout(&dir.verify()),
@@ -1699,4 +1699,142 @@ fn a_stopped_agent_can_neither_find_nor_propose() {
     ] {
         assert_eq!(dir.request(args).status.code(), Some(2), "{args:?}");
     }
+}
+
+#[test]
+fn findings_stay_hidden_until_the_operators_own_assessment() {
+    let dir = Dir::new();
+    assert!(dir.start(&["--require-own-assessment"]).status.success());
+    assert!(dir.line(0).contains(",\"own_assessment\":\"required\","));
+    assert!(
+        dir.request(&[
+            "--capability",
+            "memory-headroom",
+            "--arguments",
+            "1",
+            "--text",
+            "any?"
+        ])
+        .status
+        .success()
+    );
+    run(&dir);
+    assert!(
+        dir.request(&[
+            "--claim",
+            "expectation_satisfied",
+            "--cites",
+            "2",
+            "--text",
+            "plenty"
+        ])
+        .status
+        .success()
+    );
+    assert_eq!(run(&dir), "MIRA session: admitted request as 000003\n");
+    let show = || stdout(&dir.mira(&["session", "show", dir.session().to_str().unwrap()]));
+    let hidden = show();
+    assert!(
+        hidden.contains(
+            "000003 collector finding hidden until your own assessment (mira session assess --target 000003)\n"
+        ),
+        "{hidden}"
+    );
+    assert!(!hidden.contains("plenty"), "{hidden}");
+    let decided = dir.command("decide", "operator", &["--target", "3", "--accept"]);
+    assert_eq!(decided.status.code(), Some(1), "{decided:?}");
+    assert_eq!(
+        stdout(&decided),
+        "MIRA session: refused (record your own assessment first: mira session assess --target SEQ)\n"
+    );
+    // The operator's own view, recorded blind; then the finding is shown
+    // against it.
+    assert_eq!(
+        stdout(&dir.command(
+            "assess",
+            "operator",
+            &[
+                "--target",
+                "3",
+                "--claim",
+                "hypothesis",
+                "--confidence",
+                "low",
+                "--text",
+                "unsure"
+            ]
+        )),
+        "MIRA session: assessment 000004 of 000003\n"
+    );
+    let again = dir.command(
+        "assess",
+        "operator",
+        &["--target", "3", "--claim", "no_finding"],
+    );
+    assert_eq!(again.status.code(), Some(1), "{again:?}");
+    let shown = show();
+    for line in [
+        "000003 collector finding expectation_satisfied checked confidence none cites 000002 differs from your assessment (agent request): [unchecked agent note] plenty\n",
+        "000004 operator assessment of 000003: hypothesis confidence low (your own view): unsure\n",
+    ] {
+        assert!(shown.contains(line), "{line}\n{shown}");
+    }
+    assert_eq!(
+        stdout(&dir.command("decide", "operator", &["--target", "3", "--accept"])),
+        "MIRA session: decision 000005 accept 000003\n"
+    );
+    assert_eq!(
+        stdout(&dir.verify()),
+        "MIRA session: verified entries 6 open\n"
+    );
+}
+
+#[test]
+fn a_timed_delegation_lapses_at_the_brokers_clock() {
+    let dir = Dir::new();
+    assert!(dir.start(&[]).status.success());
+    let directed = dir.command("direct", "operator", &["--delegate-seconds", "1"]);
+    assert_eq!(
+        stdout(&directed),
+        "MIRA session: directive 000001\n",
+        "{directed:?}"
+    );
+    assert!(
+        dir.line(1)
+            .contains("\"until_seq\":4096,\"until_unix_ms\":")
+    );
+    assert!(dir.state().contains("\"autonomy\":\"delegated\""));
+    assert!(!dir.state().contains("\"delegated_until_unix_ms\":null"));
+    let shown = stdout(&dir.mira(&["session", "show", dir.session().to_str().unwrap()]));
+    assert!(shown.contains("(operator clock, unverified)"), "{shown}");
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    assert!(
+        dir.request(&[
+            "--capability",
+            "capture",
+            "--arguments",
+            "host bind-boot",
+            "--text",
+            "late"
+        ])
+        .status
+        .success()
+    );
+    assert_eq!(run(&dir), "MIRA session: refused request (operator_only)\n");
+    // A deadline goes only with a delegation.
+    for args in [
+        &["--stop", "--delegate-seconds", "5"][..],
+        &["--delegate-seconds", "0"],
+        &["--level", "assisted", "--delegate-seconds", "5"],
+    ] {
+        assert_eq!(
+            dir.command("direct", "operator", args).status.code(),
+            Some(2),
+            "{args:?}"
+        );
+    }
+    assert_eq!(
+        stdout(&dir.verify()),
+        "MIRA session: verified entries 3 open\n"
+    );
 }
