@@ -228,11 +228,13 @@ class LocalModel:
             check_socket(socket_path)
             self.connect = lambda: UnixConnection(socket_path, MODEL_TIMEOUT)
             self.path = '/v1/chat/completions'
+            self.endpoint = {'kind': 'unix_socket', 'path': str(socket_path)}
         else:
             parsed = check_loopback(url)
             self.connect = lambda: http.client.HTTPConnection(parsed.hostname, parsed.port or 80,
                                                               timeout=MODEL_TIMEOUT)
             self.path = parsed.path.rstrip('/') + '/chat/completions'
+            self.endpoint = {'kind': 'loopback_tcp', 'host': parsed.hostname, 'port': parsed.port or 80}
         self.model = model
         self.parameters = {'temperature': temperature}
 
@@ -261,6 +263,7 @@ class ReplayModel:
         self.responses = json.loads(Path(path).read_text())
         self.model = f'replay:{Path(path).name}'
         self.parameters = {}
+        self.endpoint = {'kind': 'replay'}
 
     def complete(self, messages, tools):
         if not self.responses:
@@ -330,7 +333,8 @@ def run(args, model, recorder):
             raise Refused('the adapter\'s tool definitions do not match the session header')
         recorder.write({'kind': 'run', 'model': model.model, 'provider': model.provider,
                         'parameters': model.parameters, 'prompt_revision': PROMPT_REVISION,
-                        'tools_sha256': pinned, 'max_turns': args.max_turns})
+                        'tools_sha256': pinned, 'max_turns': args.max_turns,
+                        'endpoint': model.endpoint})
         offered = {tool['name'] for tool in definitions}
         previous = []
         for turn in range(1, args.max_turns + 1):
