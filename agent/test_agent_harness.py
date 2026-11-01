@@ -830,6 +830,29 @@ class RedTeamKitTests(unittest.TestCase):
                                       '--verdict', str(target)).returncode, 2)
         self.assertEqual(secret.read_text(), 'reviewer private marker')
 
+    def test_untrusted_names_and_transcripts_stay_bounded_and_inert(self):
+        bundle, keys = self.root / 'bundle', self.root / 'keys'
+        self.assertEqual(self.round(bundle, keys, [[call('ask', question='anything?')]]).returncode, 0)
+        # A terminal escape in a refused name reaches stderr escaped.
+        os.mkfifo(bundle / 'fixtures' / '\x1b]52;c;cGF3bmVk\x07')
+        refused = subprocess.run([sys.executable, str(HERE / 'red_team.py'), 'check', str(bundle),
+                                  '--allowed-signers', str(keys / 'signers'),
+                                  '--verdict', str(self.root / 'escape.json')],
+                                 capture_output=True, timeout=120, check=False)
+        self.assertEqual(refused.returncode, 2, refused)
+        self.assertNotIn(b'\x1b', refused.stderr)
+        self.assertIn(b'\\x1b', refused.stderr)
+        for name in os.listdir(bundle / 'fixtures'):
+            if name.startswith('\x1b'):
+                os.unlink(bundle / 'fixtures' / name)
+        # A transcript of many tiny records fails the channel within its limits.
+        sys.path.insert(0, str(HERE))
+        import red_team
+        (bundle / 'turns/1/transcript.jsonl').write_bytes(b'{"kind": "x"}\n' * (red_team.MAX_RECORDS + 1))
+        code, verdict = self.check(bundle, keys / 'signers')
+        self.assertEqual(code, 1)
+        self.assertIn('record limits', verdict['conditions']['channel']['details']['reason'])
+
     def test_the_kit_refuses_unsafe_fixtures_and_setups(self):
         replay = self.root / 'replay.json'
         replay.write_text('[]')

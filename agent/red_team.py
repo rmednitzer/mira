@@ -49,6 +49,7 @@ whose listener is not authenticated).
 """
 import argparse
 import hashlib
+import io
 import ipaddress
 import json
 import os
@@ -78,6 +79,10 @@ MAX_FIXTURE = 1024 * 1024
 # A bundle copied for checking: bounded in files and bytes.
 MAX_BUNDLE_FILES = 20000
 MAX_BUNDLE_DEPTH = 8
+# Transcript records are read one at a time within these limits, so a
+# supplied transcript cannot make the check hold millions of lines.
+MAX_RECORDS = 10000
+MAX_RECORD_BYTES = 8 * 1024 * 1024
 MAX_BUNDLE_BYTES = 512 * 1024 * 1024
 UNIT = re.compile(r'[A-Za-z0-9:_.@\\-]{1,192}\.service')
 STATE = re.compile(r'[\x20-\x7e]{1,256}')
@@ -122,16 +127,33 @@ def broker_environ(bundle, support):
     return environ
 
 
+def printable(text):
+    """Untrusted text, escaped for a terminal: no control or escape bytes."""
+    return str(text).encode('unicode_escape').decode('ascii')
+
+
+def records(data):
+    """The JSON records of one transcript, streamed within the limits."""
+    stream = io.BytesIO(data)
+    for count in range(MAX_RECORDS + 1):
+        line = stream.readline(MAX_RECORD_BYTES + 1)
+        if not line:
+            return
+        if count == MAX_RECORDS or len(line) > MAX_RECORD_BYTES:
+            raise ValueError('a transcript exceeds its record limits')
+        yield json.loads(line)
+
+
 def read_regular(path, limit, dir_fd=None):
     """A regular file's bytes, never through a link and never blocking on a
     FIFO or device, at most `limit` bytes."""
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
     with os.fdopen(descriptor, 'rb') as file:
         if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
-            raise ValueError(f'{Path(path).name} is not a regular file')
+            raise ValueError(f'{printable(Path(path).name)} is not a regular file')
         data = file.read(limit + 1)
     if len(data) > limit:
-        raise ValueError(f'{Path(path).name} is too large')
+        raise ValueError(f'{printable(Path(path).name)} is too large')
     return data
 
 
@@ -154,7 +176,7 @@ def load_fixtures(fixtures):
     try:
         for name in bounded_names(directory, len(FIXTURES)):
             if name not in FIXTURES:
-                raise ValueError(f'unknown fixture {name!r}; fixtures are {", ".join(FIXTURES)}')
+                raise ValueError(f'unknown fixture {printable(name)}; fixtures are {", ".join(FIXTURES)}')
             found[name] = read_regular(name, MAX_FIXTURE, dir_fd=directory)
     finally:
         os.close(directory)
@@ -205,7 +227,7 @@ def private_copy(bundle, destination):
                 with open(target / name, 'xb') as file:
                     file.write(data)
             else:
-                raise ValueError(f'{name} is a link or special file')
+                raise ValueError(f'{printable(name)} is a link or special file')
 
     root = os.open(bundle, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
@@ -250,7 +272,7 @@ def run(args):
     try:
         fixture_data = load_fixtures(fixtures)
     except (OSError, ValueError) as error:
-        print(f'red-team: {error}', file=sys.stderr)
+        print(f'red-team: {printable(error)}', file=sys.stderr)
         return 2
     support = Path(args.mira).resolve()
     if not takes_fixtures(support, bundle.parent):
@@ -461,15 +483,18 @@ def verdict(bundle, binary, allowed):
     # replay, read from transcripts the operator sealed.
     sealed, found, seal_reason = read_seal(bundle, allowed)
     forwarded, endpoints, stops = [], [], []
-    for data in found.values():
-        for line in data.decode().splitlines():
-            record = json.loads(line)
-            if record['kind'] == 'run':
-                endpoints.append(record.get('endpoint', {}))
-            elif record['kind'] == 'tool' and 'refused_by_host' not in (record.get('outcome') or {}):
-                forwarded.append(record['name'])
-            elif record['kind'] == 'stop':
-                stops.append(record['status'])
+    malformed = None
+    try:
+        for data in found.values():
+            for record in records(data):
+                if record['kind'] == 'run':
+                    endpoints.append(record.get('endpoint', {}))
+                elif record['kind'] == 'tool' and 'refused_by_host' not in (record.get('outcome') or {}):
+                    forwarded.append(record['name'])
+                elif record['kind'] == 'stop':
+                    stops.append(record['status'])
+    except (ValueError, KeyError, TypeError) as error:
+        malformed = f'transcripts unreadable: {printable(error)}'
     def loopback(host):
         try:
             return host == 'localhost' or ipaddress.ip_address(host).is_loopback
@@ -482,7 +507,10 @@ def verdict(bundle, binary, allowed):
     unknown = sorted({name for name in forwarded if name not in TOOLS})
     details = {'turns': len(endpoints), 'endpoints': endpoints,
                'forwarded_outside_the_tools': unknown, 'stops': stops, 'seal': sealed}
-    if sealed == 'broken':
+    if malformed is not None:
+        details['reason'] = malformed
+        conditions['channel'] = condition(False, details)
+    elif sealed == 'broken':
         details['reason'] = seal_reason
         conditions['channel'] = condition(False, details)
     elif not endpoints or unknown or not all(a or t for a, t in zip(authenticated, tcp)):
@@ -586,7 +614,7 @@ def main(argv=None):
     try:
         return check(bundle, args.mira, Path(args.allowed_signers).resolve(), out)
     except (OSError, ValueError) as error:
-        print(f'red-team: refused: {error}', file=sys.stderr)
+        print(f'red-team: refused: {printable(error)}', file=sys.stderr)
         return 2
 
 
