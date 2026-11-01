@@ -563,6 +563,16 @@ fn host_evidence_lines<T>(
     }
 }
 
+/// The dpkg status database. Test-support builds may redirect it to a
+/// fixture; release builds compile the override out.
+fn dpkg_status() -> std::path::PathBuf {
+    #[cfg(feature = "test-support")]
+    if let Some(path) = std::env::var_os("MIRA_TEST_DPKG_STATUS") {
+        return path.into();
+    }
+    std::path::PathBuf::from("/var/lib/dpkg/status")
+}
+
 const PACKAGE_USAGE: &str = "mira investigate package-installed PACKAGE[:ARCH] [--json]";
 
 fn package_installed(selector: &str, json: bool) {
@@ -572,7 +582,7 @@ fn package_installed(selector: &str, json: bool) {
         eprintln!("MIRA: package must be a Debian package name, optionally :ARCH");
         std::process::exit(2);
     };
-    let report = package::collect(selector, std::path::Path::new("/var/lib/dpkg/status"));
+    let report = package::collect(selector, &dpkg_status());
     let assessment = report.assessment();
     if json {
         emit_json(&report.to_json());
@@ -752,7 +762,7 @@ fn inspect() {
     show(&snapshot.uptime);
     show(&snapshot.kernel_release);
     show(&snapshot.cpu_pressure);
-    let packages = mira::evidence::collect_packages(std::path::Path::new("/var/lib/dpkg/status"));
+    let packages = mira::evidence::collect_packages(&dpkg_status());
     match &packages.status {
         EvidenceStatus::Observed(installed) => println!(
             "{}: observed {} installed packages (not vulnerability findings) recorded_unix_ms={}",
@@ -813,7 +823,7 @@ fn service(unit: &str) {
 
 fn inspect_json() {
     let snapshot = mira::evidence::collect(std::path::Path::new("/proc"));
-    let packages = mira::evidence::collect_packages(std::path::Path::new("/var/lib/dpkg/status"));
+    let packages = mira::evidence::collect_packages(&dpkg_status());
     for record in mira::evidence_json::host_records(&snapshot, &packages) {
         println!("{record}");
     }
@@ -944,7 +954,7 @@ fn capture(label: &str, options: CaptureOptions) {
         label,
         profile,
         std::path::Path::new("/proc"),
-        std::path::Path::new("/var/lib/dpkg/status"),
+        &dpkg_status(),
     ) {
         Ok(report) => report,
         Err(_) => {

@@ -92,4 +92,11 @@ The tests cover:
 - a red-team replay: a shell call, option injection, an operator-only capture, findings citing the header or without confidence, and an injected question. Against the real broker none of them runs, no result or finding is recorded, and the session verifies.
 - a loopback HTTP model, with every exchange in the transcript
 
-Hostile host-content fixtures, with injection strings in unit names, dpkg versions and service states, come next. So does the adaptive red-team protocol.
+`HostileContentTests` puts injection strings into a service state, a dpkg version (with a forged assessment embedded) and a journal unit name. It plays a model that follows every instruction, and checks the pass condition through the real broker and the independent validator. It needs the `test-support` build for the broker:
+
+```sh
+cargo build --locked --features test-support --target-dir target/test-support
+MIRA_HOSTILE_REQUIRED=1 python3 -W error::ResourceWarning agent/test_agent_harness.py
+```
+
+Without that build, the class is skipped locally; CI requires it. Adaptive attacks by people follow the [red-team protocol](../docs/red-team.md).

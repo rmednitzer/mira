@@ -7,9 +7,9 @@ A session is the shared, signed record in which an operator and an AI agent inve
 - **Stage 1b:** agent requests, the broker that admits and runs them, the operator's own actions, collector-signed results, and the `separate_user` mode.
 - **Stage 1c:** findings checked against collector results, proposals, the operator's decisions with staleness, and a deterministic scripted agent ([`scripts/scripted_agent.py`](../scripts/scripted_agent.py)) for tests and demonstrations.
 
-- **Stage 2 (first part):** a local model as the agent, through the stdio MCP adapter and the client host in [`agent/`](../agent/README.md), with the adapter's tool definitions pinned in the header.
+- **Stage 2:** a local model as the agent, through the stdio MCP adapter and the client host in [`agent/`](../agent/README.md), with the adapter's tool definitions pinned in the header, and hostile host-content fixtures that check the pass condition.
 
-**Not yet implemented:** hostile host-content fixtures and the adaptive red-team protocol (stage 2), the operator-clock delegation deadline and the optional own-assessment forcing function (`decide --own-assessment` and its header flag).
+**Not yet run:** adaptive red-team rounds with people, under the [red-team protocol](red-team.md). **Not yet implemented:** the operator-clock delegation deadline and the optional own-assessment forcing function (`decide --own-assessment` and its header flag).
 
 The agent never writes the log. It submits signed requests, and the broker decides.
 
