@@ -2,10 +2,11 @@
 //! signed, append-only log, operator entries, directives and closure.
 //!
 //! Every entry is one canonical JSON line signed under its own namespace by
-//! the principal it names. An entry is admitted only if re-rendering it
-//! reproduces its exact bytes, so MIRA reads its own format without a general
-//! JSON parser. Roles come from the operator-signed header, never from the
-//! entry that claims one.
+//! the principal it names, stored with its signature in one record file that
+//! appears atomically. An entry is admitted only if re-rendering it reproduces
+//! its exact bytes, so MIRA reads its own format without a general JSON
+//! parser. Roles come from the operator-signed header, never from the entry
+//! that claims one.
 use crate::signature::{self, Failure, Trust};
 use std::{
     collections::BTreeMap,
@@ -18,6 +19,8 @@ use std::{
 pub const SESSION_VERSION: u32 = 1;
 pub const MAX_ENTRIES: u64 = 4096;
 const MAX_ENTRY_BYTES: u64 = 8192;
+/// One record: the entry line followed by its armored SSHSIG signature.
+const MAX_RECORD_BYTES: u64 = MAX_ENTRY_BYTES + signature::MAX_SIGNATURE_BYTES as u64;
 pub const MAX_TEXT_BYTES: usize = 1024;
 const ENTRIES: &str = "entries";
 const PENDING: &str = ".pending-";
@@ -247,6 +250,7 @@ impl Entry {
         };
         (uint("session_version")? == u64::from(SESSION_VERSION)
             && is_session_id(&entry.session_id)
+            && validate_text(&entry.note).is_ok()
             && entry.render().as_bytes() == bytes)
             .then_some(entry)
     }
@@ -398,6 +402,8 @@ pub enum Problem {
     InvalidDirective,
     /// More than the bounded number of entries.
     Full,
+    /// A note with control or bidirectional characters, or over 1 KiB.
+    Text,
     /// The close receipt does not match the session.
     Receipt,
     /// The session directory or a file in it could not be read or written.
@@ -419,6 +425,9 @@ impl Problem {
             Self::Closed => "session is closed".to_owned(),
             Self::InvalidDirective => "directive contradicts the session state".to_owned(),
             Self::Full => "session has reached its entry limit".to_owned(),
+            Self::Text => {
+                "note exceeds 1 KiB or contains control or bidirectional characters".to_owned()
+            }
             Self::Receipt => "close receipt does not match the session".to_owned(),
             Self::Io => "session directory unreadable or unwritable".to_owned(),
             Self::Tool => "ssh-keygen unavailable".to_owned(),
@@ -426,15 +435,38 @@ impl Problem {
     }
 }
 
-fn entry_path(dir: &Path, seq: u64, extension: &str) -> PathBuf {
-    dir.join(ENTRIES).join(format!("{seq:06}.{extension}"))
+fn entry_path(dir: &Path, seq: u64) -> PathBuf {
+    dir.join(ENTRIES).join(format!("{seq:06}.entry"))
 }
 
-/// Every entry with the exact bytes it was read from.
-pub type Log = Vec<(Entry, Vec<u8>)>;
+/// One stored entry: the parsed entry, its exact signed bytes and its signature.
+pub struct Stored {
+    pub entry: Entry,
+    pub bytes: Vec<u8>,
+    pub signature: Vec<u8>,
+}
+
+pub type Log = Vec<Stored>;
+
+/// Split a record into the entry line (with its newline) and the signature.
+fn split_record(record: &[u8]) -> Option<(&[u8], &[u8])> {
+    let end = record.iter().position(|byte| *byte == b'\n')? + 1;
+    let (bytes, signature) = record.split_at(end);
+    (signature.starts_with(signature::ARMOR)
+        && signature.len() <= signature::MAX_SIGNATURE_BYTES
+        && bytes.len() as u64 <= MAX_ENTRY_BYTES)
+        .then_some((bytes, signature))
+}
+
+fn read_record(path: &Path) -> Option<(Entry, Vec<u8>, Vec<u8>)> {
+    let record = signature::read_regular(path, MAX_RECORD_BYTES).ok()?;
+    let (bytes, signature) = split_record(&record)?;
+    Some((Entry::parse(bytes)?, bytes.to_vec(), signature.to_vec()))
+}
 
 /// Read every entry in sequence order, checking file names, contiguity,
 /// layout, session identity and roles. Signatures are checked by `verify`.
+/// Records appear atomically, so a concurrent reader never sees half an entry.
 pub fn load(dir: &Path) -> Result<(Log, State), Problem> {
     let mut seqs = Vec::new();
     for item in fs::read_dir(dir.join(ENTRIES)).map_err(|_| Problem::Io)? {
@@ -443,52 +475,37 @@ pub fn load(dir: &Path) -> Result<(Log, State), Problem> {
         if name.starts_with(PENDING) {
             continue;
         }
-        let (stem, extension) = name.split_once('.').ok_or(Problem::UnexpectedFile)?;
-        let seq: u64 = (stem.len() == 6 && stem.bytes().all(|b| b.is_ascii_digit()))
-            .then(|| stem.parse().ok())
-            .flatten()
-            .ok_or(Problem::UnexpectedFile)?;
-        match extension {
-            "json" => seqs.push(seq),
-            "sig" => {}
-            _ => return Err(Problem::UnexpectedFile),
+        let stem = name.strip_suffix(".entry").ok_or(Problem::UnexpectedFile)?;
+        if stem.len() != 6 || !stem.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(Problem::UnexpectedFile);
         }
+        seqs.push(stem.parse::<u64>().map_err(|_| Problem::UnexpectedFile)?);
     }
     seqs.sort_unstable();
     if seqs.len() as u64 > MAX_ENTRIES {
         return Err(Problem::Full);
     }
-    let mut entries = Vec::with_capacity(seqs.len());
+    let mut log = Vec::with_capacity(seqs.len());
     let mut state: Option<State> = None;
     for (index, seq) in seqs.iter().enumerate() {
         let seq = *seq;
-        if seq != index as u64 || !entry_path(dir, seq, "sig").is_file() {
+        if seq != index as u64 {
             return Err(Problem::Gap(index as u64));
         }
-        let bytes = signature::read_regular(&entry_path(dir, seq, "json"), MAX_ENTRY_BYTES)
-            .map_err(|_| Problem::Malformed(seq))?;
-        let entry = Entry::parse(&bytes).ok_or(Problem::Malformed(seq))?;
+        let (entry, bytes, signature) =
+            read_record(&entry_path(dir, seq)).ok_or(Problem::Malformed(seq))?;
         if entry.seq != seq {
             return Err(Problem::Mismatch(seq));
         }
         state = Some(fold(state, &entry)?);
-        entries.push((entry, bytes));
-    }
-    // Any signature file must belong to an entry.
-    for item in fs::read_dir(dir.join(ENTRIES)).map_err(|_| Problem::Io)? {
-        let name = item.map_err(|_| Problem::Io)?.file_name();
-        let name = name.to_string_lossy();
-        if let Some(stem) = name.strip_suffix(".sig")
-            && !name.starts_with(PENDING)
-            && stem
-                .parse::<u64>()
-                .map_or(true, |seq| seq >= seqs.len() as u64)
-        {
-            return Err(Problem::Gap(seqs.len() as u64));
-        }
+        log.push(Stored {
+            entry,
+            bytes,
+            signature,
+        });
     }
     let state = state.ok_or(Problem::Gap(0))?;
-    Ok((entries, state))
+    Ok((log, state))
 }
 
 /// Apply one entry to the state. Entry 0 must be the header; nothing follows
@@ -575,21 +592,22 @@ pub struct Writer<'a> {
     pub principal: &'a str,
 }
 
-fn verify_bytes(
+fn verify_signature(
     bytes: &[u8],
-    signature_path: &Path,
+    signature: &[u8],
     allowed: &Path,
     principal: &str,
+    seq: u64,
 ) -> Result<(), Problem> {
     let trust = Trust {
         allowed_signers: allowed,
         principal,
         revocations: None,
     };
-    match signature::verify(bytes, signature_path, &trust) {
+    match signature::verify_staged(bytes, signature, &trust) {
         Ok(signature::Kind::Session) => Ok(()),
         Ok(_) | Err(Failure::Refused | Failure::Output | Failure::Document) => {
-            Err(Problem::Signature(0))
+            Err(Problem::Signature(seq))
         }
         Err(Failure::Tool) => Err(Problem::Tool),
     }
@@ -635,6 +653,7 @@ pub fn append(
             return Err(Problem::Full);
         }
         let (body, based_on, note) = build(&state)?;
+        validate_text(&note).map_err(|_| Problem::Text)?;
         let entry = Entry {
             session_id: state.session_id.clone(),
             seq: state.entries,
@@ -656,11 +675,13 @@ pub fn append(
     Err(Problem::Io)
 }
 
-/// Returns false when another writer claimed this sequence number first.
+/// Sign and check the entry, then publish entry and signature together as one
+/// record by an exclusive hard link. Returns false when another writer
+/// claimed this sequence number first.
 fn claim(dir: &Path, writer: &Writer, entry: &Entry) -> Result<bool, Problem> {
     let bytes = entry.render();
     let pending_sig = pending_name(dir, "sig");
-    let pending_json = pending_name(dir, "json");
+    let pending_record = pending_name(dir, "entry");
     let result = (|| {
         signature::sign(bytes.as_bytes(), writer.key, &pending_sig).map_err(
             |failure| match failure {
@@ -668,27 +689,27 @@ fn claim(dir: &Path, writer: &Writer, entry: &Entry) -> Result<bool, Problem> {
                 _ => Problem::Signature(entry.seq),
             },
         )?;
-        verify_bytes(
+        let signature =
+            signature::read_regular(&pending_sig, signature::MAX_SIGNATURE_BYTES as u64)
+                .map_err(|_| Problem::Io)?;
+        verify_signature(
             bytes.as_bytes(),
-            &pending_sig,
+            &signature,
             writer.allowed_signers,
             writer.principal,
-        )
-        .map_err(|problem| match problem {
-            Problem::Tool => Problem::Tool,
-            _ => Problem::Signature(entry.seq),
-        })?;
-        write_new(&pending_json, bytes.as_bytes()).map_err(|_| Problem::Io)?;
-        match fs::hard_link(&pending_json, entry_path(dir, entry.seq, "json")) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(false),
-            Err(_) => return Err(Problem::Io),
+            entry.seq,
+        )?;
+        let mut record = bytes.into_bytes();
+        record.extend_from_slice(&signature);
+        write_new(&pending_record, &record).map_err(|_| Problem::Io)?;
+        match fs::hard_link(&pending_record, entry_path(dir, entry.seq)) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(false),
+            Err(_) => Err(Problem::Io),
         }
-        fs::hard_link(&pending_sig, entry_path(dir, entry.seq, "sig")).map_err(|_| Problem::Io)?;
-        Ok(true)
     })();
     let _ = fs::remove_file(&pending_sig);
-    let _ = fs::remove_file(&pending_json);
+    let _ = fs::remove_file(&pending_record);
     result
 }
 
@@ -700,6 +721,7 @@ pub fn start(
     header: Header,
     question: String,
 ) -> Result<Entry, Problem> {
+    validate_text(&question).map_err(|_| Problem::Text)?;
     let session_id = crate::challenge::random_hex().map_err(|_| Problem::Io)?;
     let entry = Entry {
         session_id,
@@ -728,33 +750,27 @@ pub fn start(
 }
 
 /// Verify the whole log: structure, roles and every signature under the
-/// operator's `allowed_signers`. With a receipt, the close entry it holds must
-/// be the session's last entry, byte for byte.
+/// operator's `allowed_signers`. With a receipt, the close record it holds
+/// must be the session's last record, byte for byte.
 pub fn verify(dir: &Path, allowed: &Path, receipt: Option<&Path>) -> Result<State, Problem> {
-    let (entries, state) = load(dir)?;
-    for (entry, bytes) in &entries {
-        verify_bytes(
-            bytes,
-            &entry_path(dir, entry.seq, "sig"),
+    let (log, state) = load(dir)?;
+    for stored in &log {
+        verify_signature(
+            &stored.bytes,
+            &stored.signature,
             allowed,
-            &entry.principal,
-        )
-        .map_err(|problem| match problem {
-            Problem::Tool => Problem::Tool,
-            _ => Problem::Signature(entry.seq),
-        })?;
+            &stored.entry.principal,
+            stored.entry.seq,
+        )?;
     }
     if let Some(receipt) = receipt {
-        let bytes =
-            signature::read_regular(receipt, MAX_ENTRY_BYTES).map_err(|_| Problem::Receipt)?;
-        let close = Entry::parse(&bytes).ok_or(Problem::Receipt)?;
-        let mut signature_path = receipt.as_os_str().to_owned();
-        signature_path.push(".sig");
-        verify_bytes(
+        let (close, bytes, signature) = read_record(receipt).ok_or(Problem::Receipt)?;
+        verify_signature(
             &bytes,
-            Path::new(&signature_path),
+            &signature,
             allowed,
             &state.header.operator,
+            close.seq,
         )
         .map_err(|problem| match problem {
             Problem::Tool => Problem::Tool,
@@ -762,9 +778,9 @@ pub fn verify(dir: &Path, allowed: &Path, receipt: Option<&Path>) -> Result<Stat
         })?;
         let matches = matches!(close.body, Body::Close { .. })
             && close.session_id == state.session_id
-            && entries
+            && log
                 .get(close.seq as usize)
-                .is_some_and(|(_, stored)| *stored == bytes)
+                .is_some_and(|stored| stored.bytes == bytes && stored.signature == signature)
             && state.closed
             && state.entries == close.seq + 1;
         if !matches {
@@ -774,28 +790,37 @@ pub fn verify(dir: &Path, allowed: &Path, receipt: Option<&Path>) -> Result<Stat
     Ok(state)
 }
 
-/// Write the close entry's exact bytes and signature to an external receipt,
-/// both created exclusively, never overwriting.
+/// Whether `receipt` would be written outside the session directory, with
+/// both paths resolved through any symbolic links.
+pub fn receipt_outside(dir: &Path, receipt: &Path) -> bool {
+    let parent = match receipt.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    match (fs::canonicalize(dir), fs::canonicalize(parent)) {
+        (Ok(dir), Ok(parent)) => !parent.starts_with(&dir),
+        _ => false,
+    }
+}
+
+/// Write the close record (entry and signature) to an external receipt,
+/// created exclusively, never overwriting.
 pub fn write_receipt(dir: &Path, close: &Entry, receipt: &Path) -> Result<(), Problem> {
-    let mut signature_path = receipt.as_os_str().to_owned();
-    signature_path.push(".sig");
-    let signature = signature::read_regular(&entry_path(dir, close.seq, "sig"), 64 * 1024)
+    let record = signature::read_regular(&entry_path(dir, close.seq), MAX_RECORD_BYTES)
         .map_err(|_| Problem::Io)?;
-    write_new(receipt, close.render().as_bytes()).map_err(|_| Problem::Receipt)?;
-    write_new(Path::new(&signature_path), &signature).map_err(|_| Problem::Receipt)
+    write_new(receipt, &record).map_err(|_| Problem::Receipt)
 }
 
 /// A fixed, escaped human timeline.
-pub fn render_timeline(entries: &[(Entry, Vec<u8>)], state: &State) -> String {
+pub fn render_timeline(log: &[Stored], state: &State) -> String {
     let mut out = format!(
-        "MIRA session {}\nautonomy {} budget {} entries {} {}\n",
-        state.session_id,
+        "MIRA session\nautonomy {} budget {} entries {} {}\n",
         state.level.as_str(),
         state.budget,
         state.entries,
         if state.closed { "closed" } else { "open" }
     );
-    for (entry, _) in entries {
+    for Stored { entry, .. } in log {
         let detail = match &entry.body {
             Body::Header(header) => format!(
                 "header operator={} agent={} collector={} separation={}",
@@ -831,8 +856,7 @@ pub fn render_timeline(entries: &[(Entry, Vec<u8>)], state: &State) -> String {
 
 pub fn state_json(state: &State) -> String {
     format!(
-        "{{\"session_version\":{SESSION_VERSION},\"session_id\":{},\"entries\":{},\"closed\":{},\"autonomy\":{},\"budget\":{},\"delegated_until\":{}}}",
-        quoted(&state.session_id),
+        "{{\"session_version\":{SESSION_VERSION},\"entries\":{},\"closed\":{},\"autonomy\":{},\"budget\":{},\"delegated_until\":{}}}",
         state.entries,
         state.closed,
         quoted(state.level.as_str()),
@@ -945,6 +969,33 @@ mod tests {
         ] {
             assert_eq!(Entry::parse(bad.as_bytes()), None, "{bad:?}");
         }
+    }
+
+    #[test]
+    fn canonical_entries_with_invalid_notes_are_refused_on_read() {
+        // Each is canonically encoded; only the note breaks the contract.
+        for note in [
+            "line\nbreak".to_owned(),
+            "rlo\u{202e}".to_owned(),
+            "a".repeat(MAX_TEXT_BYTES + 1),
+        ] {
+            let mut entry = header();
+            entry.note = note.clone();
+            assert_eq!(Entry::parse(entry.render().as_bytes()), None, "{note:?}");
+        }
+    }
+
+    #[test]
+    fn records_split_into_entry_and_signature() {
+        let line = header().render();
+        let record =
+            format!("{line}-----BEGIN SSH SIGNATURE-----\nabc\n-----END SSH SIGNATURE-----\n");
+        let (bytes, signature) = split_record(record.as_bytes()).unwrap();
+        assert_eq!(bytes, line.as_bytes());
+        assert!(signature.starts_with(signature::ARMOR));
+        assert_eq!(split_record(line.as_bytes()), None);
+        assert_eq!(split_record(format!("{line}garbage").as_bytes()), None);
+        assert_eq!(split_record(b"no newline"), None);
     }
 
     #[test]

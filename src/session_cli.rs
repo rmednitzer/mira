@@ -83,7 +83,7 @@ fn decimal(value: &str) -> u64 {
 /// Map a write-side problem to its fixed diagnostic and exit status.
 fn write_failure(problem: Problem) -> ! {
     match problem {
-        Problem::Closed | Problem::InvalidDirective | Problem::Full => {
+        Problem::Closed | Problem::InvalidDirective | Problem::Full | Problem::Text => {
             println!("MIRA session: refused ({})", problem.reason());
             std::process::exit(1)
         }
@@ -159,11 +159,7 @@ fn start(dir: &Path, rest: &[String]) {
         principal: &operator,
     };
     match session::start(dir, &writer, header, question) {
-        Ok(entry) => println!(
-            "MIRA session: started {} at {}",
-            entry.session_id,
-            dir.display()
-        ),
+        Ok(_) => println!("MIRA session: started at {}", dir.display()),
         Err(Problem::Io) => fail("session directory exists or cannot be created", 4),
         Err(problem) => write_failure(problem),
     }
@@ -249,11 +245,14 @@ fn close(dir: &Path, rest: &[String]) {
     // Refuse an existing receipt path before closing, so the close never
     // succeeds without the receipt that was asked for.
     if let Some(receipt) = options.get("--receipt") {
-        let signature = format!("{receipt}.sig");
-        if Path::new(receipt).symlink_metadata().is_ok()
-            || Path::new(&signature).symlink_metadata().is_ok()
-        {
+        if Path::new(receipt).symlink_metadata().is_ok() {
             fail("receipt path exists; nothing written", 2);
+        }
+        if !session::receipt_outside(dir, Path::new(receipt)) {
+            fail(
+                "receipt must be in an existing directory outside the session; nothing written",
+                2,
+            );
         }
     }
     let entry = as_operator(dir, &options, |state| {
@@ -292,8 +291,7 @@ fn verify(dir: &Path, rest: &[String]) {
     let allowed = Path::new(options.required("--allowed-signers"));
     match session::verify(dir, allowed, options.get("--expect-close").map(Path::new)) {
         Ok(state) => println!(
-            "MIRA session: verified {} entries {} {}",
-            state.session_id,
+            "MIRA session: verified entries {} {}",
             state.entries,
             if state.closed { "closed" } else { "open" }
         ),

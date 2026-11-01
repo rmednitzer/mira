@@ -56,8 +56,8 @@ mira session verify DIR --allowed-signers SIGNERS [--expect-close PATH]
   - delegate until a later sequence number, after which the level returns to `assisted`
 
   Delegation ends after a number of entries. The operator-clock deadline the ADR also allows is not implemented.
-- **`close`** appends your conclusion and the final entry count. After it, every append is refused. With `--receipt PATH`, the close entry's exact bytes and signature are also written, exclusively, to `PATH` and `PATH.sig` outside the session. An existing receipt path is refused before anything is written.
-- **`show`** prints the timeline and current state, or the state alone with `--json`. It reads the log's structure but does not check signatures.
+- **`close`** appends your conclusion and the final entry count. After it, every append is refused. With `--receipt PATH`, the close record (entry and signature) is also written, exclusively, to `PATH`. That path must be in an existing directory outside the session, resolved through symbolic links. An existing path, a path inside the session or a missing directory is refused before anything is written.
+- **`show`** prints the timeline and current state, or the state alone with `--json`. It reads the log's structure but does not check signatures. No command prints the session ID; it is in entry 0 for anyone who reads the log.
 - **`verify`** checks everything:
   - contiguous sequence numbers from 0, each with a signature
   - each entry's exact canonical bytes
@@ -76,14 +76,21 @@ Exit codes:
 
 ## How entries are written
 
-Each entry is one JSON line in a fixed field order, ending with a bounded free-text `note`. The schema is [`session-v1`](../schemas/session-v1.schema.json). `mira` accepts an entry only if rendering it again reproduces the file's exact bytes, so there is one way to write each entry.
+Each entry is one JSON line in a fixed field order, ending with a bounded free-text `note`. The schema is [`session-v1`](../schemas/session-v1.schema.json). `mira` accepts an entry only if rendering it again reproduces the exact bytes, so there is one way to write each entry. Notes are checked against the rules below on reading as well as writing.
+
+Each entry is stored with its signature in a single record file, `entries/NNNNNN.entry`: the entry line, newline included, followed by the armored SSHSIG signature over exactly that line. To check one record by hand:
+
+```sh
+head -n 1 entries/000001.entry > entry && tail -n +2 entries/000001.entry > entry.sig
+ssh-keygen -Y verify -f SIGNERS -I PRINCIPAL -n mira-session-v1@rmednitzer.github.io -s entry.sig < entry
+```
 
 To append, `mira`:
 1. signs the entry into a pending file
 2. checks that signature against your `allowed_signers` as the principal it names
-3. claims the next sequence number by an exclusive hard link
+3. publishes the whole record under the next sequence number by one exclusive hard link
 
-A wrong key or a lost race between two writers therefore never leaves a partial entry. The writer that loses re-reads the session and takes the next number.
+Readers therefore only ever see complete, signed records, even while others are writing. A wrong key, a lost race or an interrupted writer never leaves a partial entry. Pending files (`.pending-*`) are ignored. The writer that loses a race re-reads the session and takes the next number.
 
 Notes are at most 1 KiB, on one line. They refuse control characters (C0, DEL, C1) and bidirectional embedding, override, isolate and mark characters, so displaying them cannot steer a terminal or reorder text.
 

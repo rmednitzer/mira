@@ -34,6 +34,18 @@ def canonical(entry):
     return (json.dumps(entry, ensure_ascii=False, separators=(',', ':')) + '\n').encode()
 
 
+ARMOR = b'-----BEGIN SSH SIGNATURE-----\n'
+
+
+def split_record(record):
+    """A record is the entry line, newline included, then its armored signature."""
+    end = record.index(b'\n') + 1
+    data, signature = record[:end], record[end:]
+    if not signature.startswith(ARMOR):
+        raise ValueError('record has no signature')
+    return data, signature
+
+
 def admit(data):
     entry = strict_json(data)
     VALIDATOR.validate(entry)
@@ -206,39 +218,38 @@ def check_cli():
             if result.returncode != 0:
                 raise ValueError(f'session {step[0]} failed')
         state = None
-        files = sorted((session / 'entries').iterdir())
-        names = [path.name for path in files]
-        expected = [f'{seq:06}.{ext}' for seq in range(6) for ext in ('json', 'sig')]
-        if names != expected:
+        names = sorted(path.name for path in (session / 'entries').iterdir())
+        if names != [f'{seq:06}.entry' for seq in range(6)]:
             raise ValueError('unexpected session files')
         for seq in range(6):
-            data = (session / 'entries' / f'{seq:06}.json').read_bytes()
+            data, signature = split_record((session / 'entries' / f'{seq:06}.entry').read_bytes())
             item = admit(data)
             if item['seq'] != seq:
                 raise ValueError('entry seq disagrees with its file')
             state = fold(state, item)
             # Each signature verifies independently for the principal the entry names.
+            (temp / 'entry.sig').write_bytes(signature)
             check = subprocess.run(
                 ['/usr/bin/ssh-keygen', '-Y', 'verify', '-f', str(temp / 'signers'), '-I',
-                 item['principal'], '-n', NAMESPACE, '-s', str(session / 'entries' / f'{seq:06}.sig')],
+                 item['principal'], '-n', NAMESPACE, '-s', str(temp / 'entry.sig')],
                 input=data, capture_output=True, timeout=10, check=False)
             if check.returncode != 0:
                 raise ValueError('entry signature not verified independently')
         if (state['level'], state['budget'], state['closed'], state['entries']) != ('manual', 1, True, 6):
             raise ValueError('independent state disagrees with the steps')
         shown = json.loads(mira('show', str(session), '--json').stdout)
-        if shown != {'session_version': 1, 'session_id': state['id'], 'entries': 6, 'closed': True,
+        if shown != {'session_version': 1, 'entries': 6, 'closed': True,
                      'autonomy': 'manual', 'budget': 1, 'delegated_until': None}:
             raise ValueError('mira session show disagrees with the independent state')
-        if (temp / 'receipt').read_bytes() != (session / 'entries' / '000005.json').read_bytes():
-            raise ValueError('receipt is not the close entry')
+        if (temp / 'receipt').read_bytes() != (session / 'entries' / '000005.entry').read_bytes():
+            raise ValueError('receipt is not the close record')
         verified = mira('verify', str(session), '--allowed-signers', str(temp / 'signers'),
                         '--expect-close', str(temp / 'receipt'))
         if verified.returncode != 0:
             raise ValueError('mira session verify refused a valid session')
         # One changed byte must be refused by mira and by ssh-keygen alike.
-        path = session / 'entries' / '000001.json'
-        path.write_bytes(path.read_bytes().replace(b'visible', b'vis1ble'))
+        path = session / 'entries' / '000001.entry'
+        path.write_bytes(path.read_bytes().replace(b'visible', b'vis1ble', 1))
         if mira('verify', str(session), '--allowed-signers', str(temp / 'signers')).returncode != 1:
             raise ValueError('modified entry verified')
 

@@ -90,9 +90,10 @@ Status: design accepted ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.m
 - a signed, append-only log under the namespace `mira-session-v1@rmednitzer.github.io`
 - entries accepted only in their exact canonical bytes, by a strict flat parser
 - roles taken from the operator-signed header
-- each sequence number claimed by an exclusive hard link, after the pending signature has verified for the writing principal
+- each entry and its signature published together as one record by an exclusive hard link, after the pending signature has verified for the writing principal, so readers never see partial entries
 - notes with no control or bidirectional characters
-- a close receipt outside the session that `verify --expect-close` checks
+- a close receipt, which must be outside the session (resolved through links), that `verify --expect-close` checks
+- no session ID in any command output
 
 Only operator-side writers exist so far, so no agent containment is claimed yet. The broker, the collector key and agent requests are stage 1b. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.
 

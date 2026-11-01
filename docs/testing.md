@@ -168,7 +168,8 @@ Unit tests in `src/session.rs`:
 - every entry kind round-trips through its canonical bytes
 - the parser refuses non-canonical input: spacing, a missing newline, leading zeros, signs, exponents and fractions, quoted numbers, another version, an uppercase session ID, duplicate or extra keys, nested values, `\u` escapes above C0, `\/`, and missing fields
 - invalid directive field combinations are refused
-- notes refuse C0, DEL, C1, bidirectional characters and more than 1 KiB
+- notes refuse C0, DEL, C1, bidirectional characters and more than 1 KiB, also when reading a canonically encoded entry
+- records split into the entry line and an armored signature, refusing a missing or malformed signature
 - the state machine covers every directive, delegation expiry at its last covered entry, `stop`, roles (an agent directive or a collector question is refused), close counts, nothing after the close, the header only at entry 0 with three distinct valid principals, and `based_on` earlier than the entry in the same session
 
 `tests/session.rs` runs the real `ssh-keygen` with throwaway operator, agent and collector keys and an unlisted stranger key:
@@ -179,11 +180,12 @@ Unit tests in `src/session.rs`:
   - a changed byte
   - an entry re-signed by an unlisted key
   - an agent-signed operator directive
-  - a missing entry or signature
+  - a missing entry, or a record without its signature
   - a renamed entry
   - an unexpected file
   - a validly signed entry copied from another session
-- **Concurrency:** six concurrent writers get distinct, contiguous sequence numbers and leave no pending files.
+- **Concurrency:** while six writers append, repeated `show` calls always see a complete log. The writers get distinct, contiguous sequence numbers and leave no pending files, and files left by an interrupted writer block nothing.
+- **Receipts and output:** receipts are refused inside the session, directly or through a symbolic link, over an existing file, or in a missing directory, and the session stays open. No command prints the session ID.
 - **Refusals that write nothing:** a start with an unlisted key (nothing left behind); an existing directory, never reused or removed; the agent's key writing as the operator; and malformed invocations.
 
 `scripts/validate_session.py`:

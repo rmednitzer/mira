@@ -55,6 +55,30 @@ impl Dir {
         self.path("session")
     }
 
+    fn entries(&self) -> PathBuf {
+        self.session().join("entries")
+    }
+
+    fn entry(&self, seq: u64) -> PathBuf {
+        self.entries().join(format!("{seq:06}.entry"))
+    }
+
+    /// The entry line and the signature of one record.
+    fn split(&self, seq: u64) -> (String, Vec<u8>) {
+        let record = fs::read(self.entry(seq)).unwrap();
+        let end = record.iter().position(|byte| *byte == b'\n').unwrap() + 1;
+        (
+            String::from_utf8(record[..end].to_vec()).unwrap(),
+            record[end..].to_vec(),
+        )
+    }
+
+    fn write_record(&self, seq: u64, line: &str, signature: &[u8]) {
+        let mut record = line.as_bytes().to_vec();
+        record.extend_from_slice(signature);
+        fs::write(self.entry(seq), record).unwrap();
+    }
+
     fn mira(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_mira"))
             .args(args)
@@ -116,20 +140,22 @@ impl Dir {
         self.mira(&args)
     }
 
-    fn state(&self) -> String {
+    fn show(&self, json: bool) -> Output {
         let session = self.session();
-        let output = self.mira(&["session", "show", session.to_str().unwrap(), "--json"]);
+        let mut args = vec!["session", "show", session.to_str().unwrap()];
+        if json {
+            args.push("--json");
+        }
+        self.mira(&args)
+    }
+
+    fn state(&self) -> String {
+        let output = self.show(true);
         assert_eq!(output.status.code(), Some(0), "{output:?}");
         stdout(&output)
     }
 
-    fn entry(&self, seq: u64) -> PathBuf {
-        self.session()
-            .join("entries")
-            .join(format!("{seq:06}.json"))
-    }
-
-    fn raw_sign(&self, bytes: &[u8], key: &str, signature: &Path) {
+    fn raw_sign(&self, bytes: &[u8], key: &str) -> Vec<u8> {
         let output = Command::new("/usr/bin/ssh-keygen")
             .args(["-Y", "sign", "-f"])
             .arg(self.path(key))
@@ -145,8 +171,12 @@ impl Dir {
             })
             .unwrap();
         assert!(output.status.success());
-        let _ = fs::remove_file(signature);
-        fs::write(signature, output.stdout).unwrap();
+        output.stdout
+    }
+
+    fn session_id(&self) -> String {
+        let (line, _) = self.split(0);
+        line.split("\"session_id\":\"").nth(1).unwrap()[..64].to_owned()
     }
 }
 
@@ -178,14 +208,18 @@ fn a_session_records_operator_entries_and_verifies() {
     let dir = Dir::new();
     let started = dir.start();
     assert_eq!(started.status.code(), Some(0), "{started:?}");
-    assert!(stdout(&started).starts_with("MIRA session: started "));
+    assert_eq!(
+        stdout(&started),
+        format!("MIRA session: started at {}\n", dir.session().display())
+    );
     use std::os::unix::fs::PermissionsExt;
     let mode = fs::metadata(dir.session()).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o700);
-    let header = fs::read_to_string(dir.entry(0)).unwrap();
+    let (header, signature) = dir.split(0);
     assert!(header.starts_with("{\"session_version\":1,\"session_id\":\""));
     assert!(header.contains("\"kind\":\"header\",\"principal\":\"operator\",\"based_on\":null,\"operator\":\"operator\",\"agent\":\"agent\",\"collector\":\"collector\",\"separation\":\"same_user\",\"autonomy\":\"assisted\",\"budget\":5,"));
     assert!(header.ends_with("\"note\":\"Why did \\\"web\\\" restart? \\\\ check\"}\n"));
+    assert!(signature.starts_with(b"-----BEGIN SSH SIGNATURE-----\n"));
     for (sub, extra) in [
         ("ask", vec!["--text", "Is the journal visible?"]),
         ("direct", vec!["--budget", "2", "--text", "keep it short"]),
@@ -194,29 +228,66 @@ fn a_session_records_operator_entries_and_verifies() {
         let output = dir.write(sub, "operator", &extra);
         assert_eq!(output.status.code(), Some(0), "{sub} {output:?}");
     }
-    let state = dir.state();
-    assert!(state.contains("\"entries\":4,\"closed\":false,\"autonomy\":\"advisory\",\"budget\":2,\"delegated_until\":null}"), "{state}");
+    assert_eq!(
+        dir.state(),
+        "{\"session_version\":1,\"entries\":4,\"closed\":false,\"autonomy\":\"advisory\",\"budget\":2,\"delegated_until\":null}\n"
+    );
     let verified = dir.verify(None);
-    assert_eq!(verified.status.code(), Some(0), "{verified:?}");
-    assert!(stdout(&verified).ends_with(" entries 4 open\n"));
-    // Each entry verifies independently with ssh-keygen under the session namespace.
+    assert_eq!(
+        stdout(&verified),
+        "MIRA session: verified entries 4 open\n",
+        "{verified:?}"
+    );
+    // Each record's entry line verifies independently with ssh-keygen.
+    let (line, signature) = dir.split(1);
+    let signature_file = dir.path("one.sig");
+    fs::write(&signature_file, signature).unwrap();
     let independent = Command::new("/usr/bin/ssh-keygen")
         .args(["-Y", "verify", "-f"])
         .arg(dir.path("signers"))
         .args(["-I", "operator", "-n", NAMESPACE, "-s"])
-        .arg(dir.session().join("entries/000001.sig"))
-        .stdin(fs::File::open(dir.entry(1)).unwrap())
+        .arg(&signature_file)
+        .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .status()
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child.stdin.take().unwrap().write_all(line.as_bytes())?;
+            child.wait()
+        })
         .unwrap();
     assert!(independent.success());
-    let session = dir.session();
-    let shown = dir.mira(&["session", "show", session.to_str().unwrap()]);
-    let text = stdout(&shown);
+    let text = stdout(&dir.show(false));
+    assert!(text.starts_with("MIRA session\nautonomy advisory budget 2 entries 4 open\n"));
     assert!(text.contains("000000 operator header operator=operator agent=agent collector=collector separation=same_user: Why did \"web\" restart? \\ check\n"), "{text}");
     assert!(text.contains("000002 operator directive budget 2: keep it short\n"));
     assert!(text.ends_with("signatures not checked here; run mira session verify\n"));
+}
+
+#[test]
+fn the_session_id_is_never_printed() {
+    let dir = Dir::new();
+    let started = dir.start();
+    let id = dir.session_id();
+    let receipt = dir.path("receipt");
+    let outputs = [
+        started,
+        dir.write("ask", "operator", &["--text", "q"]),
+        dir.show(false),
+        dir.show(true),
+        dir.write(
+            "close",
+            "operator",
+            &["--conclusion", "c", "--receipt", receipt.to_str().unwrap()],
+        ),
+        dir.verify(Some(&receipt)),
+    ];
+    for output in outputs {
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        assert!(!stdout(&output).contains(&id), "{output:?}");
+        assert!(!String::from_utf8_lossy(&output.stderr).contains(&id));
+    }
 }
 
 #[test]
@@ -283,7 +354,7 @@ fn a_closed_session_refuses_appends_and_its_receipt_detects_truncation() {
         dir.write("ask", "operator", &["--text", "q"]).status.code(),
         Some(0)
     );
-    let receipt = dir.path("receipt.json");
+    let receipt = dir.path("receipt.entry");
     let closed = dir.write(
         "close",
         "operator",
@@ -310,32 +381,50 @@ fn a_closed_session_refuses_appends_and_its_receipt_detects_truncation() {
             "MIRA session: refused (session is closed)\n"
         );
     }
-    // Removing the close entry leaves a valid-looking open session...
+    // Removing the close record leaves a valid-looking open session...
     fs::remove_file(dir.entry(2)).unwrap();
-    fs::remove_file(dir.session().join("entries/000002.sig")).unwrap();
     assert!(dir.verify(None).status.success());
     // ...which only the external receipt exposes.
     not_verified(
         &dir.verify(Some(&receipt)),
         "close receipt does not match the session",
     );
-    // An existing receipt path is refused before anything is written.
+    // A receipt from another session never matches.
     let other = Dir::new();
     assert_eq!(other.start().status.code(), Some(0));
-    let taken = other.path("taken.json");
-    fs::write(&taken, "x").unwrap();
-    let refused = other.write(
-        "close",
-        "operator",
-        &["--conclusion", "c", "--receipt", taken.to_str().unwrap()],
-    );
-    assert_eq!(refused.status.code(), Some(2));
-    assert!(other.state().contains("\"closed\":false"));
-    // A receipt from another session never matches.
     not_verified(
         &other.verify(Some(&receipt)),
         "close receipt does not match the session",
     );
+}
+
+#[test]
+fn receipts_are_refused_inside_the_session_or_over_existing_files() {
+    let dir = Dir::new();
+    assert_eq!(dir.start().status.code(), Some(0));
+    let session = dir.session();
+    // A symbolic link outside the session that resolves into it.
+    std::os::unix::fs::symlink(&session, dir.path("alias")).unwrap();
+    let taken = dir.path("taken");
+    fs::write(&taken, "x").unwrap();
+    for receipt in [
+        session.join("receipt"),
+        session.join("entries").join("receipt"),
+        dir.path("alias").join("entries").join("receipt"),
+        taken.clone(),
+        dir.path("missing-directory").join("receipt"),
+    ] {
+        let refused = dir.write(
+            "close",
+            "operator",
+            &["--conclusion", "c", "--receipt", receipt.to_str().unwrap()],
+        );
+        assert_eq!(refused.status.code(), Some(2), "{receipt:?} {refused:?}");
+        assert!(refused.stdout.is_empty());
+        assert!(dir.state().contains("\"closed\":false"), "{receipt:?}");
+    }
+    assert!(dir.verify(None).status.success());
+    assert!(dir.show(false).status.success());
 }
 
 #[test]
@@ -350,20 +439,16 @@ fn tampering_gaps_foreign_entries_and_wrong_roles_are_not_verified() {
             Some(0)
         );
     }
-    let entries = dir.session().join("entries");
+    let entries = dir.entries();
+    let (line, signature) = dir.split(2);
     // One changed byte in a note.
-    let original = fs::read_to_string(dir.entry(2)).unwrap();
-    fs::write(dir.entry(2), original.replace("\"two\"", "\"tw0\"")).unwrap();
+    dir.write_record(2, &line.replace("\"two\"", "\"tw0\""), &signature);
     not_verified(&dir.verify(None), "signature of entry 2 not verified");
-    fs::write(dir.entry(2), &original).unwrap();
-    assert!(dir.verify(None).status.success());
-    // An entry signed by a key not listed for its principal.
-    let saved = fs::read(entries.join("000002.sig")).unwrap();
-    dir.raw_sign(original.as_bytes(), "stranger", &entries.join("000002.sig"));
+    // An entry re-signed by a key not listed for its principal.
+    dir.write_record(2, &line, &dir.raw_sign(line.as_bytes(), "stranger"));
     not_verified(&dir.verify(None), "signature of entry 2 not verified");
-    fs::write(entries.join("000002.sig"), &saved).unwrap();
     // An operator-kind entry written and validly signed by the agent.
-    let directive = original
+    let directive = line
         .replace(
             "\"kind\":\"question\",\"principal\":\"operator\"",
             "\"kind\":\"directive\",\"principal\":\"agent\"",
@@ -372,38 +457,34 @@ fn tampering_gaps_foreign_entries_and_wrong_roles_are_not_verified() {
             "\"note\":",
             "\"directive\":\"stop\",\"level\":null,\"budget\":null,\"until_seq\":null,\"note\":",
         );
-    fs::write(dir.entry(2), &directive).unwrap();
-    dir.raw_sign(directive.as_bytes(), "agent", &entries.join("000002.sig"));
+    dir.write_record(2, &directive, &dir.raw_sign(directive.as_bytes(), "agent"));
     not_verified(
         &dir.verify(None),
         "entry 2 written by a principal without that role",
     );
-    fs::write(dir.entry(2), &original).unwrap();
-    fs::write(entries.join("000002.sig"), &saved).unwrap();
-    // A missing middle entry.
-    fs::rename(dir.entry(2), dir.path("held.json")).unwrap();
+    dir.write_record(2, &line, &signature);
+    assert!(dir.verify(None).status.success());
+    // A record without its signature.
+    dir.write_record(2, &line, b"");
+    not_verified(&dir.verify(None), "malformed entry 2");
+    dir.write_record(2, &line, &signature);
+    // A missing middle record.
+    fs::rename(dir.entry(2), dir.path("held")).unwrap();
     not_verified(&dir.verify(None), "gap at entry 2");
-    fs::rename(dir.path("held.json"), dir.entry(2)).unwrap();
-    // A missing signature.
-    fs::rename(entries.join("000003.sig"), dir.path("held.sig")).unwrap();
-    not_verified(&dir.verify(None), "gap at entry 3");
-    fs::rename(dir.path("held.sig"), entries.join("000003.sig")).unwrap();
-    // A file renamed to another position.
-    fs::rename(dir.entry(3), dir.entry(4)).unwrap();
-    fs::rename(entries.join("000003.sig"), entries.join("000004.sig")).unwrap();
-    not_verified(&dir.verify(None), "gap at entry 3");
-    fs::rename(dir.entry(4), dir.entry(3)).unwrap();
-    fs::rename(entries.join("000004.sig"), entries.join("000003.sig")).unwrap();
+    // A record renamed to another position.
+    fs::rename(dir.path("held"), dir.entry(5)).unwrap();
+    not_verified(&dir.verify(None), "gap at entry 2");
+    fs::rename(dir.entry(5), dir.entry(2)).unwrap();
     // An unexpected file.
     fs::write(entries.join("notes.txt"), "x").unwrap();
     not_verified(&dir.verify(None), "unexpected file in the session log");
     fs::remove_file(entries.join("notes.txt")).unwrap();
-    // A validly signed entry copied in from another session.
+    // A validly signed record copied in from another session.
     let other = Dir::new();
     // Same operator key pair in both sessions; ssh-keygen reads KEY.pub too.
-    fs::copy(dir.path("operator"), other.path("operator")).unwrap();
-    fs::copy(dir.path("operator.pub"), other.path("operator.pub")).unwrap();
-    fs::copy(dir.path("signers"), other.path("signers")).unwrap();
+    for name in ["operator", "operator.pub", "signers"] {
+        fs::copy(dir.path(name), other.path(name)).unwrap();
+    }
     assert_eq!(other.start().status.code(), Some(0));
     assert_eq!(
         other
@@ -413,27 +494,22 @@ fn tampering_gaps_foreign_entries_and_wrong_roles_are_not_verified() {
         Some(0)
     );
     fs::copy(other.entry(1), dir.entry(4)).unwrap();
-    fs::copy(
-        other.session().join("entries/000001.sig"),
-        entries.join("000004.sig"),
-    )
-    .unwrap();
-    let replayed = dir.verify(None);
-    assert_eq!(replayed.status.code(), Some(1));
-    assert!(stdout(&replayed).contains("entry 4"), "{replayed:?}");
+    not_verified(
+        &dir.verify(None),
+        "entry 4 belongs to another session or position",
+    );
     fs::remove_file(dir.entry(4)).unwrap();
-    fs::remove_file(entries.join("000004.sig")).unwrap();
     assert!(dir.verify(None).status.success());
 }
 
 #[test]
-fn concurrent_writers_take_distinct_sequence_numbers() {
+fn readers_never_see_partial_entries_while_writers_append() {
     let dir = Dir::new();
     assert_eq!(dir.start().status.code(), Some(0));
     let session = dir.session();
     let signers = dir.path("signers");
     let key = dir.path("operator");
-    let children: Vec<_> = (0..6)
+    let mut writers: Vec<_> = (0..6)
         .map(|index| {
             Command::new(env!("CARGO_BIN_EXE_mira"))
                 .args(["session", "ask"])
@@ -448,18 +524,51 @@ fn concurrent_writers_take_distinct_sequence_numbers() {
                 .unwrap()
         })
         .collect();
-    for mut child in children {
-        assert!(child.wait().unwrap().success());
+    // Readers run throughout; every one must see a complete, valid log.
+    let mut reads = 0;
+    while !writers.is_empty() {
+        let shown = dir.show(true);
+        assert_eq!(shown.status.code(), Some(0), "{shown:?}");
+        reads += 1;
+        writers.retain_mut(|child| match child.try_wait().unwrap() {
+            Some(status) => {
+                assert!(status.success());
+                false
+            }
+            None => true,
+        });
     }
-    let verified = dir.verify(None);
-    assert!(verified.status.success(), "{verified:?}");
-    assert!(stdout(&verified).ends_with(" entries 7 open\n"));
-    let leftovers: Vec<_> = fs::read_dir(session.join("entries"))
+    assert!(reads > 0);
+    assert_eq!(
+        stdout(&dir.verify(None)),
+        "MIRA session: verified entries 7 open\n"
+    );
+    let leftovers: Vec<_> = fs::read_dir(dir.entries())
         .unwrap()
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
         .filter(|name| name.starts_with(".pending-"))
         .collect();
     assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
+fn files_left_by_an_interrupted_writer_never_block_the_session() {
+    let dir = Dir::new();
+    assert_eq!(dir.start().status.code(), Some(0));
+    // A writer killed before publishing leaves only pending files.
+    fs::write(dir.entries().join(".pending-1-0-0.entry"), "partial").unwrap();
+    fs::write(dir.entries().join(".pending-1-0-0.sig"), "partial").unwrap();
+    assert!(dir.show(true).status.success());
+    assert_eq!(
+        dir.write("ask", "operator", &["--text", "after"])
+            .status
+            .code(),
+        Some(0)
+    );
+    assert_eq!(
+        stdout(&dir.verify(None)),
+        "MIRA session: verified entries 2 open\n"
+    );
 }
 
 #[test]
@@ -487,9 +596,8 @@ fn wrong_keys_and_bad_invocations_write_nothing() {
     );
     assert_eq!(dir.start().status.code(), Some(0));
     // An existing directory is never reused or removed.
-    let existing = dir.start();
-    assert_eq!(existing.status.code(), Some(4));
-    assert!(dir.session().join("entries/000000.json").is_file());
+    assert_eq!(dir.start().status.code(), Some(4));
+    assert!(dir.entry(0).is_file());
     // The agent's key cannot write as the operator.
     assert_eq!(
         dir.write("ask", "agent", &["--text", "q"]).status.code(),
@@ -568,6 +676,5 @@ fn wrong_keys_and_bad_invocations_write_nothing() {
     // A directory that is not a session is invalid, not a crash.
     let session = other.session();
     fs::create_dir(&session).unwrap();
-    let shown = other.mira(&["session", "show", session.to_str().unwrap()]);
-    assert_eq!(shown.status.code(), Some(1));
+    assert_eq!(other.show(false).status.code(), Some(1));
 }
