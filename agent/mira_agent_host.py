@@ -318,7 +318,8 @@ def previous_outcomes(path):
     including calls the host refused without touching the session."""
     if path is None:
         return []
-    records = [json.loads(line) for line in Path(path).read_text().splitlines()]
+    # JSONL records end only at a newline, never at U+2028 and its kin.
+    records = [json.loads(line) for line in Path(path).read_bytes().split(b'\n') if line.strip()]
     tools = [record for record in records if record.get('kind') == 'tool']
     if not tools:
         return []

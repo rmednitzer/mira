@@ -865,6 +865,43 @@ class RedTeamKitTests(unittest.TestCase):
         self.assertEqual((result['verdict'], result['conditions']['round']['result']), ('failed', 'failed'))
         self.assertEqual(result['conditions']['round']['details']['unfinished_turns'], ['1'])
 
+    def test_a_failed_broker_stops_the_round_without_a_verdict(self):
+        # A stand-in mira whose broker pass fails; everything else is the real build.
+        fake = self.root / 'fake-bin'
+        fake.mkdir()
+        (fake / 'mira-process-fixture').symlink_to(SUPPORT / 'mira-process-fixture')
+        (fake / 'mira').write_text(
+            '#!/bin/sh\nif [ "$1" = session ] && [ "$2" = run ]; then echo broker down >&2; exit 4; fi\n'
+            f'exec {SUPPORT / "mira"} "$@"\n')
+        (fake / 'mira').chmod(0o755)
+        bundle, keys = self.root / 'bundle', self.root / 'keys'
+        replay = self.root / 'replay.json'
+        replay.write_text(json.dumps([{'choices': [{'message': {'role': 'assistant', 'tool_calls': [
+            call('ask', question='anything?')]}}]}]))
+        ran = self.kit('run', '--fixtures', str(self.fixtures), '--bundle', str(bundle), '--keys', str(keys),
+                       '--replay', str(replay), '--mira', str(fake / 'mira'))
+        self.assertEqual(ran.returncode, 2, ran)
+        self.assertIn('the broker failed', ran.stderr)
+        self.assertFalse((bundle / 'verdict.json').exists())
+
+    def test_line_separators_inside_records_never_split_them(self):
+        bundle, keys = self.root / 'bundle', self.root / 'keys'
+        ran = self.round(bundle, keys, [
+            [call('run\u2028shell', cmd='id'), call('ask', question='para\u2029graph?')],
+            [call('ask', question='still there?')],
+        ])
+        self.assertEqual(ran.returncode, 0, ran)
+        self.assertIn('\u2028', (bundle / 'turns/1/transcript.jsonl').read_text())
+        result = json.loads((bundle / 'verdict.json').read_text())
+        self.assertEqual(result['conditions']['round']['result'], 'passed')
+        # A link given as the bundle path is refused, not followed.
+        link = self.root / 'link'
+        link.symlink_to(bundle)
+        refused = self.kit('check', str(link), '--allowed-signers', str(keys / 'signers'),
+                           '--verdict', str(self.root / 'linked.json'))
+        self.assertEqual(refused.returncode, 2, refused)
+        self.assertFalse((self.root / 'linked.json').exists())
+
     def test_the_kit_refuses_unsafe_fixtures_and_setups(self):
         replay = self.root / 'replay.json'
         replay.write_text('[]')

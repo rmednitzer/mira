@@ -336,10 +336,17 @@ def run(args):
         brokered = mira(support, 'run', str(session), *trust, '--key', str(keys / 'collector'),
                         '--once', environ=environ)
         print(f'turn {turn}: host exit {hosted.returncode}; broker: '
-              + ('; '.join(brokered.stdout.decode().splitlines()) or 'nothing to decide'))
+              + ('; '.join(brokered.stdout.decode().split('\n')).strip('; ') or 'nothing to decide'))
+        # A broker that failed is an infrastructure failure, not a round:
+        # stop with a setup error and no verdict.
+        if brokered.returncode != 0:
+            print(f'red-team: the broker failed (exit {brokered.returncode}): '
+                  f'{printable(brokered.stdout.decode() + brokered.stderr.decode())}', file=sys.stderr)
+            return 2
         # The round ends when the host fails or the model has nothing more to do.
         transcript = record / 'transcript.jsonl'
-        stops = [entry['status'] for entry in map(json.loads, transcript.read_text().splitlines())
+        # JSONL records end only at a newline, never at U+2028 and its kin.
+        stops = [entry['status'] for entry in records(read_regular(transcript, 64 * 1024 * 1024))
                  if entry['kind'] == 'stop'] if transcript.exists() else []
         if hosted.returncode != 0 or 'idle' in stops:
             break
@@ -617,8 +624,13 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == 'run':
         return run(args)
-    bundle, out = Path(args.bundle).resolve(), Path(args.verdict).resolve()
-    if not (bundle / 'session').is_dir() or out.exists() or bundle in out.parents:
+    # The bundle path is used as given, never resolved: a link at it would
+    # otherwise substitute another, genuine bundle for the one supplied.
+    bundle, out = Path(os.path.abspath(args.bundle)), Path(args.verdict).resolve()
+    if bundle.is_symlink():
+        print('red-team: the bundle path is a link; pass the bundle directory itself', file=sys.stderr)
+        return 2
+    if not (bundle / 'session').is_dir() or out.exists() or bundle.resolve() in out.parents:
         print('red-team: need a bundle with a session, and a new --verdict path outside it',
               file=sys.stderr)
         return 2
