@@ -482,7 +482,12 @@ fn the_operator_acts_directly_and_the_agent_cannot_sign_results() {
         "{refused:?}"
     );
     assert!(!dir.session().join("documents/000003.json").exists());
-    // The agent's key cannot stand in for the collector's.
+    // The agent's key cannot stand in for the collector's, and trying writes
+    // nothing: no action entry, no document.
+    let before = dir.state();
+    let documents_before = fs::read_dir(dir.session().join("documents"))
+        .unwrap()
+        .count();
     let agent = dir.path("agent");
     let forged = dir.command(
         "act",
@@ -497,6 +502,13 @@ fn the_operator_acts_directly_and_the_agent_cannot_sign_results() {
         ],
     );
     assert_eq!(forged.status.code(), Some(4), "{forged:?}");
+    assert_eq!(dir.state(), before);
+    assert_eq!(
+        fs::read_dir(dir.session().join("documents"))
+            .unwrap()
+            .count(),
+        documents_before
+    );
     assert_eq!(
         dir.command("run", "agent", &["--once"]).status.code(),
         Some(4)

@@ -671,6 +671,9 @@ pub fn act(
     if session_capability::plan(capability, arguments).is_none() {
         return Err(Problem::InvalidDirective);
     }
+    // A wrong collector key must fail before anything is written, not after
+    // the action is recorded and run.
+    check_key(dir, collector)?;
     let action = session::append(dir, operator, |state| {
         Ok((
             Body::Action {
