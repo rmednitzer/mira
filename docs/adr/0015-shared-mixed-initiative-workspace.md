@@ -1,6 +1,6 @@
 # ADR 0015: shared mixed-initiative investigation workspace
 
-Status: **Accepted**, 2026-11-01 (proposed and reviewed the same day). Not yet implemented.
+Status: **Accepted**, 2026-11-01 (proposed and reviewed the same day). **Amended** the same day with the validated [interfaces](#interfaces-amended-2026-11-01): a stdio MCP adapter for the agent; tmux only as an optional operator layout. Not yet implemented.
 
 ## Context
 
@@ -168,6 +168,33 @@ The broker refuses a checkable claim that its citations do not support. `show` a
 - hosted models see synthetic or public sessions only (existing policy)
 - the agent never gets a state-changing or communicating capability
 
+### Interfaces (amended 2026-11-01)
+
+The workspace is the session log plus the broker, not any terminal or protocol. Two interfaces sit on top of it. Both were validated against the sources in the [research basis](../research/mixed-initiative.md#interfaces-mcp-and-terminal-multiplexers).
+
+**Agent interface: a thin MCP adapter (stage 2).** `mira-agent-mcp` is a separate optional binary, outside the `mira` CLI package and its trust core. A model client launches it as a stdio MCP server under the agent's OS user. It turns MCP tool calls into signed requests in the session inbox and serves read-only resources. It does nothing else.
+- **Transport:** stdio only, following MCP's stdio binding. It opens no socket, and Streamable HTTP is not offered.
+- **Resources:** read-only views of the session's entries and collector-signed documents.
+- **Tools,** mapped one-to-one to request kinds:
+  - `request_action`: a capability from the closed list, with validated arguments
+  - `post_finding`: a claim from the closed vocabulary, with citations and confidence
+  - `ask`
+  - `propose`
+
+  There is no general tool to run `mira` or a command, and none will be added.
+- **Authority:** only the agent's OS user and signing key. Under MCP's stdio rule, credentials come from the environment. Session paths and identifiers are names, never capabilities. The broker re-checks everything, so a compromised, poisoned or replaced adapter can at worst submit requests that get refused.
+- **Tool definitions:** fixed and versioned, shipped with the adapter, and their hash recorded in the session header, because MCP clients must treat tool annotations as untrusted. Descriptions contain no instructions beyond describing the tool.
+- **The model client in a MIRA session connects only to this adapter.** Any other MCP server or tool, such as a shell, a file reader, web fetch or messaging, would add an external channel or a way to change state, breaking the Rule of Two. It would also allow cross-server shadowing. The stage 2 harness is a MIRA-provided client host that enforces this. A third-party client must be configured the same way, which MIRA documents but cannot enforce.
+- **Human in the loop:** MCP recommends confirmation prompts for tool calls. Here the broker's autonomy level and budget play that role for read-only requests, and any proposal waits for an operator decision. A client's own confirmation prompts are welcome but not relied on.
+
+**Operator layout: tmux is optional.** One possible layout runs the broker, a following `mira session show` and the operator's shell in separate tmux panes. That is a convenience with no role in the trust model. tmux is **never** the agent's interface:
+- a writable client can type into the operator's shell
+- a read-only client sees everything the operator types
+- keystrokes carry no principal
+- the tmux manual warns against giving untrusted users access, even read-only
+
+The tmux server must stay private to the operator's user.
+
 ### Operator interface
 
 `mira session` subcommands. Operator side: `start`, `run` (the broker), `act`, `note`, `ask`, `decide`, `direct`, `close [--receipt PATH]`, `show [--json]`, `pending` and `verify [--expect-close PATH]`. Agent side: `request`. `show` is the shared view: timeline, pending questions and proposals, findings with check labels, current autonomy and budget. The CLI is the first interface. Registered adaptive views remain Phase 4.
@@ -178,6 +205,7 @@ The broker refuses a checkable claim that its citations do not support. `show` a
 - **Forged results.** An agent cannot produce a result that counts as evidence. It holds no collector key, cannot write the log or documents under `separate_user`, and cannot make the broker sign anything it did not collect itself. A modified `mira` on the agent side gains nothing, because nothing it writes is trusted.
 - **Prompt injection.** Host strings reach the model through documents. They can steer the agent's text and requests, but they cannot widen its capabilities or bypass the broker's checks. The design does not claim the agent's reasoning is uncorrupted, only that corruption cannot act or pose as checked.
 - **Same-user sessions.** Under `same_user`, the agent shares the operator's account, can write the log and may reach the keys. Signatures then make tampering detectable but not preventable, and such a session is labelled "not separated". It is limited to trusted scripted agents.
+- **MCP adapter.** It is untrusted, like the agent. Its tool definitions are hashed into the header, and its requests are re-checked by the broker. A poisoned client configuration with additional servers breaks the Rule of Two, so the MIRA client host refuses it. A third-party client must be configured the same way.
 - **Operator keys.** The operator's key should be passphrase-protected in `ssh-agent` with confirmation, or on a FIDO2 token. The collector key is unattended by design, so it must be readable only by the operator's user and used only by the broker.
 - **Over-reliance.** It is mitigated (closed claims, check labels, inference labels, cheap citations, optional forcing) but not eliminated, as the studies report. Stage 3 measures it.
 - **Disclosure.** A session holds host evidence and may hold the boot ID under delegation. It is private by default (mode 0700, or a dedicated group shared only with the agent user) and must not go to hosted services.
@@ -205,7 +233,11 @@ Independent tooling: a `session-v1` schema and a validator that recomputes auton
 
 ### Stage 2: local model harness
 
-Optional tooling outside the CLI package, driving the same subcommands, with full model-I/O recording. Utility and security are measured together, in the style of AgentDojo:
+Optional tooling outside the CLI package: the `mira-agent-mcp` stdio adapter and a MIRA-provided client host that connects a local model to that adapter and nothing else, with full model-I/O recording. Acceptance adds:
+- tool definitions whose hash matches the header
+- a refused request for anything outside the request kinds
+- a client host that refuses to start with any other MCP server configured
+- a tool-poisoning and rug-pull fixture showing that a changed adapter description is detected Utility and security are measured together, in the style of AgentDojo:
 - **Fixtures:** hostile-content fixtures put injection strings in journal unit names, dpkg versions and service states.
 - **Adaptive attacks:** the tests use adaptive, human-red-team attacks, not only static strings, because adaptive attacks bypass published defenses (Nasr et al. 2025).
 - **Pass condition:** under any attack, the agent never exceeds its capabilities, never gets a result recorded that the collector did not produce, and never posts a false checked claim.

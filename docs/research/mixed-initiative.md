@@ -192,6 +192,39 @@ MIRA rules:
 - Every entry carries provenance (principal, signature, sequence).
 - Injected content can at worst make the agent post a wrong but labelled claim, or propose something the operator must approve. It cannot widen the agent's capabilities.
 
+## Interfaces: MCP and terminal multiplexers
+
+**Model Context Protocol specification, revision 2026-07-28** ([versioning](https://modelcontextprotocol.io/specification/versioning), [transports](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports), [tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools), [authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)). Standard, checked on 2026-11-01; earlier text was compared with revision 2025-06-18.
+- **Transports:** two standard ones, stdio and Streamable HTTP. stdio is "newline-delimited messages over the standard streams of a client-launched subprocess".
+- **No sessions:** there is no protocol-level session, and servers do not initiate requests.
+- **Handles:** under the non-normative stateful-tools guidance, an identifier passed between calls "is a name, not a capability". Authorization must be checked on every call.
+- **Authorization:** the specification covers HTTP transports only. stdio implementations "SHOULD NOT follow this specification, and instead retrieve credentials from the environment".
+- **Tool requirements:**
+  - clients "MUST consider tool annotations to be untrusted unless they come from trusted servers"
+  - there "SHOULD always be a human in the loop with the ability to deny tool invocations"
+  - servers "MUST validate all tool inputs, implement proper access controls, rate limit tool invocations, sanitize tool outputs"
+  - clients should show tool inputs, validate results, time out calls and log usage
+
+MCP rules for MIRA:
+- MCP is a transport, not a trust boundary: it supplies no principal identity, signing or authorization of its own.
+- MIRA's adapter uses stdio only, so it opens no socket.
+- The adapter's authority comes only from the agent's OS user and signing key.
+- Session paths and identifiers passed through MCP are names, never capabilities.
+
+**Invariant Labs, *MCP Security Notification: Tool Poisoning Attacks*, 1 April 2025** ([post](https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks)). Demonstration. A malicious server's tool descriptions carry instructions that are invisible to the user but followed by the model. Its example `add` tool exfiltrated `~/.ssh/id_rsa` through a parameter. A server can change descriptions after approval (a "rug pull"). A malicious server's description can redirect how the agent uses a different, trusted server ("cross-server shadowing"). Mitigations: show descriptions, pin and hash tool definitions, and enforce boundaries between servers.
+
+**Hou, Zhao, Wang and Wang, *Model Context Protocol (MCP): Landscape, Security Threats, and Future Research Directions*, arXiv:2503.23278, 2025** ([paper](https://arxiv.org/abs/2503.23278)). Survey with a threat taxonomy across the server lifecycle and four attacker types: malicious developers, external attackers, malicious users and security flaws.
+
+**Radosevich and Halloran, *MCP Safety Audit: LLMs with the Model Context Protocol Allow Major Security Exploits*, arXiv:2504.03767, 2025** ([paper](https://arxiv.org/abs/2504.03767)) (*empirical*). Leading models could be coerced through MCP tools into malicious code execution, remote access and credential theft. Testing guardrails directly can give a false sense of security.
+
+MIRA rules from the MCP security work:
+- The adapter's tool definitions are fixed, versioned and shipped with MIRA, and their hash is recorded in the session.
+- The model client in a MIRA session connects only to MIRA's adapter. Any other MCP server or tool would give the agent an external channel or a way to change state, breaking the Rule of Two, and would open a path for cross-server shadowing.
+
+**tmux 3.6 manual page, `server-access`** (checked on the development host). Every client of a tmux server shares its panes, with full keyboard input unless made read-only. By default "the access list is empty and tmux creates sockets with file system permissions preventing access by any user other than the owner (and root)". The owner and root "are always permitted access". The manual warns: "Great care should be taken not to allow access to untrusted users even read-only."
+
+MIRA rule: tmux is never the agent's interface. A writable client can type into the operator's shell, which is a shell capability by another name. Even a read-only client sees everything the operator types. Keystrokes carry no principal and cannot be signed. tmux remains a convenient layout for the operator's own panes.
+
 ## AI in incident diagnosis
 
 **Chen et al., *Automatic Root Cause Analysis via Large Language Models for Cloud Incidents (RCACopilot)*, EuroSys 2024** ([paper](https://arxiv.org/abs/2305.15778)) (*empirical*, one year of Microsoft incidents). A system that collects diagnostics and has an LLM predict a root-cause category reached about 0.77 micro-F1. Useful, but wrong roughly a quarter of the time, in a setting with rich, curated handlers.

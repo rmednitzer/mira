@@ -96,6 +96,8 @@ Status: design accepted ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.m
 | Over-reliance on persuasive or wrong agent output | Closed claim vocabulary; checkable claims verified at append time; inference labelled with confidence; bounded, escaped, unchecked notes; optional forcing; measured in stage 3 |
 | Session tampering (deleting entries, removing the close, reading keys) | `separate_user`, required for model agents, makes the log unwritable by the agent. Signatures and sequence numbers detect modification, replay and gaps. An external close receipt detects truncation or a removed close. `same_user` sessions are labelled "not separated" and limited to trusted scripted agents |
 | Host evidence leaking to a hosted model | Real sessions use local models only; hosted models see synthetic or public sessions only; `mira` itself never calls a model |
+| MCP tool poisoning, rug pulls or cross-server shadowing | Agent access goes through a stdio-only adapter whose tool definitions are fixed, versioned and hashed into the session header. The MIRA client host connects the model to that adapter only, because any additional server could add an external channel. The broker re-checks every request |
+| tmux used as a shared agent terminal | Never an agent interface: a writable client types into the operator's shell, a read-only client sees everything. The tmux server stays private to the operator's user |
 
 These are design hypotheses, not verified controls.
 
