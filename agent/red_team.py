@@ -81,6 +81,7 @@ MAX_BUNDLE_FILES = 20000
 MAX_BUNDLE_DEPTH = 8
 # Transcript records are read one at a time within these limits, so a
 # supplied transcript cannot make the check hold millions of lines.
+CHUNK = 1024 * 1024
 MAX_RECORDS = 10000
 MAX_RECORD_BYTES = 8 * 1024 * 1024
 MAX_BUNDLE_BYTES = 512 * 1024 * 1024
@@ -151,10 +152,30 @@ def read_regular(path, limit, dir_fd=None):
     with os.fdopen(descriptor, 'rb') as file:
         if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
             raise ValueError(f'{printable(Path(path).name)} is not a regular file')
-        data = file.read(limit + 1)
-    if len(data) > limit:
-        raise ValueError(f'{printable(Path(path).name)} is too large')
-    return data
+        # Fixed-size chunks: never ask for the whole allowance at once.
+        chunks, total = [], 0
+        while chunk := file.read(min(CHUNK, limit + 1 - total)):
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > limit:
+                raise ValueError(f'{printable(Path(path).name)} is too large')
+    return b''.join(chunks)
+
+
+def open_directory(path):
+    """An absolute directory path, opened one component at a time from `/`
+    without following a link at any of them, so no component can redirect
+    the check to another bundle."""
+    descriptor = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in Path(path).parts[1:]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+    except OSError:
+        os.close(descriptor)
+        raise ValueError(f'{printable(path)}: every component must be a real directory, not a link')
+    return descriptor
 
 
 def bounded_names(directory, limit):
@@ -229,7 +250,7 @@ def private_copy(bundle, destination):
             else:
                 raise ValueError(f'{printable(name)} is a link or special file')
 
-    root = os.open(bundle, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    root = open_directory(os.path.abspath(bundle))
     try:
         copy(root, destination, 0)
     finally:

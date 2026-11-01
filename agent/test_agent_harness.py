@@ -894,13 +894,24 @@ class RedTeamKitTests(unittest.TestCase):
         self.assertIn('\u2028', (bundle / 'turns/1/transcript.jsonl').read_text())
         result = json.loads((bundle / 'verdict.json').read_text())
         self.assertEqual(result['conditions']['round']['result'], 'passed')
-        # A link given as the bundle path is refused, not followed.
+        # A link anywhere in the bundle path, last component or earlier, is refused.
         link = self.root / 'link'
         link.symlink_to(bundle)
-        refused = self.kit('check', str(link), '--allowed-signers', str(keys / 'signers'),
-                           '--verdict', str(self.root / 'linked.json'))
-        self.assertEqual(refused.returncode, 2, refused)
-        self.assertFalse((self.root / 'linked.json').exists())
+        middle = self.root / 'middle'
+        middle.symlink_to(self.root)
+        for path, out in ((link, 'linked.json'), (middle / 'bundle', 'middle.json')):
+            refused = self.kit('check', str(path), '--allowed-signers', str(keys / 'signers'),
+                               '--verdict', str(self.root / out))
+            self.assertEqual(refused.returncode, 2, (path, refused))
+            self.assertFalse((self.root / out).exists())
+        # Files are read in chunks, exactly, within their limit.
+        sys.path.insert(0, str(HERE))
+        import red_team
+        large = self.root / 'large'
+        large.write_bytes(b'x' * (red_team.CHUNK * 2 + 17))
+        self.assertEqual(red_team.read_regular(large, red_team.CHUNK * 3), large.read_bytes())
+        with self.assertRaises(ValueError):
+            red_team.read_regular(large, red_team.CHUNK * 2)
 
     def test_the_kit_refuses_unsafe_fixtures_and_setups(self):
         replay = self.root / 'replay.json'
