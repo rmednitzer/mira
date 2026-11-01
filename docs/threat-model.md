@@ -94,6 +94,8 @@ Status: design accepted ([ADR 0015](adr/0015-shared-mixed-initiative-workspace.m
 - notes with no control or bidirectional characters
 - a close receipt, which must be outside the session (resolved through links), that `verify --expect-close` checks
 - no session ID in any command output
+- `verify` takes the expected operator from the verifier (`--operator`), never from the header, so a listed agent or collector key cannot pass off a counterfeit session in which it names itself operator
+- without a receipt, `verify` cannot tell an older genuine session by the same operator from the current one
 
 Only operator-side writers exist so far, so no agent containment is claimed yet. The broker, the collector key and agent requests are stage 1b. TB8 is the agent principal: an untrusted process with its own signing key, under its own OS user. It can only submit signed requests. An operator-run broker, which it does not control, executes them and signs every result with a collector key the agent cannot use.
 

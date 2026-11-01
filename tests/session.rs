@@ -125,6 +125,11 @@ impl Dir {
     }
 
     fn verify(&self, receipt: Option<&Path>) -> Output {
+        self.verify_as("operator", receipt)
+    }
+
+    /// Verify with the verifier's own expectation of who the operator is.
+    fn verify_as(&self, operator: &str, receipt: Option<&Path>) -> Output {
         let session = self.session();
         let signers = self.path("signers");
         let mut args = vec![
@@ -133,6 +138,8 @@ impl Dir {
             session.to_str().unwrap(),
             "--allowed-signers",
             signers.to_str().unwrap(),
+            "--operator",
+            operator,
         ];
         if let Some(receipt) = receipt {
             args.extend(["--expect-close", receipt.to_str().unwrap()]);
@@ -500,6 +507,39 @@ fn tampering_gaps_foreign_entries_and_wrong_roles_are_not_verified() {
     );
     fs::remove_file(dir.entry(4)).unwrap();
     assert!(dir.verify(None).status.success());
+}
+
+#[test]
+fn a_listed_agent_cannot_forge_a_session_as_operator() {
+    let dir = Dir::new();
+    // The agent writes a complete session naming itself operator, signing
+    // every record with its own listed key; no operator key is involved.
+    let id = "ab".repeat(32);
+    let forged = [
+        format!(
+            "{{\"session_version\":1,\"session_id\":\"{id}\",\"seq\":0,\"kind\":\"header\",\"principal\":\"agent\",\"based_on\":null,\"operator\":\"agent\",\"agent\":\"helper\",\"collector\":\"collector\",\"separation\":\"same_user\",\"autonomy\":\"assisted\",\"budget\":5,\"note\":\"forged\"}}\n"
+        ),
+        format!(
+            "{{\"session_version\":1,\"session_id\":\"{id}\",\"seq\":1,\"kind\":\"directive\",\"principal\":\"agent\",\"based_on\":0,\"directive\":\"delegate\",\"level\":null,\"budget\":null,\"until_seq\":99,\"note\":\"self-granted\"}}\n"
+        ),
+    ];
+    fs::create_dir_all(dir.entries()).unwrap();
+    for (seq, line) in forged.iter().enumerate() {
+        dir.write_record(seq as u64, line, &dir.raw_sign(line.as_bytes(), "agent"));
+    }
+    // Trusting the header's own claim would accept it as signed by "agent".
+    assert!(dir.verify_as("agent", None).status.success());
+    // The verifier names the operator it trusts; the forgery fails.
+    not_verified(
+        &dir.verify(None),
+        "session operator is not the expected principal",
+    );
+    // The real operator's key cannot append to it either: it never verifies
+    // as the forged header's "operator".
+    assert_eq!(
+        dir.write("ask", "operator", &["--text", "q"]).status.code(),
+        Some(4)
+    );
 }
 
 #[test]

@@ -184,13 +184,14 @@ Unit tests in `src/session.rs`:
   - a renamed entry
   - an unexpected file
   - a validly signed entry copied from another session
+- **Forgery:** an agent that signs a complete session naming itself operator verifies only for a verifier who expects that agent as operator. It fails for the real operator, and the operator's key cannot append to it.
 - **Concurrency:** while six writers append, repeated `show` calls always see a complete log. The writers get distinct, contiguous sequence numbers and leave no pending files, and files left by an interrupted writer block nothing.
 - **Receipts and output:** receipts are refused inside the session, directly or through a symbolic link, over an existing file, or in a missing directory, and the session stays open. No command prints the session ID.
 - **Refusals that write nothing:** a start with an unlisted key (nothing left behind); an existing directory, never reused or removed; the agent's key writing as the operator; and malformed invocations.
 
 `scripts/validate_session.py`:
 - checks the closed `session-v1` schema, canonical layout and state rules with its own implementation
-- builds a real session through the CLI, re-admits each entry, recomputes the state, compares it with `show --json`, verifies each signature with `ssh-keygen` directly, checks the receipt, and requires a changed byte to fail
+- builds a real session through the CLI, re-admits each entry, recomputes the state, compares it with `show --json`, verifies each signature with `ssh-keygen` directly, checks the receipt, and requires both a changed byte and a verifier expecting another operator to fail
 
 ## Representative host qualification
 

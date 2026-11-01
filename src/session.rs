@@ -406,6 +406,8 @@ pub enum Problem {
     Text,
     /// The close receipt does not match the session.
     Receipt,
+    /// The header names another operator than the verifier expects.
+    Operator,
     /// The session directory or a file in it could not be read or written.
     Io,
     /// `ssh-keygen` is missing or failed to run.
@@ -429,6 +431,7 @@ impl Problem {
                 "note exceeds 1 KiB or contains control or bidirectional characters".to_owned()
             }
             Self::Receipt => "close receipt does not match the session".to_owned(),
+            Self::Operator => "session operator is not the expected principal".to_owned(),
             Self::Io => "session directory unreadable or unwritable".to_owned(),
             Self::Tool => "ssh-keygen unavailable".to_owned(),
         }
@@ -750,10 +753,20 @@ pub fn start(
 }
 
 /// Verify the whole log: structure, roles and every signature under the
-/// operator's `allowed_signers`. With a receipt, the close record it holds
-/// must be the session's last record, byte for byte.
-pub fn verify(dir: &Path, allowed: &Path, receipt: Option<&Path>) -> Result<State, Problem> {
+/// operator's `allowed_signers`. The operator comes from the verifier, never
+/// from the header: any listed key could otherwise write a header naming
+/// itself operator and sign a counterfeit session. With a receipt, the close
+/// record it holds must be the session's last record, byte for byte.
+pub fn verify(
+    dir: &Path,
+    allowed: &Path,
+    operator: &str,
+    receipt: Option<&Path>,
+) -> Result<State, Problem> {
     let (log, state) = load(dir)?;
+    if state.header.operator != operator {
+        return Err(Problem::Operator);
+    }
     for stored in &log {
         verify_signature(
             &stored.bytes,

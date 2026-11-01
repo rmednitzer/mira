@@ -244,13 +244,18 @@ def check_cli():
         if (temp / 'receipt').read_bytes() != (session / 'entries' / '000005.entry').read_bytes():
             raise ValueError('receipt is not the close record')
         verified = mira('verify', str(session), '--allowed-signers', str(temp / 'signers'),
-                        '--expect-close', str(temp / 'receipt'))
+                        '--operator', 'operator', '--expect-close', str(temp / 'receipt'))
         if verified.returncode != 0:
             raise ValueError('mira session verify refused a valid session')
         # One changed byte must be refused by mira and by ssh-keygen alike.
         path = session / 'entries' / '000001.entry'
         path.write_bytes(path.read_bytes().replace(b'visible', b'vis1ble', 1))
-        if mira('verify', str(session), '--allowed-signers', str(temp / 'signers')).returncode != 1:
+        # The verifier names the operator; a header naming anyone else is refused.
+        if mira('verify', str(session), '--allowed-signers', str(temp / 'signers'),
+                '--operator', 'agent').returncode != 1:
+            raise ValueError('session verified for an operator the header does not name')
+        if mira('verify', str(session), '--allowed-signers', str(temp / 'signers'),
+                '--operator', 'operator').returncode != 1:
             raise ValueError('modified entry verified')
 
 

@@ -4,7 +4,7 @@
 use mira::session::{self, Body, Directive, Header, Level, Problem, Separation, Writer};
 use std::{collections::BTreeMap, path::Path};
 
-pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--autonomy manual|advisory|assisted] [--budget N] --question TEXT | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE [--expect-close PATH]";
+pub const USAGE: &str = "mira session start DIR --allowed-signers FILE --key KEY --operator NAME --agent NAME --collector NAME [--autonomy manual|advisory|assisted] [--budget N] --question TEXT | mira session ask DIR --allowed-signers FILE --key KEY --text TEXT | mira session direct DIR --allowed-signers FILE --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT] | mira session close DIR --allowed-signers FILE --key KEY --conclusion TEXT [--receipt PATH] | mira session show DIR [--json] | mira session verify DIR --allowed-signers FILE --operator NAME [--expect-close PATH]";
 
 fn usage() -> ! {
     eprintln!("Usage: {USAGE}");
@@ -287,9 +287,19 @@ fn show(dir: &Path, rest: &[String]) {
 }
 
 fn verify(dir: &Path, rest: &[String]) {
-    let options = Options::parse(rest, &["--allowed-signers", "--expect-close"], &[]);
+    let options = Options::parse(
+        rest,
+        &["--allowed-signers", "--operator", "--expect-close"],
+        &[],
+    );
     let allowed = Path::new(options.required("--allowed-signers"));
-    match session::verify(dir, allowed, options.get("--expect-close").map(Path::new)) {
+    let operator = principal(options.required("--operator"));
+    match session::verify(
+        dir,
+        allowed,
+        &operator,
+        options.get("--expect-close").map(Path::new),
+    ) {
         Ok(state) => println!(
             "MIRA session: verified entries {} {}",
             state.entries,

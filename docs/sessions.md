@@ -37,7 +37,7 @@ mira session ask DIR --allowed-signers SIGNERS --key KEY --text TEXT
 mira session direct DIR --allowed-signers SIGNERS --key KEY (--stop | --level manual|advisory|assisted | --budget N | --delegate-until SEQ) [--text TEXT]
 mira session close DIR --allowed-signers SIGNERS --key KEY --conclusion TEXT [--receipt PATH]
 mira session show DIR [--json]
-mira session verify DIR --allowed-signers SIGNERS [--expect-close PATH]
+mira session verify DIR --allowed-signers SIGNERS --operator NAME [--expect-close PATH]
 ```
 
 - **`start`** creates `DIR` exclusively (mode 0700) and writes the operator-signed header as entry 0:
@@ -58,7 +58,8 @@ mira session verify DIR --allowed-signers SIGNERS [--expect-close PATH]
   Delegation ends after a number of entries. The operator-clock deadline the ADR also allows is not implemented.
 - **`close`** appends your conclusion and the final entry count. After it, every append is refused. With `--receipt PATH`, the close record (entry and signature) is also written, exclusively, to `PATH`. That path must be in an existing directory outside the session, resolved through symbolic links. An existing path, a path inside the session or a missing directory is refused before anything is written.
 - **`show`** prints the timeline and current state, or the state alone with `--json`. It reads the log's structure but does not check signatures. No command prints the session ID; it is in entry 0 for anyone who reads the log.
-- **`verify`** checks everything:
+- **`verify`** checks everything against the operator you name with `--operator`. It never takes the operator from the session's own header: any key in `allowed_signers`, the agent's included, could otherwise write a header naming itself operator and sign a counterfeit session. It checks:
+  - the header names exactly that operator
   - contiguous sequence numbers from 0, each with a signature
   - each entry's exact canonical bytes
   - one session ID throughout
@@ -96,6 +97,6 @@ Notes are at most 1 KiB, on one line. They refuse control characters (C0, DEL, C
 
 ## What a verified session shows, and what it does not
 
-A verified session shows that the listed keys wrote these exact entries, in this order, for this session, each within its role. It does not show that anything in a note is true.
+A verified session shows that the operator you named, and the keys the operator's header lists, wrote these exact entries, in this order, each within its role. It does not show that anything in a note is true. Without a receipt it also does not show which session you are looking at: an older, genuine session by the same operator would verify too. The receipt pins the exact closed session.
 
 Truncating the tail of an open session is not detectable; a closed session with a receipt is. In stage 1a every entry is written by the operator's own account, so this stage makes no containment claim about agents. That comes with the broker and the `separate_user` mode in stage 1b.
